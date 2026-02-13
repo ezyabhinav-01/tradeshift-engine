@@ -14,3 +14,6 @@ requests==2.31.0
 websockets
 vaderSentiment==3.3.2
 prometheus-fastapi-instrumentator
+NorenRestApiPy
+pyotp
+python-dotenv

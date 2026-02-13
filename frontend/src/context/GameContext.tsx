@@ -28,15 +28,18 @@ interface GameState {
   currentCandle: CandleData | null; // <--- NEW: Expose full candle
   trades: Trade[];
   theme: 'light' | 'dark';
+  selectedSymbol: string;
+  selectedToken: string;
   toggleTheme: () => void;
   togglePlay: () => void;
   setSpeed: (s: number) => void;
+  setSymbol: (symbol: string, token: string) => void;
   placeOrder: (type: 'BUY' | 'SELL', qty: number) => void;
   closePosition: (tradeId: string) => void;
   resetSimulation: () => void;
 }
 
-const WEBSOCKET_URL = "ws://localhost:8000/ws/simulation"; 
+const WEBSOCKET_URL = "ws://localhost:8000/ws/ticker";
 const GameContext = createContext<GameState | null>(null);
 
 export const useGame = () => {
@@ -53,6 +56,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [currentCandle, setCurrentCandle] = useState<CandleData | null>(null); // <--- NEW STATE
   const [trades, setTrades] = useState<Trade[]>([]);
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
+  const [selectedSymbol, setSelectedSymbol] = useState('NIFTY');
+  const [selectedToken, setSelectedToken] = useState('26000');
 
   const ws = useRef<WebSocket | null>(null);
 
@@ -72,26 +77,38 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     socket.onopen = () => {
       console.log("🟢 Connected");
-      socket.send(JSON.stringify({ command: "START", speed: speed }));
+      // Send START command with selected symbol
+      socket.send(JSON.stringify({
+        command: "START",
+        symbol: selectedSymbol, // Use symbol as-is (e.g., "NIFTY", "BANKNIFTY")
+        speed: speed
+      }));
     };
 
     socket.onmessage = (event) => {
       const payload = JSON.parse(event.data);
-      
+
       // HANDLE FULL CANDLE (From Parquet)
       if (payload.type === 'CANDLE') {
         const d = payload.data;
-        
+
         // 1. Parse the timestamp
         // If d.timestamp is "2024-01-01 09:15:00", new Date() might treat it as local or UTC depending on browser.
         // The issue is that Lightweight Charts displays time in UTC by default.
         // You are seeing 3:45 (UTC) for 9:15 (IST). This means the timestamp value corresponds to 3:45 UTC.
         // To display 9:15 on the chart, we need to shift the timestamp to be 9:15 UTC.
         // Difference: 5 hours 30 minutes = 19800 seconds.
-        
-        const rawTime = new Date(d.timestamp).getTime() / 1000; 
+
+        const rawTime = new Date(d.timestamp).getTime() / 1000;
         const timestamp = rawTime + 19800; // Add 5.5 hours to shift display from 3:45 to 9:15
-        
+
+        console.log('🕯️ New Candle:', {
+          ts_str: d.timestamp,
+          raw: rawTime,
+          final_ts: timestamp,
+          close: d.close
+        });
+
         const newCandle = {
           time: timestamp,
           open: d.open,
@@ -103,24 +120,56 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setCurrentCandle(newCandle);
         setCurrentPrice(d.close); // Live price is the Close of the candle
       }
-      
+
       // Fallback for Random Simulation
       if (payload.type === 'TICK') {
-         setCurrentPrice(payload.data.price);
+        const price = payload.data.price;
+        setCurrentPrice(price);
+
+        // Update Current Candle Live
+        setCurrentCandle(prev => {
+          if (!prev) {
+            // Initialize first candle from tick
+            const rawTime = new Date(payload.data.timestamp).getTime() / 1000;
+            const timestamp = rawTime + 19800;
+            return {
+              time: timestamp,
+              open: price,
+              high: price,
+              low: price,
+              close: price
+            };
+          }
+
+          // Check if tick belongs to new minute?
+          // Backend sends CANDLE at end of minute, causing a "jump" or finalization.
+          // For now, we update the developing candle.
+          return {
+            ...prev,
+            high: Math.max(prev.high, price),
+            low: Math.min(prev.low, price),
+            close: price
+          };
+        });
       }
     };
 
     ws.current = socket;
     return () => { if (ws.current) ws.current.close(); };
-  }, [isPlaying, speed]);
+  }, [isPlaying, speed, selectedSymbol]); // Added selectedSymbol dependency
 
   const togglePlay = () => setIsPlaying(!isPlaying);
   const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
-  
+  const setSymbol = (symbol: string, token: string) => {
+    setSelectedSymbol(symbol);
+    setSelectedToken(token);
+    console.log(`Selected symbol: ${symbol}, token: ${token}`);
+  };
+
   const placeOrder = (type: 'BUY' | 'SELL', quantity: number) => {
     const newTrade: Trade = {
       id: Math.random().toString(36).substr(2, 9),
-      symbol: "NIFTY 50",
+      symbol: selectedSymbol,
       type,
       entryPrice: currentPrice,
       quantity,
@@ -151,9 +200,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <GameContext.Provider value={{ 
-      isPlaying, speed, balance, currentPrice, currentCandle, trades, theme, 
-      togglePlay, setSpeed, placeOrder, closePosition, resetSimulation, toggleTheme 
+    <GameContext.Provider value={{
+      isPlaying, speed, balance, currentPrice, currentCandle, trades, theme, selectedSymbol, selectedToken,
+      togglePlay, setSpeed, setSymbol, placeOrder, closePosition, resetSimulation, toggleTheme
     }}>
       {children}
     </GameContext.Provider>

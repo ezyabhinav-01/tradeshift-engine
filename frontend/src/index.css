@@ -4,3 +4,19 @@ html, body, #root {
   height: 100%;
   background-color: black;
 }
+
+/* Force Dialog to render with fixed positioning */
+[role="dialog"] {
+  position: fixed !important;
+  left: 50% !important;
+  top: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  z-index: 9999 !important;
+}
+
+/* Force Dialog overlay to cover screen */
+[data-radix-dialog-overlay] {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 9998 !important;
+}

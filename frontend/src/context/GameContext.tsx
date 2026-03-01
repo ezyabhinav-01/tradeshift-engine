@@ -1,4 +1,4 @@
-import React, { useState, useEffect, createContext } from 'react';
+import React, { useState, useEffect, createContext, useContext } from 'react';
 import type { CandleData, Trade } from '../types';
 import { marketDataService } from '../services/MarketDataService';
 
@@ -9,8 +9,12 @@ interface GameState {
   currentPrice: number;
   currentCandle: CandleData | null;
   trades: Trade[];
+  theme: 'dark' | 'light';
+  selectedSymbol: string;
   togglePlay: () => void;
+  toggleTheme: () => void;
   setSpeed: (s: number) => void;
+  setSymbol: (symbol: string, token: string) => void;
   placeOrder: (type: 'BUY' | 'SELL', qty: number) => void;
   closePosition: (tradeId: string) => void;
   resetSimulation: () => void;
@@ -19,6 +23,12 @@ interface GameState {
 
 export const GameContext = createContext<GameState | null>(null);
 
+export const useGame = (): GameState => {
+  const ctx = useContext(GameContext);
+  if (!ctx) throw new Error('useGame must be used within a GameProvider');
+  return ctx;
+};
+
 export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ children }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
@@ -26,6 +36,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
   const [currentPrice, setCurrentPrice] = useState(21500);
   const [currentCandle, setCurrentCandle] = useState<CandleData | null>(null);
   const [trades, setTrades] = useState<Trade[]>([]);
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [selectedSymbol, setSelectedSymbol] = useState('');
 
   useEffect(() => {
     if (!isPlaying) {
@@ -97,11 +109,14 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
   }, [isPlaying, speed]);
 
   const togglePlay = () => setIsPlaying(!isPlaying);
+  const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+
+  const setSymbol = (symbol: string, _token: string) => setSelectedSymbol(symbol);
 
   const placeOrder = (type: 'BUY' | 'SELL', quantity: number) => {
     const newTrade: Trade = {
       id: Math.random().toString(36).substr(2, 9),
-      symbol: "NIFTY 50",
+      symbol: selectedSymbol,
       type,
       entryPrice: currentPrice,
       quantity,
@@ -134,7 +149,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
   return (
     <GameContext.Provider value={{
       isPlaying, speed, balance, currentPrice, currentCandle, trades,
-      togglePlay, setSpeed, placeOrder, closePosition, resetSimulation
+      theme, selectedSymbol,
+      togglePlay, toggleTheme, setSpeed, setSymbol, placeOrder, closePosition, resetSimulation
     }}>
       {children}
     </GameContext.Provider>

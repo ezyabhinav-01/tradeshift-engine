@@ -41,7 +41,7 @@ services:
     container_name: tradeshift_backend
     volumes:
       - ./backend:/app
-      - ./data:/data
+      - ./data:/app/data
     ports:
       - "8000:8000"
     depends_on:

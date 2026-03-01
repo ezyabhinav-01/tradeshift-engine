@@ -23,3 +23,6 @@ python-multipart
 python-jose[cryptography]
 # Workflow
 inngest
+NorenRestApiPy
+pyotp
+python-dotenv

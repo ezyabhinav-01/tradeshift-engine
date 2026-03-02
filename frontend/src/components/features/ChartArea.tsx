@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { createChart, ColorType } from 'lightweight-charts';
 import type { ISeriesApi, UTCTimestamp } from 'lightweight-charts';
-import { useGame } from '../../context/GameContext';
+import { useGame } from '../../hooks/useGame';
+import { useThemeStore } from '../../store/themeStore';
 
 const ChartArea = () => {
-  const { currentPrice, currentCandle, isPlaying, theme, selectedSymbol } = useGame();
+  const { currentPrice, currentCandle, isPlaying } = useGame();
+  const { theme } = useThemeStore();
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -19,29 +21,32 @@ const ChartArea = () => {
     const chart = createChart(chartContainerRef.current, {
       layout: {
         background: { type: ColorType.Solid, color: 'transparent' },
-        textColor: isDark ? '#9ca3af' : '#4b5563',
+        textColor: isDark ? '#D1D4DC' : '#131722',
       },
       grid: {
-        vertLines: { color: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)' },
-        horzLines: { color: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)' },
+        vertLines: { color: isDark ? '#2A2E39' : '#E0E3EB' },
+        horzLines: { color: isDark ? '#2A2E39' : '#E0E3EB' },
       },
       width: chartContainerRef.current.clientWidth,
       height: chartContainerRef.current.clientHeight,
       timeScale: {
         timeVisible: true,
         secondsVisible: false,
-        borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+        borderColor: isDark ? '#2A2E39' : '#E0E3EB',
+      },
+      rightPriceScale: {
+        borderColor: isDark ? '#2A2E39' : '#E0E3EB',
       },
     });
 
     chartRef.current = chart;
 
     const series = chart.addCandlestickSeries({
-      upColor: '#26a69a',
-      downColor: '#ef5350',
+      upColor: '#089981', // TV Green
+      downColor: '#f23645', // TV Red
       borderVisible: false,
-      wickUpColor: '#26a69a',
-      wickDownColor: '#ef5350',
+      wickUpColor: '#089981',
+      wickDownColor: '#f23645',
     });
 
     seriesRef.current = series;
@@ -67,11 +72,13 @@ const ChartArea = () => {
     if (!chartRef.current) return;
     const isDark = theme === 'dark';
     chartRef.current.applyOptions({
-      layout: { textColor: isDark ? '#9ca3af' : '#4b5563' },
+      layout: { textColor: isDark ? '#D1D4DC' : '#131722' },
       grid: {
-        vertLines: { color: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)' },
-        horzLines: { color: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)' },
+        vertLines: { color: isDark ? '#2A2E39' : '#E0E3EB' },
+        horzLines: { color: isDark ? '#2A2E39' : '#E0E3EB' },
       },
+      timeScale: { borderColor: isDark ? '#2A2E39' : '#E0E3EB' },
+      rightPriceScale: { borderColor: isDark ? '#2A2E39' : '#E0E3EB' },
     });
   }, [theme]);
 
@@ -105,24 +112,17 @@ const ChartArea = () => {
   }, [currentCandle, isPlaying]);
 
   return (
-    <div className={`flex-1 flex flex-col min-h-0 min-w-0 h-full w-full font-sans transition-colors duration-500
-      ${theme === 'dark'
-        ? 'bg-gray-900/40 backdrop-blur-sm'
-        : 'bg-white/40 backdrop-blur-sm'
-      }`}>
+    <div className="flex-1 flex flex-col min-h-0 min-w-0 h-full w-full font-sans transition-colors duration-500 bg-tv-bg-base">
 
       {/* HEADER */}
-      <div className={`flex items-center justify-between px-4 py-3 border-b transition-colors
-         ${theme === 'dark' ? 'border-gray-800' : 'border-gray-200'}`}>
+      <div className="flex items-center justify-between px-4 py-3 border-b border-tv-border transition-colors">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
-            <span className={`font-bold text-lg tracking-wide ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-              {selectedSymbol?.replace('_', ' ')}
-            </span>
-            <span className="bg-green-500/10 text-green-500 text-[10px] font-bold px-1.5 py-0.5 rounded border border-green-500/20">INDEX</span>
+            <span className="font-bold text-lg tracking-wide text-tv-text-primary">NIFTY 50</span>
+            <span className="bg-tv-primary/10 text-tv-primary text-[10px] font-bold px-1.5 py-0.5 rounded border border-tv-primary/20">INDEX</span>
           </div>
         </div>
-        <div className={`text-xl font-mono font-bold leading-none ${currentPrice >= (currentCandle?.open ?? 0) ? 'text-[#26a69a]' : 'text-[#ef5350]'
+        <div className={`text-xl font-mono font-bold leading-none ${currentPrice >= (currentCandle?.open ?? 0) ? 'text-[#089981]' : 'text-[#f23645]'
           }`}>
           {currentPrice.toFixed(2)}
         </div>

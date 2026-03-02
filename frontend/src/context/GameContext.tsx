@@ -1,37 +1,18 @@
-import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
-
-// New Interface for full Candle Data
-export interface CandleData {
-  time: number; // Unix timestamp
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-}
-
-export interface Trade {
-  id: string;
-  symbol: string;
-  type: 'BUY' | 'SELL';
-  entryPrice: number;
-  quantity: number;
-  pnl?: number;
-  timestamp: Date;
-  status: 'OPEN' | 'CLOSED';
-}
+import React, { useState, useEffect, createContext, useContext } from 'react';
+import type { CandleData, Trade } from '../types';
+import { marketDataService } from '../services/MarketDataService';
 
 interface GameState {
   isPlaying: boolean;
   speed: number;
   balance: number;
   currentPrice: number;
-  currentCandle: CandleData | null; // <--- NEW: Expose full candle
+  currentCandle: CandleData | null;
   trades: Trade[];
-  theme: 'light' | 'dark';
+  theme: 'dark' | 'light';
   selectedSymbol: string;
-  selectedToken: string;
-  toggleTheme: () => void;
   togglePlay: () => void;
+  toggleTheme: () => void;
   setSpeed: (s: number) => void;
   setSymbol: (symbol: string, token: string) => void;
   placeOrder: (type: 'BUY' | 'SELL', qty: number) => void;
@@ -39,75 +20,38 @@ interface GameState {
   resetSimulation: () => void;
 }
 
-const WEBSOCKET_URL = "ws://localhost:8000/ws/ticker";
-const GameContext = createContext<GameState | null>(null);
 
-export const useGame = () => {
-  const context = useContext(GameContext);
-  if (!context) throw new Error("useGame must be used within GameProvider");
-  return context;
+export const GameContext = createContext<GameState | null>(null);
+
+export const useGame = (): GameState => {
+  const ctx = useContext(GameContext);
+  if (!ctx) throw new Error('useGame must be used within a GameProvider');
+  return ctx;
 };
 
-export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ children }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [balance, setBalance] = useState(100000);
   const [currentPrice, setCurrentPrice] = useState(21500);
-  const [currentCandle, setCurrentCandle] = useState<CandleData | null>(null); // <--- NEW STATE
+  const [currentCandle, setCurrentCandle] = useState<CandleData | null>(null);
   const [trades, setTrades] = useState<Trade[]>([]);
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
-  const [selectedSymbol, setSelectedSymbol] = useState('NIFTY');
-  const [selectedToken, setSelectedToken] = useState('26000');
-
-  const ws = useRef<WebSocket | null>(null);
-
-  useEffect(() => {
-    const root = window.document.documentElement;
-    root.classList.remove('light', 'dark');
-    root.classList.add(theme);
-  }, [theme]);
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [selectedSymbol, setSelectedSymbol] = useState('');
 
   useEffect(() => {
     if (!isPlaying) {
-      if (ws.current) ws.current.close();
+      marketDataService.disconnect();
       return;
     }
 
-    const socket = new WebSocket(WEBSOCKET_URL);
+    marketDataService.connect(speed);
 
-    socket.onopen = () => {
-      console.log("🟢 Connected");
-      // Send START command with selected symbol
-      socket.send(JSON.stringify({
-        command: "START",
-        symbol: selectedSymbol, // Use symbol as-is (e.g., "NIFTY", "BANKNIFTY")
-        speed: speed
-      }));
-    };
-
-    socket.onmessage = (event) => {
-      const payload = JSON.parse(event.data);
-
-      // HANDLE FULL CANDLE (From Parquet)
+    marketDataService.onMessage((payload: any) => {
       if (payload.type === 'CANDLE') {
         const d = payload.data;
-
-        // 1. Parse the timestamp
-        // If d.timestamp is "2024-01-01 09:15:00", new Date() might treat it as local or UTC depending on browser.
-        // The issue is that Lightweight Charts displays time in UTC by default.
-        // You are seeing 3:45 (UTC) for 9:15 (IST). This means the timestamp value corresponds to 3:45 UTC.
-        // To display 9:15 on the chart, we need to shift the timestamp to be 9:15 UTC.
-        // Difference: 5 hours 30 minutes = 19800 seconds.
-
         const rawTime = new Date(d.timestamp).getTime() / 1000;
-        const timestamp = rawTime + 19800; // Add 5.5 hours to shift display from 3:45 to 9:15
-
-        console.log('🕯️ New Candle:', {
-          ts_str: d.timestamp,
-          raw: rawTime,
-          final_ts: timestamp,
-          close: d.close
-        });
+        const timestamp = rawTime + 19800;
 
         const newCandle = {
           time: timestamp,
@@ -118,53 +62,56 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
 
         setCurrentCandle(newCandle);
-        setCurrentPrice(d.close); // Live price is the Close of the candle
+        setCurrentPrice(d.close);
       }
 
-      // Fallback for Random Simulation
+      if (payload.type === 'BATCH') {
+        const batchData = payload.data;
+        if (batchData && batchData.length > 0) {
+          const lastItem = batchData[batchData.length - 1];
+          setCurrentPrice(lastItem.price);
+
+          setCurrentCandle(prevCandle => {
+            let newCandle = prevCandle ? { ...prevCandle } : null;
+
+            batchData.forEach((tick: any) => {
+              const rawTime = new Date(tick.timestamp).getTime() / 1000;
+              const shiftedTime = rawTime + 19800;
+              const candleTime = Math.floor(shiftedTime / 60) * 60;
+
+              if (!newCandle || candleTime !== newCandle.time) {
+                newCandle = {
+                  time: candleTime,
+                  open: tick.price,
+                  high: tick.price,
+                  low: tick.price,
+                  close: tick.price
+                };
+              } else {
+                newCandle.high = Math.max(newCandle.high, tick.price);
+                newCandle.low = Math.min(newCandle.low, tick.price);
+                newCandle.close = tick.price;
+              }
+            });
+            return newCandle;
+          });
+        }
+      }
+
       if (payload.type === 'TICK') {
-        const price = payload.data.price;
-        setCurrentPrice(price);
-
-        // Update Current Candle Live
-        setCurrentCandle(prev => {
-          if (!prev) {
-            // Initialize first candle from tick
-            const rawTime = new Date(payload.data.timestamp).getTime() / 1000;
-            const timestamp = rawTime + 19800;
-            return {
-              time: timestamp,
-              open: price,
-              high: price,
-              low: price,
-              close: price
-            };
-          }
-
-          // Check if tick belongs to new minute?
-          // Backend sends CANDLE at end of minute, causing a "jump" or finalization.
-          // For now, we update the developing candle.
-          return {
-            ...prev,
-            high: Math.max(prev.high, price),
-            low: Math.min(prev.low, price),
-            close: price
-          };
-        });
+        setCurrentPrice(payload.data.price);
       }
-    };
+    });
 
-    ws.current = socket;
-    return () => { if (ws.current) ws.current.close(); };
-  }, [isPlaying, speed, selectedSymbol]); // Added selectedSymbol dependency
+    return () => {
+      marketDataService.disconnect();
+    };
+  }, [isPlaying, speed]);
 
   const togglePlay = () => setIsPlaying(!isPlaying);
   const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
-  const setSymbol = (symbol: string, token: string) => {
-    setSelectedSymbol(symbol);
-    setSelectedToken(token);
-    console.log(`Selected symbol: ${symbol}, token: ${token}`);
-  };
+
+  const setSymbol = (symbol: string, _token: string) => setSelectedSymbol(symbol);
 
   const placeOrder = (type: 'BUY' | 'SELL', quantity: number) => {
     const newTrade: Trade = {
@@ -201,8 +148,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <GameContext.Provider value={{
-      isPlaying, speed, balance, currentPrice, currentCandle, trades, theme, selectedSymbol, selectedToken,
-      togglePlay, setSpeed, setSymbol, placeOrder, closePosition, resetSimulation, toggleTheme
+      isPlaying, speed, balance, currentPrice, currentCandle, trades,
+      theme, selectedSymbol,
+      togglePlay, toggleTheme, setSpeed, setSymbol, placeOrder, closePosition, resetSimulation
     }}>
       {children}
     </GameContext.Provider>

@@ -2,6 +2,7 @@
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
 from sqlalchemy import create_engine, text
 import pandas as pd
 from minio import Minio
@@ -14,6 +15,20 @@ import glob
 from redis import Redis
 from prometheus_fastapi_instrumentator import Instrumentator
 from app.oms import OrderManager
+from app import auth
+from app.routers import inngest
+from app.models import User  # Models must be imported for Base to detect them
+from app.database import Base, connect_to_database
+
+# --- DB INITIALIZATION ---
+# Connect and Create Tables using the cached connection pattern
+try:
+    engine = connect_to_database()
+    Base.metadata.create_all(bind=engine)
+    print("✅ Database Tables Created/Verified")
+except Exception as e:
+    print(f"❌ Database Initialization Failed: {e}")
+
 
 # --- 1. ROBUST IMPORT FOR SIMULATION ---
 try:
@@ -30,20 +45,37 @@ app = FastAPI()
 # Instrumentator (Monitoring)
 Instrumentator().instrument(app).expose(app)
 
+# Global Exception Handler for debugging 500s
+from fastapi import Request
+from fastapi.responses import JSONResponse
+import traceback
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    error_msg = f"🔥 UNHANDLED EXCEPTION: {str(exc)}\n{traceback.format_exc()}"
+    print(error_msg)
+    return JSONResponse(
+        status_code=500,
+        content={"message": "Internal Server Error", "detail": str(exc)},
+    )
+
 # --- 2. SECURITY (CORS) ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
+app.include_router(inngest.router)
+
 # --- 3. INFRASTRUCTURE CONNECTIONS ---
-try:
-    engine = create_engine("postgresql://user:password@db:5432/tradeshift")
-except Exception as e:
-    print(f"⚠️ DB Connection Warning: {e}")
+
+
+# --- 3. INFRASTRUCTURE CONNECTIONS ---
+# Database connection is now handled by app.database module (above)
 
 try:
     minio_client = Minio("minio:9000", "minioadmin", "minioadmin", secure=False)
@@ -55,6 +87,8 @@ try:
 except Exception:
     print("⚠️ Redis not connected")
 
+# --- 4. WEBSOCKET ENDPOINT ---
+@app.websocket("/ws/simulation")
 # --- 4. HELPER FUNCTION: Load Parquet by Symbol ---
 def load_parquet_for_symbol(symbol: str):
     """
@@ -277,11 +311,29 @@ async def websocket_endpoint(websocket: WebSocket):
     oms = OrderManager()
     last_tick_price = 21500.0  # Default value to prevent errors before stream starts
     
+    # Data Source
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(base_dir, "data", "NIFTY_50_1min.parquet")
     # Data Source (now loaded dynamically based on symbol)
     df = None
     iterator = None
     current_symbol = None
     using_real_data = False
+
+    if os.path.exists(file_path):
+        try:
+            print(f"📂 Loaded: {file_path}")
+            df = pd.read_parquet(file_path)
+            df.columns = df.columns.str.lower()
+            # Opt for iterator to save memory (avoid to_dict overhead)
+            iterator = df.itertuples(index=False)
+            using_real_data = True
+        except Exception as e:
+            print(f"⚠️ Error loading parquet: {e}. Switching to synthetic data.")
+            using_real_data = False
+    else:
+        print("⚠️ Parquet not found. Using Synthetic Data Generation.")
+
     try:
         while True:
             # A. CHECK FOR COMMANDS (Non-blocking)
@@ -295,6 +347,40 @@ async def websocket_endpoint(websocket: WebSocket):
                     target_date = message.get("date")
                     speed = float(message.get("speed", 1.0))
                     
+                    if using_real_data:
+                        try:
+                            # Date Logic
+                            date_col = None
+                            if 'date' in df.columns: date_col = 'date'
+                            elif 'datetime' in df.columns: date_col = 'datetime'
+                            
+                            if not date_col:
+                                await websocket.send_json({"type": "ERROR", "message": "Dataset has no date column"})
+                                continue
+
+                            # Filter DataFrame
+                            temp_df = df.copy()
+                            temp_df[date_col] = pd.to_datetime(temp_df[date_col])
+                            
+                            if not target_date:
+                                first_date = temp_df[date_col].min().date()
+                                target_date = str(first_date)
+                            
+                            target_dt = pd.to_datetime(target_date).date()
+                            mask = temp_df[date_col].dt.date == target_dt
+                            filtered_df = temp_df[mask]
+
+                            if filtered_df.empty:
+                                await websocket.send_json({"type": "ERROR", "message": f"No data found for date: {target_date}"})
+                                continue
+
+                            print(f"✅ Found {len(filtered_df)} records for {target_date}")
+                            print(f"✅ Found {len(filtered_df)} records for {target_date}")
+                            # Use itertuples for filtered data too
+                            iterator = filtered_df.itertuples(index=False)
+
+                        except Exception as e:
+                            print(f"❌ Date filtering error: {e}")
                     # Validate symbol parameter
                     if not symbol:
                         await websocket.send_json({"type": "ERROR", "message": "Symbol parameter is required"})
@@ -361,6 +447,23 @@ async def websocket_endpoint(websocket: WebSocket):
 
             # B. STREAM DATA (Only if running)
             if is_running:
+                # 1. Get Next Candle
+                if using_real_data:
+                    try:
+                        row = next(iterator)
+                        # Access via attributes (itertuples)
+                        open_p, high, low, close = row.open, row.high, row.low, row.close
+                        
+                        # Handle date/datetime flexibility
+                        row_date = getattr(row, 'date', None) or getattr(row, 'datetime', None)
+                        base_time = pd.to_datetime(row_date)
+                    except StopIteration:
+                        print("🏁 End of Data. Restarting...")
+                        iterator = df.itertuples(index=False)
+                        continue
+                else:
+                    open_p, high, low, close = 21500, 21510, 21490, 21505
+                    base_time = datetime.datetime.now()
                 try:
                     # 1. Get Next Candle
                     if using_real_data:
@@ -481,3 +584,6 @@ async def websocket_endpoint(websocket: WebSocket):
         print("🔴 Disconnected")
     except Exception as e:
         print(f"⚠️ Error: {e}")
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

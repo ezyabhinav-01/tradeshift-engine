@@ -12,7 +12,6 @@ const ChartArea = () => {
     selectedSymbol, togglePlay, isReplayActive, toggleReplay,
     selectedDate, availableDates, setDate, speed, setSpeed,
   } = useGame();
-  const { currentPrice, currentCandle, isPlaying } = useGame();
   const { theme } = useThemeStore();
   const [isDateDropdownOpen, setIsDateDropdownOpen] = useState(false);
 

@@ -131,7 +131,7 @@ const ChartArea = () => {
   useEffect(() => {
     if (!seriesRef.current || !volumeSeriesRef.current) return;
 
-    // When historicalCandles is cleared (replay starts), clear the chart series
+    // When historicalCandles is cleared (replay starts or loading), clear chart
     if (historicalCandles.length === 0) {
       seriesRef.current.setData([]);
       volumeSeriesRef.current.setData([]);

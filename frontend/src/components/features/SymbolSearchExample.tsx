@@ -1,25 +1,35 @@
 // Example: How to use SymbolSearch component in your app
 
-
-import { SymbolSearch } from './components/features/SymbolSearch';
-import { useGame } from './context/GameContext';
+import { useState } from 'react';
+import { SymbolSearch } from './SymbolSearch';
+import { useGame } from '../../context/GameContext';
 
 export function ExampleUsage() {
-    const { setSymbol, selectedSymbol, selectedToken } = useGame();
+    const { setSymbol, selectedSymbol } = useGame();
+    const [open, setOpen] = useState(false);
 
     return (
         <div className="p-4">
             <h2 className="text-lg font-bold mb-4">Search for Instruments</h2>
 
-            {/* Search Component */}
+            {/* Trigger Button */}
+            <button
+                onClick={() => setOpen(true)}
+                className="px-4 py-2 rounded bg-secondary text-secondary-foreground border"
+            >
+                Search Symbol
+            </button>
+
+            {/* Search Dialog */}
             <SymbolSearch
+                open={open}
+                onOpenChange={setOpen}
                 onSelect={setSymbol}
-                className="max-w-md"
             />
 
             {/* Display Selected Symbol */}
             <div className="mt-4 text-sm text-gray-600 dark:text-gray-400">
-                Selected: <strong>{selectedSymbol}</strong> (Token: {selectedToken})
+                Selected: <strong>{selectedSymbol}</strong>
             </div>
         </div>
     );
@@ -28,5 +38,6 @@ export function ExampleUsage() {
 // To integrate into your existing layout:
 // 1. Import SymbolSearch component
 // 2. Use the useGame hook to access setSymbol
-// 3. Add <SymbolSearch onSelect={setSymbol} /> wherever you want the search UI
-// 4. The selected symbol and token will automatically update the game context
+// 3. Manage open/close state with useState
+// 4. Add <SymbolSearch open={open} onOpenChange={setOpen} onSelect={setSymbol} />
+// 5. The selected symbol will automatically update the game context

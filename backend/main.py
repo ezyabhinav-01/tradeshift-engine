@@ -535,6 +535,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 continue
 
             # Stream each tick
+            num_ticks = 60
             for i, price in enumerate(ticks):
                 last_tick_price = float(price)
                 current_pnl     = oms.calculate_pnl(last_tick_price)
@@ -557,7 +558,26 @@ async def websocket_endpoint(websocket: WebSocket):
                     is_running = False
                     break
 
-                await asyncio.sleep(1.0 / max(speed, 0.1))
+                # Sleep per tick: 60s / (num_ticks * speed)
+                # At 1x: 60/60 = 1.0s per tick → 60s per candle
+                # At 5x: 60/300 = 0.2s per tick → 12s per candle
+                # At 20x: 60/1200 = 0.05s per tick → 3s per candle
+                tick_delay = 60.0 / (num_ticks * max(speed, 0.1))
+                await asyncio.sleep(tick_delay)
+
+                # Check for incoming commands (SPEED/STOP) between ticks
+                try:
+                    msg = await asyncio.wait_for(websocket.receive_json(), timeout=0.01)
+                    cmd = msg.get("command", "").upper()
+                    if cmd == "SPEED":
+                        speed = float(msg.get("speed", speed))
+                        print(f"⏩ Speed updated mid-tick to {speed}x")
+                    elif cmd == "STOP":
+                        is_running = False
+                        print("⏹️ Stopped mid-tick by client")
+                        break
+                except asyncio.TimeoutError:
+                    pass
 
             if not is_running:
                 break

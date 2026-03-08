@@ -1,6 +1,6 @@
 // Example: How to use SymbolSearch component in your app
 
-import React from 'react';
+
 import { SymbolSearch } from './components/features/SymbolSearch';
 import { useGame } from './context/GameContext';
 

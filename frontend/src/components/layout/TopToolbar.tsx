@@ -1,103 +1,114 @@
 import { useState } from 'react';
-import { Search, ChevronDown, Plus, LayoutTemplate, Settings, Camera, BarChart2 } from 'lucide-react';
+import {
+    PlusCircle, BarChart2, LayoutTemplate, LayoutGrid,
+    Bell, Rewind, Settings, Maximize, Camera
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { SymbolSearchModal } from '../features/SymbolSearchModal';
-import { DateSearchModal } from '../features/DateSearchModal';
 import { useGame } from '../../hooks/useGame';
-import { Calendar } from 'lucide-react';
-
-const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', 'D', 'W', 'M'];
+import { toast } from 'sonner';
 
 const TopToolbar = () => {
-    const { selectedSymbol, selectedDate } = useGame();
+    const { selectedSymbol, isReplayActive, toggleReplay } = useGame();
     const [isSearchOpen, setIsSearchOpen] = useState(false);
-    const [isDateOpen, setIsDateOpen] = useState(false);
 
     return (
-        <div className="h-12 border-b border-tv-border bg-tv-bg-base flex items-center px-2 gap-1 text-tv-text-secondary select-none">
+        <div className="h-12 border-b border-tv-border bg-tv-bg-base flex items-center px-4 justify-between text-tv-text-secondary select-none">
             <SymbolSearchModal open={isSearchOpen} onOpenChange={setIsSearchOpen} />
-            <DateSearchModal open={isDateOpen} onOpenChange={setIsDateOpen} />
 
-            {/* Symbol Search */}
-            <Button
-                variant="ghost"
-                className="h-8 gap-2 px-2 text-tv-text-primary hover:bg-tv-bg-pane/50"
-                onClick={() => setIsSearchOpen(true)}
-            >
-                <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-[10px] text-white font-bold">
-                    {(selectedSymbol || 'N').substring(0, 1)}
-                </div>
-                <span className="font-bold">{selectedSymbol || 'Select Symbol'}</span>
-                <span className="text-xs bg-tv-bg-pane px-1 rounded text-orange-400">EQ/IND</span>
-                <ChevronDown size={14} />
-            </Button>
+            {/* LEFT CONTROLS */}
+            <div className="flex items-center space-x-2 h-full">
+                {/* Profile placeholder */}
+                <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-tv-bg-pane/50 text-tv-primary">
+                    <div className="w-7 h-7 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xs">
+                        D
+                    </div>
+                </Button>
 
-            <Separator orientation="vertical" className="h-6 mx-1 bg-tv-border hidden md:block" />
+                <Separator orientation="vertical" className="h-6 bg-tv-border" />
 
-            {/* Date Search */}
-            <Button
-                variant="ghost"
-                className="h-8 gap-2 px-2 text-tv-text-primary hover:bg-tv-bg-pane/50"
-                onClick={() => setIsDateOpen(true)}
-            >
-                <Calendar size={14} className="text-gray-400" />
-                <span className="font-bold whitespace-nowrap">{selectedDate}</span>
-                <ChevronDown size={14} />
-            </Button>
+                {/* Symbol */}
+                <Button
+                    variant="ghost"
+                    className="h-8 gap-2 px-2 text-tv-text-primary hover:bg-tv-bg-pane/50 font-bold text-lg"
+                    onClick={() => setIsSearchOpen(true)}
+                >
+                    {selectedSymbol || 'USDJPY'}
+                </Button>
 
-            <Button variant="ghost" size="icon" className="md:hidden h-8 w-8" onClick={() => setIsSearchOpen(true)}>
-                <Search size={18} />
-            </Button>
+                <Separator orientation="vertical" className="h-6 bg-tv-border" />
 
-            <Separator orientation="vertical" className="h-6 mx-1 bg-tv-border hidden md:block" />
+                {/* Compare */}
+                <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-tv-bg-pane/50 hover:text-blue-500" title="Compare" onClick={() => toast.info('Compare tool opening...')}>
+                    <PlusCircle size={18} />
+                </Button>
 
-            {/* Timeframes */}
-            <div className="flex items-center">
-                {TIMEFRAMES.map((tf) => (
-                    <Button
-                        key={tf}
-                        variant="ghost"
-                        className={`h-8 w-8 pk-0 text-sm font-medium ${tf === 'D' ? 'text-tv-primary bg-tv-primary/10' : 'hover:bg-tv-bg-pane/50 hover:text-tv-text-primary'}`}
-                    >
-                        {tf}
-                    </Button>
-                ))}
-                <Button variant="ghost" className="h-8 w-6 px-0 hover:bg-tv-bg-pane/50">
-                    <ChevronDown size={14} />
+                <Separator orientation="vertical" className="h-6 bg-tv-border" />
+
+                {/* Timeframe */}
+                <Button variant="ghost" className="h-8 px-2 text-tv-text-primary hover:bg-tv-bg-pane/50 hover:text-blue-500 font-bold" onClick={() => toast.info('Timeframe selector opening...')}>
+                    45m
+                </Button>
+
+                {/* Chart Type */}
+                <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-tv-bg-pane/50 hover:text-blue-500" onClick={() => toast.info('Chart Type Options...')}>
+                    <BarChart2 size={18} className="text-tv-text-primary" />
+                </Button>
+
+                <Separator orientation="vertical" className="h-6 bg-tv-border" />
+
+                {/* Indicators */}
+                <Button variant="ghost" className="h-8 gap-2 px-2 hover:bg-tv-bg-pane/50 hover:text-blue-500 text-tv-text-primary" onClick={() => toast.info('Indicators Library opening...')}>
+                    <LayoutTemplate size={18} />
+                    <span className="text-sm font-medium">Indicators</span>
+                </Button>
+
+                {/* Templates/Grid */}
+                <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-tv-bg-pane/50 hover:text-blue-500" onClick={() => toast.info('Layout Options...')}>
+                    <LayoutGrid size={18} />
+                </Button>
+
+                {/* Alert */}
+                <Button variant="ghost" className="h-8 gap-2 px-2 hover:bg-tv-bg-pane/50 hover:text-blue-500" onClick={() => toast.success('Create Alert dialog opening...')}>
+                    <Bell size={18} />
+                    <span className="text-sm">Alert</span>
+                </Button>
+
+                {/* Replay */}
+                <Button
+                    variant="ghost"
+                    onClick={toggleReplay}
+                    className={`h-8 gap-2 px-2 ml-2 border border-tv-border text-tv-text-primary hover:opacity-90 ${isReplayActive ? 'bg-gradient-to-r from-blue-600/20 to-blue-700/20 text-blue-500 border-blue-500/50' : 'bg-tv-bg-pane'
+                        }`}
+                >
+                    <Rewind size={18} />
+                    <span className="text-sm font-bold">Replay</span>
                 </Button>
             </div>
 
-            <Separator orientation="vertical" className="h-6 mx-1 bg-tv-border" />
-
-            {/* Chart Types */}
-            <Button variant="ghost" className="h-8 w-10 gap-1 px-1 hover:bg-tv-bg-pane/50">
-                <BarChart2 size={18} />
-            </Button>
-
-            {/* Indicators */}
-            <Button variant="ghost" className="h-8 gap-1 px-2 hover:bg-tv-bg-pane/50 text-tv-text-primary">
-                <span className="text-sm">Indicators</span>
-            </Button>
-
-            <div className="flex-1" />
-
-            {/* Right Side Controls */}
-            <div className="flex items-center gap-1">
-                <Button variant="ghost" className="h-8 w-10 px-0 hover:bg-tv-bg-pane/50" title="Chart Layout">
-                    <LayoutTemplate size={18} />
-                </Button>
-                <Button variant="ghost" className="h-8 w-10 px-0 hover:bg-tv-bg-pane/50" title="Settings">
+            {/* RIGHT CONTROLS */}
+            <div className="flex items-center space-x-1 h-full">
+                <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-tv-bg-pane/50 hover:text-blue-500" title="Chart Settings" onClick={() => toast.info('Settings opening...')}>
                     <Settings size={18} />
                 </Button>
-                <Button variant="ghost" className="h-8 w-10 px-0 hover:bg-tv-bg-pane/50" title="Take Snapshot">
+                <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-tv-bg-pane/50 hover:text-blue-500" title="Fullscreen" onClick={() => {
+                    if (!document.fullscreenElement) {
+                        document.documentElement.requestFullscreen();
+                    } else if (document.exitFullscreen) {
+                        document.exitFullscreen();
+                    }
+                }}>
+                    <Maximize size={18} />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-tv-bg-pane/50 hover:text-blue-500" title="Take a snapshot" onClick={() => toast.success('Snapshot captured!')}>
                     <Camera size={18} />
                 </Button>
-            </div>
 
-            <Button className="h-7 bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 ml-2 rounded">
-                Publish
-            </Button>
+                <Button className="h-8 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 shadow-md text-white text-xs px-4 ml-2 rounded font-bold cursor-pointer" onClick={() => toast.success('Ideas Published!')}>
+                    Publish
+                </Button>
+            </div>
         </div>
     );
 };

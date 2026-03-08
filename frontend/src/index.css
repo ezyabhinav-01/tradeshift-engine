@@ -106,19 +106,13 @@
 }
 
 .dark {
-  /* Dark Mode Overrides */
-  --tv-bg-base: #020617;
-  /* slate-950 */
-  --tv-bg-pane: #0f172a;
-  /* slate-900 */
-  --tv-border: #1e293b;
-  /* slate-800 */
-  --tv-primary: #3b82f6;
-  /* blue-500 (slightly lighter for dark mode) */
-  --tv-text-primary: #f8fafc;
-  /* slate-50 */
-  --tv-text-secondary: #94a3b8;
-  /* slate-400 */
+  /* Pristine Dark Theme Overrides -> Bluish Dark Theme */
+  --tv-bg-base: #0A101D;
+  --tv-bg-pane: #0C1424;
+  --tv-border: #1a2333;
+  --tv-primary: #4A72FF;
+  --tv-text-primary: #D1D4DC;
+  --tv-text-secondary: #787B86;
 
   color-scheme: dark;
 }
@@ -625,30 +619,30 @@
 /* TradingView Advanced Chart Widget Styles */
 .tradingview-widget-container {
   position: relative;
-  background-color: #141414 !important;
+  background-color: var(--tv-bg-base) !important;
   border-radius: 8px !important;
   overflow: hidden !important;
 }
 
 .tv-embed-widget-wrapper__body {
-  background-color: #141414 !important;
+  background-color: var(--tv-bg-base) !important;
 }
 
 .tradingview-widget-container__widget {
-  background-color: #141414 !important;
+  background-color: var(--tv-bg-base) !important;
   height: 100% !important;
 
 }
 
 .widget-stock-heatmap-container .screenerMapWrapper-BBVfGP0b {
   overflow: hidden !important;
-  background: #141414 !important;
-  background-color: #141414 !important;
+  background: var(--tv-bg-base) !important;
+  background-color: var(--tv-bg-base) !important;
 }
 
 .canvasContainer-tyaAU8aH {
-  background: #141414 !important;
-  background-color: #141414 !important;
+  background: var(--tv-bg-base) !important;
+  background-color: var(--tv-bg-base) !important;
 }
 
 .tv-site-widget--bg_none {
@@ -675,12 +669,12 @@
 }
 
 .tv-embed-widget-wrapper .tv-embed-widget-wrapper__body {
-  background: #141414 !important;
-  background-color: #141414 !important;
+  background: var(--tv-bg-base) !important;
+  background-color: var(--tv-bg-base) !important;
 }
 
 .tradingview-widget-container iframe {
-  background-color: #141414 !important;
+  background-color: var(--tv-bg-base) !important;
   width: 100% !important;
 }
 

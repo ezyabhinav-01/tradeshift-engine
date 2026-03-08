@@ -306,6 +306,33 @@ async def get_available_symbols():
         print(f"❌ Error getting available symbols: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get symbols: {str(e)}")
 
+@app.get("/api/available-dates/{symbol}")
+async def get_available_dates(symbol: str):
+    """
+    Get list of available dates for a specific symbol based on its parquet files.
+    """
+    try:
+        # Search for date-specific parquet files for the symbol
+        import re
+        pattern = f"data/{symbol}_*.parquet"
+        files = glob.glob(pattern)
+        
+        dates = []
+        for f in files:
+            # Extract date matching YYYY-MM-DD from the filename
+            match = re.search(r"(\d{4}-\d{2}-\d{2})", f)
+            if match:
+                dates.append(match.group(1))
+                
+        # Sort dates in reverse chronological order (newest first)
+        dates.sort(reverse=True)
+        
+        return {"symbol": symbol, "dates": dates}
+    except Exception as e:
+        print(f"❌ Error getting available dates for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get dates: {str(e)}")
+
+
 @app.get("/api/historical/{symbol}")
 async def get_historical_candles(symbol: str, limit: int = 500, date: str = None):
     """
@@ -337,23 +364,25 @@ async def get_historical_candles(symbol: str, limit: int = 500, date: str = None
         df = df.dropna(subset=[time_col])
         df = df.sort_values(time_col)
 
-        # Filter by date if provided
+        # Filter to the selected date so the static chart shows the full trading day timeline
         if date:
             target_dt = pd.to_datetime(date).date()
             df = df[df[time_col].dt.date == target_dt]
+
 
         # Take the most recent `limit` candles
         df = df.tail(limit)
 
         candles = []
         for _, row in df.iterrows():
-            ts = int(row[time_col].timestamp()) + 19800  # shift to IST
+            ts = int(row[time_col].timestamp())
             candles.append({
                 "time": ts,
                 "open":  float(row["open"]),
                 "high":  float(row["high"]),
                 "low":   float(row["low"]),
                 "close": float(row["close"]),
+                "volume": float(row.get("volume", 0)) if "volume" in row.index else 0,
             })
 
         return {"symbol": symbol, "candles": candles}
@@ -459,6 +488,10 @@ async def websocket_endpoint(websocket: WebSocket):
                     is_running = False
                     print("⏹️ Simulation Stopped by client")
 
+                elif command == "SPEED":
+                    speed = float(message.get("speed", 1.0))
+                    print(f"⏩ Speed dynamically updated to {speed}x")
+
             except asyncio.TimeoutError:
                 pass  # No command — continue streaming
 
@@ -538,6 +571,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         "high":      high,
                         "low":       low,
                         "close":     close,
+                        "volume":    int(row.get('volume', 0)),
                         "timestamp": base_time.isoformat(),
                         "symbol":    current_symbol,
                     }

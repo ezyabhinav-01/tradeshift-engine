@@ -1,7 +1,7 @@
 // @refresh reset
 import React, { useState, useEffect, useCallback, createContext, useContext } from 'react';
 import type { CandleData, Trade } from '../types';
-import { marketDataService, fetchHistoricalCandles } from '../services/MarketDataService';
+import { marketDataService, fetchHistoricalCandles, fetchAvailableDates } from '../services/MarketDataService';
 import { toast } from 'sonner';
 
 interface GameState {
@@ -10,13 +10,17 @@ interface GameState {
   balance: number;
   currentPrice: number;
   currentCandle: CandleData | null;
+  currentTime: Date | null;
   historicalCandles: CandleData[];
   trades: Trade[];
   theme: 'dark' | 'light';
   selectedSymbol: string;
   selectedDate: string;
+  availableDates: string[];
   isLoadingHistory: boolean;
+  isReplayActive: boolean;
   togglePlay: () => void;
+  toggleReplay: () => void;
   toggleTheme: () => void;
   setSpeed: (s: number) => void;
   setSymbol: (symbol: string, token: string) => void;
@@ -24,6 +28,7 @@ interface GameState {
   placeOrder: (type: 'BUY' | 'SELL', qty: number) => void;
   closePosition: (tradeId: string) => void;
   resetSimulation: () => void;
+  clearHistoryForReplay: () => void;
 }
 
 export const GameContext = createContext<GameState | null>(null);
@@ -34,38 +39,53 @@ export const useGame = (): GameState => {
   return ctx;
 };
 
-const DEFAULT_SYMBOL = 'NIFTY';
+const DEFAULT_SYMBOL = 'RELIANCE';
 
 export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ children }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [balance, setBalance] = useState(100000);
-  const [currentPrice, setCurrentPrice] = useState(21500);
+  const [currentPrice, setCurrentPrice] = useState(0);
   const [currentCandle, setCurrentCandle] = useState<CandleData | null>(null);
+  const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [historicalCandles, setHistoricalCandles] = useState<CandleData[]>([]);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [selectedSymbol, setSelectedSymbol] = useState(DEFAULT_SYMBOL);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [isReplayActive, setIsReplayActive] = useState(false);
 
-  // Initialize selected date: Today if past 3:30 PM, else Yesterday
-  const [selectedDate, setSelectedDate] = useState(() => {
-    const now = new Date();
-    const hours = now.getHours();
-    const mins = now.getMinutes();
+  const [selectedDate, setSelectedDate] = useState('');
+  const [availableDates, setAvailableDates] = useState<string[]>([]);
 
-    // If before 15:30
-    if (hours < 15 || (hours === 15 && mins < 30)) {
-      now.setDate(now.getDate() - 1);
+  // ── Load Available Dates & History ──────────────────────
+  const loadAvailableDatesAndHistory = useCallback(async (symbol: string, presetDate?: string) => {
+    try {
+      const dates = await fetchAvailableDates(symbol);
+      setAvailableDates(dates);
+
+      let nextDate = '';
+      if (presetDate && dates.includes(presetDate)) {
+        nextDate = presetDate;
+      } else if (dates.length > 0) {
+        nextDate = dates[0];
+      }
+
+      setSelectedDate(nextDate);
+
+      if (nextDate) {
+        loadHistory(symbol, nextDate);
+      } else {
+        toast.error(`No trading data found for ${symbol}`);
+        setHistoricalCandles([]);
+      }
+    } catch (err) {
+      console.error('Failed to fetch available dates:', err);
+      toast.error(`Error loading trading dates for ${symbol}`);
     }
+  }, []);
 
-    // Get YYYY-MM-DD in local time
-    const offset = now.getTimezoneOffset();
-    const localDate = new Date(now.getTime() - (offset * 60 * 1000));
-    return localDate.toISOString().split('T')[0];
-  });
-
-  // ── Load Historical Candles whenever symbol or date changes ──────────────────────
+  // ── Load Historical Candles ──────────────────────
   const loadHistory = useCallback(async (symbol: string, date: string) => {
     setIsLoadingHistory(true);
     setHistoricalCandles([]);
@@ -74,12 +94,12 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
       setHistoricalCandles(candles);
       if (candles.length > 0) {
         setCurrentPrice(candles[candles.length - 1].close);
-        console.log(`📊 Loaded ${candles.length} historical candles for ${symbol}`);
+        console.log(`📊 Loaded ${candles.length} historical candles for ${symbol} on ${date}`);
       } else {
         toast.error(`No data available for ${symbol} on ${date}`);
       }
     } catch (err) {
-      console.error('❌ Failed to load historical candles:', err);
+      console.error('Failed to load historical candles:', err);
       toast.error(`Data is not available for ${symbol} on ${date}`);
       setHistoricalCandles([]);
     } finally {
@@ -87,25 +107,43 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
     }
   }, []);
 
-  // Load on mount (default symbol and date)
+  // Load on mount
   useEffect(() => {
-    loadHistory(DEFAULT_SYMBOL, selectedDate);
-  }, [loadHistory, selectedDate]);
+    loadAvailableDatesAndHistory(DEFAULT_SYMBOL);
+  }, []);
 
-  // ── WebSocket streaming ───────────────────────────────────────────────────
+  // ── WebSocket streaming ─────────────────────────────────────────────────
   useEffect(() => {
     if (!isPlaying) {
       marketDataService.disconnect();
       return;
     }
 
+    // Clear existing chart data — replay starts from 9:15
+    setHistoricalCandles([]);
+    setCurrentCandle(null);
+
     marketDataService.connect(speed, selectedSymbol, selectedDate);
 
     marketDataService.onMessage((payload: any) => {
+      if (payload.type === 'ERROR') {
+        toast.error(`Simulation Error: ${payload.message}`);
+        setIsPlaying(false);
+        return;
+      }
+
+      if (payload.type === 'END') {
+        toast.success('Replay complete — end of trading day');
+        setIsPlaying(false);
+        return;
+      }
+
+      // CANDLE event: backend sends the full OHLCV for each completed minute
       if (payload.type === 'CANDLE') {
         const d = payload.data;
-        const rawTime = new Date(d.timestamp).getTime() / 1000;
-        const timestamp = rawTime + 19800;
+        // Append 'Z' to treat naive ISO as UTC (matching Python .timestamp() on Windows)
+        const isoStr = d.timestamp.endsWith('Z') ? d.timestamp : d.timestamp + 'Z';
+        const timestamp = new Date(isoStr).getTime() / 1000;
 
         const newCandle: CandleData = {
           time: timestamp,
@@ -113,71 +151,42 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
           high: d.high,
           low: d.low,
           close: d.close,
+          volume: d.volume || 0,
         };
         setCurrentCandle(newCandle);
         setCurrentPrice(d.close);
+        setCurrentTime(new Date(isoStr));
       }
 
-      if (payload.type === 'BATCH') {
-        const batchData = payload.data;
-        if (batchData?.length > 0) {
-          const lastItem = batchData[batchData.length - 1];
-          setCurrentPrice(lastItem.price);
-
-          setCurrentCandle(prevCandle => {
-            let newCandle = prevCandle ? { ...prevCandle } : null;
-
-            batchData.forEach((tick: any) => {
-              const rawTime = new Date(tick.timestamp).getTime() / 1000;
-              const shiftedTime = rawTime + 19800;
-              const candleTime = Math.floor(shiftedTime / 60) * 60;
-
-              if (!newCandle || candleTime !== newCandle.time) {
-                newCandle = {
-                  time: candleTime,
-                  open: tick.price,
-                  high: tick.price,
-                  low: tick.price,
-                  close: tick.price,
-                };
-              } else {
-                newCandle.high = Math.max(newCandle.high, tick.price);
-                newCandle.low = Math.min(newCandle.low, tick.price);
-                newCandle.close = tick.price;
-              }
-            });
-            return newCandle;
-          });
-        }
-      }
-
+      // TICK event: sub-minute price updates within a candle
       if (payload.type === 'TICK') {
-        const tickPrice = payload.data.price;
-        const rawTime = new Date(payload.data.timestamp).getTime() / 1000;
-        const shiftedTime = rawTime + 19800; // Shift to IST
-        const candleTime = Math.floor(shiftedTime / 60) * 60;
-
-        setCurrentPrice(tickPrice);
+        const tick = payload.data;
+        setCurrentPrice(tick.price);
+        const isoStr = tick.timestamp.endsWith('Z') ? tick.timestamp : tick.timestamp + 'Z';
+        setCurrentTime(new Date(isoStr));
 
         setCurrentCandle(prevCandle => {
-          if (!prevCandle || prevCandle.time !== candleTime) {
-            // Start new candle
+          const rawTime = new Date(isoStr).getTime() / 1000;
+          const candleTime = Math.floor(rawTime / 60) * 60;
+
+          if (!prevCandle || candleTime !== prevCandle.time) {
             return {
               time: candleTime,
-              open: tickPrice,
-              high: tickPrice,
-              low: tickPrice,
-              close: tickPrice,
-            };
-          } else {
-            // Update current candle
-            return {
-              ...prevCandle,
-              high: Math.max(prevCandle.high, tickPrice),
-              low: Math.min(prevCandle.low, tickPrice),
-              close: tickPrice,
+              open: tick.price,
+              high: tick.price,
+              low: tick.price,
+              close: tick.price,
+              volume: tick.volume || 0,
             };
           }
+
+          return {
+            ...prevCandle,
+            high: Math.max(prevCandle.high, tick.price),
+            low: Math.min(prevCandle.low, tick.price),
+            close: tick.price,
+            volume: tick.volume || prevCandle.volume,
+          };
         });
       }
     });
@@ -185,19 +194,32 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
     return () => {
       marketDataService.disconnect();
     };
-  }, [isPlaying, speed, selectedSymbol]);
+  }, [isPlaying, selectedSymbol, selectedDate]);
+
+  // Dynamic speed changes
+  useEffect(() => {
+    if (isPlaying) {
+      marketDataService.setSpeed(speed);
+    }
+  }, [speed, isPlaying]);
 
   const togglePlay = () => setIsPlaying(prev => !prev);
+  const toggleReplay = () => setIsReplayActive(prev => !prev);
   const toggleTheme = () => setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
 
   const setSymbol = (symbol: string, _token: string) => {
     setSelectedSymbol(symbol);
-    loadHistory(symbol, selectedDate);
+    loadAvailableDatesAndHistory(symbol, selectedDate);
   };
 
   const setDate = (dateStr: string) => {
     setSelectedDate(dateStr);
     loadHistory(selectedSymbol, dateStr);
+  };
+
+  const clearHistoryForReplay = () => {
+    setHistoricalCandles([]);
+    setCurrentCandle(null);
   };
 
   const placeOrder = (type: 'BUY' | 'SELL', quantity: number) => {
@@ -238,10 +260,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
   return (
     <GameContext.Provider
       value={{
-        isPlaying, speed, balance, currentPrice, currentCandle,
-        historicalCandles, trades, theme, selectedSymbol, selectedDate, isLoadingHistory,
+        isPlaying, speed, balance, currentPrice, currentCandle, currentTime,
+        historicalCandles, trades, theme, selectedSymbol, selectedDate, availableDates, isLoadingHistory, isReplayActive,
         togglePlay, toggleTheme, setSpeed, setSymbol, setDate,
-        placeOrder, closePosition, resetSimulation,
+        placeOrder, closePosition, resetSimulation, toggleReplay, clearHistoryForReplay
       }}
     >
       {children}

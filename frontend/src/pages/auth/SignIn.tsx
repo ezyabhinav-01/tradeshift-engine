@@ -8,7 +8,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 const signInSchema = z.object({
     email: z.string().email('Invalid email address'),
@@ -48,17 +48,14 @@ const SignIn = () => {
 
     return (
         <div className="flex h-full w-full items-center justify-center">
-            <Card className="w-full max-w-md border border-white/10 bg-surface/40 backdrop-blur-xl shadow-2xl relative overflow-hidden group">
-                {/* Subtle sheen effect */}
-                <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent pointer-events-none" />
-
-                <CardHeader className="space-y-1 text-center pb-8 border-b border-white/5">
-                    <CardTitle className="text-2xl font-bold tracking-tight text-white">Welcome Back</CardTitle>
-                    <CardDescription className="text-slate-400">
+            <Card className="w-full max-w-md border border-white/5 bg-[#141414] rounded-2xl shadow-2xl relative overflow-hidden group mx-auto">
+                <CardHeader className="space-y-1 text-center pb-6 pt-8">
+                    <CardTitle className="text-3xl font-extrabold tracking-tight text-white mb-1">Welcome Back</CardTitle>
+                    <CardDescription className="text-slate-400 text-[13px]">
                         Enter your credentials to access the terminal
                     </CardDescription>
                 </CardHeader>
-                <CardContent className="pt-8 space-y-6">
+                <CardContent className="space-y-5 px-8">
                     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
                         {error && (
                             <div className="p-3 rounded-md bg-rose-500/10 text-rose-400 text-sm font-medium border border-rose-500/20 flex items-center gap-2">
@@ -67,21 +64,21 @@ const SignIn = () => {
                             </div>
                         )}
                         <div className="space-y-2">
-                            <Label htmlFor="email" className="text-slate-300 font-medium">Email</Label>
+                            <Label htmlFor="email" className="text-slate-200 text-xs font-semibold">Email</Label>
                             <Input
                                 id="email"
                                 placeholder="name@example.com"
-                                className="bg-slate-950/50 border-white/10 text-white placeholder:text-slate-600 focus:border-blue-500/50 focus:ring-blue-500/20 h-11 transition-all"
+                                className="bg-[#0A0A0A] border-white/5 text-white placeholder:text-slate-600 focus:border-[#4A72FF]/50 focus:ring-[#4A72FF]/20 h-11 transition-all rounded-lg"
                                 {...register('email')}
                             />
                             {errors.email && <p className="text-rose-400 text-xs mt-1">{errors.email.message}</p>}
                         </div>
                         <div className="space-y-2">
                             <div className="flex items-center justify-between">
-                                <Label htmlFor="password" className="text-slate-300 font-medium">Password</Label>
+                                <Label htmlFor="password" className="text-slate-200 text-xs font-semibold">Password</Label>
                                 <Link
                                     to="/auth/forgot-password"
-                                    className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                                    className="text-[11px] font-medium text-[#4A72FF] hover:text-[#3b5bdb] transition-colors"
                                 >
                                     Forgot password?
                                 </Link>
@@ -89,13 +86,13 @@ const SignIn = () => {
                             <Input
                                 id="password"
                                 type="password"
-                                className="bg-slate-950/50 border-white/10 text-white focus:border-blue-500/50 focus:ring-blue-500/20 h-11 transition-all"
+                                className="bg-[#0A0A0A] border-white/5 text-white focus:border-[#4A72FF]/50 focus:ring-[#4A72FF]/20 h-11 transition-all rounded-lg"
                                 {...register('password')}
                             />
                             {errors.password && <p className="text-rose-400 text-xs mt-1">{errors.password.message}</p>}
                         </div>
                         <Button
-                            className="w-full h-11 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white shadow-lg shadow-blue-600/20 transition-all hover:scale-[1.02] active:scale-[0.98] font-medium tracking-wide"
+                            className="w-full h-11 mt-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white shadow-lg shadow-blue-500/20 transition-all font-semibold rounded-lg text-sm"
                             type="submit"
                             disabled={isSubmitting}
                         >
@@ -108,14 +105,14 @@ const SignIn = () => {
                         </Button>
                     </form>
                 </CardContent>
-                <CardFooter className="flex justify-center border-t border-white/5 bg-surface/30 p-6">
-                    <p className="text-sm text-slate-400">
+                <div className="flex justify-center pb-8 pt-2">
+                    <p className="text-xs font-medium text-slate-400">
                         Don't have an account?{' '}
-                        <Link to="/auth/sign-up" className="font-medium text-blue-400 hover:text-blue-300 hover:underline transition-colors">
+                        <Link to="/auth/sign-up" className="font-semibold text-[#4A72FF] hover:text-[#3b5bdb] transition-colors">
                             Create account
                         </Link>
                     </p>
-                </CardFooter>
+                </div>
             </Card>
         </div>
     );

@@ -57,6 +57,13 @@ export class MarketDataService {
     onMessage(callback: MessageHandler) {
         this.onMessageCallback = callback;
     }
+
+    setSpeed(speed: number) {
+        this.sendMessage({
+            command: 'SPEED',
+            speed
+        });
+    }
 }
 
 /**
@@ -79,6 +86,18 @@ export async function fetchHistoricalCandles(
     const json = await res.json();
     // Ensure ascending time order (backend already sorts, but be defensive)
     return (json.candles as CandleData[]).sort((a, b) => a.time - b.time);
+}
+
+/**
+ * Fetch the list of available dates (YYYY-MM-DD) for a specific symbol.
+ */
+export async function fetchAvailableDates(symbol: string): Promise<string[]> {
+    const res = await fetch(`${API_BASE}/api/available-dates/${encodeURIComponent(symbol)}`);
+    if (!res.ok) {
+        throw new Error(`Failed to fetch available dates for ${symbol}`);
+    }
+    const json = await res.json();
+    return json.dates as string[];
 }
 
 export const marketDataService = new MarketDataService();

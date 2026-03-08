@@ -64,28 +64,50 @@ def login_to_api():
 
 def download_last_7_days(api, symbol, config):
     days = 7
-    print(f"\n📊 Fetching {days} days of data for {symbol}...")
+    print(f"\n📊 Fetching {days} days of data for {symbol} (day by day)...")
     
-    end_time = datetime.now()
-    start_time = end_time - timedelta(days=days)
+    all_data = []
+    end_time_ref = datetime.now()
     
-    try:
-        ret = api.get_time_price_series(
-            exchange=config['exchange'],
-            token=config['token'],
-            starttime=start_time.timestamp(),
-            endtime=end_time.timestamp(),
-            interval=1
-        )
-        if ret is None or (isinstance(ret, dict) and ret.get('stat') == 'Not_Ok'):
-            raise Exception(f"API Error: {ret.get('emsg', 'Unknown error')}")
+    # Loop backwards day by day
+    for i in range(days):
+        # Calculate start and end for exactly 1 day
+        day_end = end_time_ref - timedelta(days=i)
+        day_start = day_end - timedelta(days=1)
         
-        print(f"✅ Received {len(ret)} data points for {symbol}")
-        df = pd.DataFrame(ret)
-        return df
-    except Exception as e:
-        print(f"❌ Error fetching data for {symbol}: {e}")
-        raise
+        try:
+            ret = api.get_time_price_series(
+                exchange=config['exchange'],
+                token=config['token'],
+                starttime=day_start.timestamp(),
+                endtime=day_end.timestamp(),
+                interval=1
+            )
+            
+            # Not Ok could mean market was closed that day, just skip
+            if ret is None or (isinstance(ret, dict) and ret.get('stat') == 'Not_Ok'):
+                print(f"   ℹ️ No data or error for {symbol} on {day_start.date()}: {ret.get('emsg', 'Unknown') if isinstance(ret, dict) else 'None'}")
+                continue
+            
+            print(f"   ✅ Received {len(ret)} data points for {symbol} on {day_start.date()}")
+            df_day = pd.DataFrame(ret)
+            all_data.append(df_day)
+            
+            # API rate limit protection between day fetches
+            time.sleep(0.5)
+            
+        except Exception as e:
+            print(f"❌ Error fetching {symbol} on {day_start.date()}: {e}")
+            continue
+
+    if not all_data:
+        print(f"⚠️ No data could be fetched for {symbol} across {days} days.")
+        return pd.DataFrame()
+        
+    # Combine all valid days into one DataFrame
+    final_df = pd.concat(all_data, ignore_index=True)
+    print(f"🏁 Total {len(final_df)} combined records fetched for {symbol}")
+    return final_df
 
 def save_data(df, symbol):
     if df.empty:

@@ -19,7 +19,7 @@ services:
     image: redis:alpine
     container_name: tradeshift_redis
     ports:
-      - "6379:6379"
+      - "6380:6379"
 
   # 3. MinIO
   minio:

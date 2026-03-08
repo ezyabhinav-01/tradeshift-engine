@@ -154,6 +154,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
           volume: d.volume || 0,
         };
         setCurrentCandle(newCandle);
+        setCandles(prev => [...prev, newCandle]); // Add to history
         setCurrentPrice(d.close);
         setCurrentTime(new Date(isoStr));
       }

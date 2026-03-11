@@ -13,7 +13,7 @@ requests
 websockets
 vaderSentiment
 prometheus-fastapi-instrumentator
-fastapi-mail
+fastapi-mail==1.4.1
 google-generativeai
 # Auth
 bcrypt

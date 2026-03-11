@@ -18,19 +18,15 @@ export function DateSearchModal({
     open: boolean;
     onOpenChange: (open: boolean) => void;
 }) {
-    const { setDate } = useGame();
+    const { setDate, availableDates } = useGame();
 
     const MOCK_DATES = React.useMemo(() => {
-        const dates = [];
-        for (let i = 0; i < 7; i++) {
-            const d = new Date();
-            d.setDate(d.getDate() - i);
-            const dateStr = d.toISOString().split('T')[0];
+        return availableDates.map((dateStr, i) => {
+            const d = new Date(dateStr);
             const label = d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
-            dates.push({ date: dateStr, label: i === 0 ? `Today (${label})` : label });
-        }
-        return dates;
-    }, []);
+            return { date: dateStr, label: i === 0 ? `Latest (${label})` : label };
+        });
+    }, [availableDates]);
 
     return (
         <CommandDialog open={open} onOpenChange={onOpenChange}>

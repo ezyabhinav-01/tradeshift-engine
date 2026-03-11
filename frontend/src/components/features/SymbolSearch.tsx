@@ -103,7 +103,7 @@ export const SymbolSearch: React.FC<SymbolSearchProps> = ({ open, onOpenChange, 
                 value={query}
                 name="symbol-search"
                 id="search-input"
-                onChange={(e) => setQuery(e.target.value)}
+                onValueChange={(val: string) => setQuery(val)}
             />
             <CommandList>
                 {isLoading && (

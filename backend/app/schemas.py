@@ -1,5 +1,6 @@
 from pydantic import BaseModel, field_validator
 from datetime import datetime
+from typing import Optional
 
 # Defines what a "Simulation Request" looks like
 class SimulationStart(BaseModel):
@@ -23,11 +24,11 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str
-    full_name: str | None = None
-    country: str | None = None
-    investment_goals: str | None = None
-    risk_tolerance: str | None = None
-    preferred_industries: str | None = None
+    full_name: Optional[str] = None
+    country: Optional[str] = None
+    investment_goals: Optional[str] = None
+    risk_tolerance: Optional[str] = None
+    preferred_industries: Optional[str] = None
 
     @field_validator("email")
     def validate_gmail(cls, value):
@@ -42,11 +43,11 @@ class UserLogin(UserBase):
 
 class User(UserBase):
     id: int
-    full_name: str | None = None
-    country: str | None = None
-    investment_goals: str | None = None
-    risk_tolerance: str | None = None
-    preferred_industries: str | None = None
+    full_name: Optional[str] = None
+    country: Optional[str] = None
+    investment_goals: Optional[str] = None
+    risk_tolerance: Optional[str] = None
+    preferred_industries: Optional[str] = None
     created_at: datetime
     
     class Config:

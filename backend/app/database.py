@@ -10,7 +10,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Global Cache for Singleton Pattern
-# structure: { "conn": Engine | None, "session_maker": SessionLocal | None }
+# structure: { "conn": Optional[Engine], "session_maker": Optional[SessionLocal] }
 _db_cache = {
     "engine": None,
     "session_maker": None

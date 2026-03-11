@@ -10,7 +10,7 @@ services:
       - POSTGRES_PASSWORD=password
       - POSTGRES_DB=tradeshift
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -41,7 +41,7 @@ services:
     container_name: tradeshift_backend
     volumes:
       - ./backend:/app
-      - ./data:/app/data
+      - ./backend/data:/app/data
     ports:
       - "8000:8000"
     depends_on:

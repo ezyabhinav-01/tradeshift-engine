@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { login as apiLogin, register as apiRegister, logout as apiLogout, checkAuthStatus } from '@/services/AuthService';
-import { useNavigate } from 'react-router-dom';
 
 interface UserProfile {
     email: string;

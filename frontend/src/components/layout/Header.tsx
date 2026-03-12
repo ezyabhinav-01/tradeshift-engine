@@ -4,6 +4,7 @@ import { useGame } from '../../hooks/useGame';
 import { useThemeStore } from '../../store/themeStore';
 import { NavItems } from './NavItems';
 import { UserDropdown } from './UserDropdown';
+import { GlobalTicker } from '../market/GlobalTicker';
 
 const Topbar = () => {
   const { balance, isPlaying } = useGame();
@@ -26,6 +27,7 @@ const Topbar = () => {
           }`}>
           {isPlaying ? 'LIVE FEED' : 'PAUSED'}
         </span>
+        <GlobalTicker />
       </div>
 
       <NavItems />

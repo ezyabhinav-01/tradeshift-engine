@@ -1,4 +1,4 @@
-import { LayoutDashboard, History, Settings, TrendingUp } from 'lucide-react';
+import { LayoutDashboard, History, Settings, TrendingUp, Activity } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 const Sidebar = () => {
@@ -8,6 +8,7 @@ const Sidebar = () => {
   const getActiveTab = () => {
     const path = location.pathname;
     if (path === '/' || path === '/terminal') return 'terminal';
+    if (path.startsWith('/markets')) return 'markets';
     if (path.startsWith('/screener')) return 'screener';
     if (path.startsWith('/history')) return 'history';
     if (path.startsWith('/settings')) return 'settings';
@@ -52,6 +53,7 @@ const Sidebar = () => {
       </div>
 
       <NavItem p="terminal" icon={LayoutDashboard} label="Trade" path="/" />
+      <NavItem p="markets" icon={Activity} label="Markets" path="/markets" />
       <NavItem p="screener" icon={TrendingUp} label="Screener" path="/screener" />
       <NavItem p="history" icon={History} label="History" path="/history" />
       <NavItem p="settings" icon={Settings} label="Config" path="/settings" />

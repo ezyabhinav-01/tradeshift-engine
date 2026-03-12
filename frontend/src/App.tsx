@@ -10,6 +10,7 @@ import AuthLayout from './components/auth/AuthLayout';
 import SignIn from './pages/auth/SignIn';
 import SignUp from './pages/auth/SignUp';
 import ScreenerPage from './pages/ScreenerPage';
+import MarketPage from './pages/MarketPage';
 import HistoryPage from './pages/HistoryPage';
 import SettingsPage from './pages/SettingsPage';
 import { Toaster } from 'sonner';
@@ -24,6 +25,7 @@ export default function App() {
               <Route path="/" element={<Layout />}>
                 <Route index element={<Home />} />
                 <Route path="home1" element={<Home1 />} />
+                <Route path="markets" element={<MarketPage />} />
                 <Route path="screener" element={<ScreenerPage />} />
                 <Route path="history" element={<HistoryPage />} />
                 <Route path="settings" element={<SettingsPage />} />

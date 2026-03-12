@@ -58,6 +58,29 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 import traceback
 
+from apscheduler.schedulers.background import BackgroundScheduler
+from app.market_service import market_service
+
+# --- BACKGROUND JOBS ---
+scheduler = BackgroundScheduler()
+
+def refresh_market_cache():
+    """Background job to refresh Redis cache for market data."""
+    try:
+        logger.info("Running scheduled market data refresh...")
+        market_service.get_indices()
+        market_service.get_top_movers()
+        market_service.get_sector_performance()
+        market_service.get_option_chain("^NSEI")
+        market_service.get_option_chain("^NSEBANK")
+        logger.info("Market data refresh complete.")
+    except Exception as e:
+        logger.error(f"Error in background market refresh: {e}")
+
+# Run every 15 minutes
+scheduler.add_job(refresh_market_cache, 'interval', minutes=15)
+scheduler.start()
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     error_msg = f"🔥 UNHANDLED EXCEPTION: {str(exc)}\n{traceback.format_exc()}"
@@ -482,6 +505,72 @@ async def chat_about_stock_endpoint(symbol: str, request: StockChatRequest, db=D
     except Exception as e:
         logger.error(f"Error chatting about stock {symbol}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# --- Market Data Endpoints ---
+from app.market_service import market_service
+
+@app.get("/api/market/indices")
+async def get_market_indices():
+    """Fetch live data for major indices via yfinance and Redis cache."""
+    try:
+        return market_service.get_indices()
+    except Exception as e:
+        logger.error(f"Error fetching indices: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch market indices")
+
+@app.get("/api/market/gainers")
+async def get_market_gainers():
+    try:
+        data = market_service.get_top_movers()
+        return data.get("gainers", [])
+    except Exception as e:
+        logger.error(f"Error fetching gainers: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch market gainers")
+
+@app.get("/api/market/losers")
+async def get_market_losers():
+    try:
+        data = market_service.get_top_movers()
+        return data.get("losers", [])
+    except Exception as e:
+        logger.error(f"Error fetching losers: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch market losers")
+
+@app.get("/api/market/most-active")
+async def get_market_active():
+    try:
+        data = market_service.get_top_movers()
+        return data.get("active", [])
+    except Exception as e:
+        logger.error(f"Error fetching most active: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch most active stocks")
+
+@app.get("/api/market/sectors")
+async def get_market_sectors():
+    try:
+        return market_service.get_sector_performance()
+    except Exception as e:
+        logger.error(f"Error fetching sectors: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch sectors")
+
+@app.get("/api/market/options/{symbol}")
+async def get_market_options(symbol: str):
+    try:
+        # Default symbols mapping like NIFTY -> ^NSEI
+        sym_map = {
+            "NIFTY": "^NSEI",
+            "BANKNIFTY": "^NSEBANK"
+        }
+        yf_symbol = sym_map.get(symbol.upper(), symbol)
+        result = market_service.get_option_chain(yf_symbol)
+        if "error" in result:
+            raise HTTPException(status_code=404, detail=result["error"])
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching options for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch options chain")
 
 # --- 6. WEBSOCKET ENDPOINT ---
 @app.websocket("/ws/ticker")

@@ -1,19 +1,26 @@
 import { LayoutDashboard, History, Settings, TrendingUp } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
 
-export type Page = 'terminal' | 'history' | 'settings';
+const Sidebar = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
 
-interface SidebarProps {
-  page: Page;
-  setPage: (p: Page) => void;
-}
+  const getActiveTab = () => {
+    const path = location.pathname;
+    if (path === '/' || path === '/terminal') return 'terminal';
+    if (path.startsWith('/screener')) return 'screener';
+    if (path.startsWith('/history')) return 'history';
+    if (path.startsWith('/settings')) return 'settings';
+    return 'terminal';
+  };
 
-const Sidebar = ({ page, setPage }: SidebarProps) => {
+  const activeTab = getActiveTab();
 
-  const NavItem = ({ p, icon: Icon, label }: { p: Page, icon: any, label: string; }) => (
+  const NavItem = ({ p, icon: Icon, label, path }: { p: string, icon: any, label: string; path: string; }) => (
     <button
-      onClick={() => setPage(p)}
+      onClick={() => navigate(path)}
       className={`w-full p-4 flex flex-col items-center gap-2 transition-all duration-300 group relative
-        ${page === p
+        ${activeTab === p
           ? 'text-sidebar-primary'
           : 'text-sidebar-foreground/60 hover:text-sidebar-primary'
         }
@@ -21,7 +28,7 @@ const Sidebar = ({ page, setPage }: SidebarProps) => {
     >
       {/* Active Indicator Line (Animated) */}
       <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 rounded-r-full bg-sidebar-primary transition-all duration-300 
-        ${page === p ? 'opacity-100 scale-100' : 'opacity-0 scale-0'}
+        ${activeTab === p ? 'opacity-100 scale-100' : 'opacity-0 scale-0'}
       `} />
 
       {/* Icon with Hover Animation */}
@@ -44,9 +51,10 @@ const Sidebar = ({ page, setPage }: SidebarProps) => {
         </div>
       </div>
 
-      <NavItem p="terminal" icon={LayoutDashboard} label="Trade" />
-      <NavItem p="history" icon={History} label="History" />
-      <NavItem p="settings" icon={Settings} label="Config" />
+      <NavItem p="terminal" icon={LayoutDashboard} label="Trade" path="/" />
+      <NavItem p="screener" icon={TrendingUp} label="Screener" path="/screener" />
+      <NavItem p="history" icon={History} label="History" path="/history" />
+      <NavItem p="settings" icon={Settings} label="Config" path="/settings" />
     </div>
   );
 };

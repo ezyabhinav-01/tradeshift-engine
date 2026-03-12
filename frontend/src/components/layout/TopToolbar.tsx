@@ -1,4 +1,7 @@
-    Bell, Rewind, Settings, Maximize, Camera, Newspaper, SearchCode
+import { useState } from 'react';
+import { 
+    Bell, Rewind, Settings, Maximize, Camera, Newspaper, SearchCode,
+    PlusCircle, BarChart2, LayoutTemplate, LayoutGrid 
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';

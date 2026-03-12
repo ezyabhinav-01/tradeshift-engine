@@ -1,8 +1,9 @@
 # File: backend/main.py
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
+import logging
 from sqlalchemy import create_engine, text
 import pandas as pd
 from minio import Minio
@@ -22,6 +23,10 @@ from app.database import get_db
 from app.news_service import fetch_news_for_date
 from app.nlp_engine import analyze_news_impact, ask_news_question
 from app.database import Base, connect_to_database
+
+# Configure Logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # --- DB INITIALIZATION ---
 # Connect and Create Tables using the cached connection pattern
@@ -402,10 +407,28 @@ async def get_historical_candles(symbol: str, limit: int = 500, date: str = None
 
 # --- 7. STOCK RESEARCH HUB ENDPOINTS ---
 from app.fundamental_service import FundamentalService
-from app.nlp_engine import analyze_stock_fundamentals, explain_in_layman
+from app.screener_service import ScreenerService
+from app.nlp_engine import analyze_stock_fundamentals, explain_in_layman, chat_about_stock
+from pydantic import BaseModel
+
+class StockChatRequest(BaseModel):
+    question: str
+    history: list = []
+
+@app.get("/api/screener/multibagger")
+async def get_multibagger_screener(db=Depends(get_db)):
+    """
+    Returns a list of potential multi-bagger stocks based on fundamental screeners.
+    """
+    try:
+        candidates = ScreenerService.get_multibagger_candidates(db)
+        return {"candidates": candidates}
+    except Exception as e:
+        logger.error(f"❌ Screener Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/stock/{symbol}/profile")
-async def get_stock_profile(symbol: str, db=next(get_db())):
+async def get_stock_profile(symbol: str, db=Depends(get_db)):
     """
     Returns fundamental metrics and yearly financials for a stock.
     """
@@ -417,7 +440,7 @@ async def get_stock_profile(symbol: str, db=next(get_db())):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/stock/{symbol}/analyze")
-async def get_stock_analysis(symbol: str, db=next(get_db())):
+async def get_stock_analysis(symbol: str, db=Depends(get_db)):
     """
     Triggers FinGPT deep professional analysis.
     """
@@ -445,6 +468,19 @@ async def get_layman_explanation(symbol: str, request: Request):
         return {"symbol": symbol, "explanation": explanation}
     except Exception as e:
         logger.error(f"Error generating layman explanation for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/stock/{symbol}/chat")
+async def chat_about_stock_endpoint(symbol: str, request: StockChatRequest, db=Depends(get_db)):
+    """
+    Interactive chat for users to ask questions about a stock's fundamentals.
+    """
+    try:
+        profile = FundamentalService.get_stock_profile(db, symbol.upper())
+        answer = await chat_about_stock(symbol.upper(), profile["fundamentals"], request.question, request.history)
+        return {"symbol": symbol, "answer": answer}
+    except Exception as e:
+        logger.error(f"Error chatting about stock {symbol}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # --- 6. WEBSOCKET ENDPOINT ---

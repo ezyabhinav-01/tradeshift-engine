@@ -17,7 +17,7 @@ MODEL_ID = "HuggingFaceH4/zephyr-7b-beta"
 # Configure Gemini for high-quality fallback
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
-    gemini_model = genai.GenerativeModel('gemini-pro')
+    gemini_model = genai.GenerativeModel('gemini-2.5-flash')
 else:
     gemini_model = None
 
@@ -188,6 +188,7 @@ async def analyze_stock_fundamentals(symbol: str, fund_data: dict) -> str:
     """
     Performs a deep institutional-grade fundamental analysis of a stock.
     Persona: Senior Hedge Fund Manager & Strategic Growth Analyst.
+    Vibe: Zerodha Varsity (Educational & Deep).
     """
     print(f"🧐 FinGPT performing Deep Analysis for {symbol}...")
     
@@ -195,13 +196,19 @@ async def analyze_stock_fundamentals(symbol: str, fund_data: dict) -> str:
     Perform a professional-grade fundamental analysis for '{symbol}' using these metrics:
     {fund_data}
     
-    Structure your analysis into these 4 professional pillars:
-    1. **Earning Quality & Sustainability**: Is the growth real or accounting-driven?
-    2. **Capital Allocation Efficiency**: Analyze ROCE vs ROE and Debt management.
-    3. **Moat & Competitive Advantage**: Scale, brand, or cost leadership.
-    4. **Investment Thesis & Risks**: Concise "Bull" vs "Bear" case.
+    Format your response identically to this structure:
+    ### THE INSTITUTIONAL THESIS
+    (Professional analysis of Earnings Quality, Capital Efficiency, and Moat)
     
-    Keep it professional, high-conviction, and insightful (Max 300 words).
+    ### BULL VS BEAR
+    (Concise case for both sides)
+    
+    ### VARSITY LESSON: [Topic]
+    (Pick one complex metric from the data, e.g., ROCE or Debt-to-Equity, and explain it beautifully for a beginner. 
+    Explain why this specific company's number is good or bad using a simple real-world analogy. 
+    Make the user feel like they just learned a core investing principle.)
+    
+    Keep the tone professional yet encouraging. Max 400 words.
     """
 
     try:
@@ -211,7 +218,7 @@ async def analyze_stock_fundamentals(symbol: str, fund_data: dict) -> str:
             return response.text.strip()
         else:
             messages = [
-                {"role": "system", "content": "You are a Senior Portfolio Manager at a Tier-1 Hedge Fund (FinGPT)."},
+                {"role": "system", "content": "You are a Senior Portfolio Manager and world-class financial educator (FinGPT)."},
                 {"role": "user", "content": prompt}
             ]
             return await _call_hf_inference(messages)
@@ -222,6 +229,7 @@ async def analyze_stock_fundamentals(symbol: str, fund_data: dict) -> str:
 async def explain_in_layman(symbol: str, complex_info: str) -> str:
     """
     Converts professional financial analysis or jargon into simple layman analogies.
+    Vibe: "Zerodha Varsity for Kids".
     """
     print(f"🐣 Simplifying concepts for {symbol} (Layman Mode)...")
     
@@ -229,11 +237,12 @@ async def explain_in_layman(symbol: str, complex_info: str) -> str:
     The following is a professional analysis for '{symbol}':
     {complex_info}
     
-    Task: Explain this to a 10-year old or a complete beginner. 
-    Avoid ALL financial jargon (no 'EBITDA', 'ROCE', 'Liabilities'). 
-    Use a relatable real-world analogy (like a lemonade stand, a sports team, or a grocery store).
+    Task: Explain the core essence of this business and its health to a total beginner. 
+    1. What does this company actually do in simple words?
+    2. Why is it a 'Multibagger' candidate? Use a story-like analogy (e.g. 'This company is like a chef who knows how to make 10 cakes from just 1 bag of flour...').
+    3. One 'Golden Rule' of investing to remember from this stock.
     
-    Focus on making the user feel confident and understood. (Max 150 words).
+    Avoid ALL jargon. Focus on the 'Core Value' of the business. (Max 200 words).
     """
 
     try:
@@ -250,3 +259,45 @@ async def explain_in_layman(symbol: str, complex_info: str) -> str:
     except Exception as e:
         print(f"❌ Layman Explanation Error: {e}")
         return f"Error generating layman explanation: {str(e)}"
+
+async def chat_about_stock(symbol: str, fund_data: dict, question: str, chat_history: list) -> str:
+    """
+    Answers specific user questions about a stock's fundamentals.
+    """
+    print(f"💬 Equity Chat for {symbol}: '{question}'")
+    
+    # Format history
+    history_str = ""
+    for msg in chat_history[-6:]: # Keep last 6 msgs
+        role_label = "Student" if msg["role"] == "user" else "Varsity Educator"
+        history_str += f"{role_label}: {msg['content']}\n"
+
+    prompt = f"""
+    You are a 'Zerodha Varsity' style financial educator helping a beginner understand {symbol}.
+    
+    Here is the fundamental data for {symbol}:
+    {fund_data}
+    
+    Recent Chat History:
+    {history_str}
+    
+    Current Student Question: {question}
+    
+    Provide a clear, educational, and jargon-free answer based specifically on the fundamental data provided. 
+    Use a relatable analogy if explaining a complex metric. Keep it to max 3-4 sentences.
+    """
+
+    try:
+        if gemini_model:
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(None, lambda: gemini_model.generate_content(prompt))
+            return response.text.strip()
+        else:
+            messages = [{"role": "system", "content": "You are a financial educator."}]
+            for msg in chat_history[-6:]:
+                messages.append({"role": "user" if msg["role"] == "user" else "assistant", "content": msg["content"]})
+            messages.append({"role": "user", "content": prompt})
+            return await _call_hf_inference(messages)
+    except Exception as e:
+        print(f"❌ Equity Chat Error: {e}")
+        return f"Sorry, I couldn't generate an answer right now. Error: {str(e)}"

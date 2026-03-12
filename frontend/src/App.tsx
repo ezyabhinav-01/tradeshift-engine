@@ -9,6 +9,9 @@ import ResearchHub from './pages/ResearchHub';
 import AuthLayout from './components/auth/AuthLayout';
 import SignIn from './pages/auth/SignIn';
 import SignUp from './pages/auth/SignUp';
+import ScreenerPage from './pages/ScreenerPage';
+import HistoryPage from './pages/HistoryPage';
+import SettingsPage from './pages/SettingsPage';
 import { Toaster } from 'sonner';
 
 export default function App() {
@@ -21,6 +24,9 @@ export default function App() {
               <Route path="/" element={<Layout />}>
                 <Route index element={<Home />} />
                 <Route path="home1" element={<Home1 />} />
+                <Route path="screener" element={<ScreenerPage />} />
+                <Route path="history" element={<HistoryPage />} />
+                <Route path="settings" element={<SettingsPage />} />
                 <Route path="research/:symbol" element={<ResearchHub />} />
               </Route>
               <Route path="/auth" element={<AuthLayout />}>

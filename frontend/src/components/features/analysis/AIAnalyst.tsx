@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { 
-  Sparkles, 
   ChevronRight, 
   RotateCcw, 
   BrainCircuit, 
   ShieldCheck, 
-  AlertTriangle,
   Lightbulb,
-  MessageSquareQuote
+  MessageSquareQuote,
+  Send,
+  User
 } from 'lucide-react';
 
 interface AIAnalystProps {
@@ -21,15 +21,21 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [laymanExplanation, setLaymanExplanation] = useState<string | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(true);
   const [isSimplifying, setIsSimplifying] = useState(false);
+  const [chatInput, setChatInput] = useState("");
+  const [chatHistory, setChatHistory] = useState<{role: 'user' | 'assistant', content: string}[]>([]);
+  const [isSending, setIsSending] = useState(false);
+  const messagesEndRef = React.useRef<HTMLDivElement>(null);
 
   const performAnalysis = async () => {
     setIsAnalyzing(true);
+    setAnalysis(null);
     try {
       const response = await axios.post(`${API_BASE}/api/stock/${symbol}/analyze`);
       setAnalysis(response.data.analysis);
       setLaymanExplanation(null); // Reset explanation when new analysis comes
+      setChatHistory([]); // Reset chat when new analysis is generated
     } catch (error) {
       console.error("AI Analysis failed:", error);
     } finally {
@@ -58,6 +64,39 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
       getLaymanExplanation();
     }
   }, [isLaymanMode, analysis]);
+
+  const handleSendMessage = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!chatInput.trim() || isSending) return;
+
+    const newMessage = { role: 'user' as const, content: chatInput };
+    setChatHistory(prev => [...prev, newMessage]);
+    setChatInput("");
+    setIsSending(true);
+
+    try {
+      const response = await axios.post(`${API_BASE}/api/stock/${symbol}/chat`, {
+        question: newMessage.content,
+        history: chatHistory
+      });
+      setChatHistory(prev => [...prev, { role: 'assistant', content: response.data.answer }]);
+    } catch (error) {
+      console.error("Chat failed:", error);
+      setChatHistory(prev => [...prev, { role: 'assistant', content: "Failed to connect to the educational engine. Please try again." }]);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  React.useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatHistory, analysis, laymanExplanation]);
+
+  // Auto-generate analysis on mount or symbol change
+  React.useEffect(() => {
+    performAnalysis();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbol]);
 
   if (!analysis && !isAnalyzing) {
     return (
@@ -118,25 +157,94 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
         ) : (
           <div className="prose prose-invert max-w-none prose-sm">
             <div className="text-gray-300 leading-relaxed whitespace-pre-wrap">
-              {currentContent}
+              {currentContent?.split('###').map((section, idx) => {
+                if (!section.trim()) return null;
+                const isVarsity = section.includes('VARSITY LESSON');
+                
+                return (
+                  <div key={idx} className={`mb-6 p-1 ${isVarsity ? 'bg-amber-500/5 border border-amber-500/20 rounded-2xl p-6 shadow-[0_0_20px_-5px_rgba(245,158,11,0.1)]' : ''}`}>
+                    {idx > 0 && <h3 className={`text-xs font-black uppercase tracking-widest mb-3 flex items-center gap-2 ${isVarsity ? 'text-amber-400' : 'text-primary'}`}>
+                      {isVarsity ? <Lightbulb className="w-4 h-4" /> : <ChevronRight className="w-3 h-3" />}
+                      {section.split('\n')[0].replace('###', '').trim()}
+                    </h3>}
+                    <div className={`${isVarsity ? 'text-gray-200 italic' : 'text-gray-400'}`}>
+                      {section.split('\n').slice(1).join('\n').trim()}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
             
-            {!isLaymanMode && (
-              <div className="mt-8 grid grid-cols-1 gap-4">
-                <div className="flex gap-4 p-4 bg-blue-500/5 border border-blue-500/10 rounded-2xl">
-                  <Lightbulb className="w-5 h-5 text-blue-400 shrink-0" />
-                  <div>
-                    <h4 className="text-white text-xs font-bold uppercase mb-1">Key Insight</h4>
-                    <p className="text-[11px] text-gray-400">Analysis indicates strong competitive positioning but suggests caution on current valuation multiples.</p>
+            {/* Chat History */}
+            {chatHistory.length > 0 && (
+              <div className="mt-8 space-y-4 border-t border-white/5 pt-6">
+                <h4 className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-4 flex items-center gap-2">
+                  <MessageSquareQuote className="w-3.5 h-3.5" />
+                  Q&A Sessions
+                </h4>
+                {chatHistory.map((msg, i) => (
+                  <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    {msg.role === 'assistant' && (
+                      <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center shrink-0 mt-1">
+                        <BrainCircuit className="w-3 h-3 text-primary" />
+                      </div>
+                    )}
+                    <div className={`p-3 rounded-2xl max-w-[85%] text-sm leading-relaxed ${
+                      msg.role === 'user' 
+                        ? 'bg-white/10 text-white rounded-tr-sm' 
+                        : 'bg-primary/5 border border-primary/10 text-gray-300 rounded-tl-sm'
+                    }`}>
+                      {msg.content}
+                    </div>
+                    {msg.role === 'user' && (
+                      <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center shrink-0 mt-1">
+                        <User className="w-3 h-3 text-gray-400" />
+                      </div>
+                    )}
                   </div>
-                </div>
+                ))}
+                {isSending && (
+                  <div className="flex gap-3 justify-start">
+                    <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center shrink-0 mt-1">
+                      <BrainCircuit className="w-3 h-3 text-primary animate-pulse" />
+                    </div>
+                    <div className="p-3 rounded-2xl bg-primary/5 border border-primary/10 rounded-tl-sm">
+                      <div className="flex gap-1">
+                        <div className="w-1.5 h-1.5 rounded-full bg-primary/50 animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                        <div className="w-1.5 h-1.5 rounded-full bg-primary/50 animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                        <div className="w-1.5 h-1.5 rounded-full bg-primary/50 animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
+            <div ref={messagesEndRef} />
           </div>
         )}
       </div>
 
-      <div className="p-4 bg-white/[0.01] border-t border-white/5 flex items-center justify-between">
+      <div className="p-3 bg-white/[0.02] border-t border-white/5 backdrop-blur-md">
+        <form onSubmit={handleSendMessage} className="relative flex items-center">
+          <input
+            type="text"
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            disabled={isSending || isLoading || !analysis}
+            placeholder="Ask a question about this analysis..."
+            className="w-full bg-black/40 border border-white/10 rounded-xl py-3 pl-4 pr-12 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-primary/50 transition-colors disabled:opacity-50"
+          />
+          <button
+            type="submit"
+            disabled={!chatInput.trim() || isSending || isLoading || !analysis}
+            className="absolute right-2 p-1.5 bg-primary text-black rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:hover:bg-primary transition-colors"
+          >
+            <Send className="w-4 h-4" />
+          </button>
+        </form>
+      </div>
+
+      <div className="px-4 pb-3 pt-1 bg-white/[0.02] flex items-center justify-between">
         <div className="flex items-center gap-2 text-[10px] text-gray-500 font-medium">
           <MessageSquareQuote className="w-3.5 h-3.5" />
           Powered by FinGPT Engine v2.0

@@ -15,6 +15,9 @@ class ScreenerService:
         4. Revenue Growth (5Y) > 15% (Growth)
         """
         try:
+            if db is None:
+                return ScreenerService._get_mock_candidates()
+                
             candidates = db.query(StockFundamental).all()
             
             # If no data in DB, return high-quality mock candidates for the demo
@@ -153,8 +156,10 @@ class ScreenerService:
             # Create a simple object to satisfy getattr
             class StockMock: pass
             sm = StockMock()
-            for k, v in s.items(): setattr(sm, k, v)
-            if k == 'revenue_growth': setattr(sm, 'revenue_growth_5y', v)
+            for k, v in s.items(): 
+                setattr(sm, k, v)
+                if k == 'revenue_growth': 
+                    setattr(sm, 'revenue_growth_5y', v)
             
             persona = ScreenerService._assign_company_persona(sm)
             s["persona"] = persona["name"]

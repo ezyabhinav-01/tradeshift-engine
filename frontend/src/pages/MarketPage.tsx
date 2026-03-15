@@ -8,13 +8,15 @@ import {
   PieChart,
   RefreshCw,
   Search,
-  ChevronRight,
   Clock
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, Cell } from 'recharts';
 import { useGame } from '../context/GameContext';
+import TradingViewWidget from '@/components/ui/TradingViewWidget';
+import { HEATMAP_WIDGET_CONFIG, MARKET_OVERVIEW_WIDGET_CONFIG } from '@/lib/constants';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -207,29 +209,34 @@ const MarketPage: React.FC = () => {
       </div>
 
       {/* Main Tabs */}
-      <div className="flex gap-2 border-b border-white/10 pb-1">
-        {[
-          { id: 'overview', label: 'Overview', icon: <Activity className="w-4 h-4" /> },
-          { id: 'sectors', label: 'Sectors', icon: <PieChart className="w-4 h-4" /> },
-          { id: 'fno', label: 'F&O', icon: <BarChart2 className="w-4 h-4" /> }
-        ].map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
-            className={`flex items-center gap-2 px-5 py-2.5 text-sm font-bold rounded-t-xl transition-all ${
-              activeTab === tab.id 
-                ? 'bg-white/10 text-white border-b-2 border-primary' 
-                : 'text-gray-500 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            {tab.icon}
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <Tabs defaultValue="overview" onValueChange={(val) => setActiveTab(val as any)} className="w-full">
+        <TabsList className="bg-black/40 border border-white/10 p-1 mb-1">
+          {[
+            { id: 'overview', label: 'Overview', icon: <Activity className="w-4 h-4" /> },
+            { id: 'heatmap', label: 'Heatmap', icon: <PieChart className="w-4 h-4" /> },
+            { id: 'sectors', label: 'Sectors', icon: <PieChart className="w-4 h-4" /> },
+            { id: 'fno', label: 'F&O', icon: <BarChart2 className="w-4 h-4" /> }
+          ].map(tab => (
+            <TabsTrigger
+              key={tab.id}
+              value={tab.id}
+              className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold transition-all data-[state=active]:bg-white/10 data-[state=active]:text-white data-[state=active]:border-b-2 data-[state=active]:border-primary text-gray-500 hover:text-white"
+            >
+              {tab.icon}
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-      {activeTab === 'overview' && (
-        <div className="space-y-8">
+        <TabsContent value="overview" className="space-y-8 mt-6">
+          <div className="bg-[#0a0a0a] border border-white/5 rounded-3xl p-6 overflow-hidden">
+            <TradingViewWidget 
+                title="Market Pulse"
+                scriptUrl="https://s3.tradingview.com/external-embedding/embed-widget-market-overview.js"
+                config={MARKET_OVERVIEW_WIDGET_CONFIG}
+                height={500}
+            />
+          </div>
           {/* Indices Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {isLoading && displayIndices.length === 0 ? (
@@ -355,10 +362,20 @@ const MarketPage: React.FC = () => {
             </div>
 
           </div>
-        </div>
-      )}
+        </TabsContent>
 
-      {activeTab === 'sectors' && (
+        <TabsContent value="heatmap" className="mt-0">
+            <div className="bg-[#0a0a0a] border border-white/5 rounded-3xl p-6 overflow-hidden">
+                <TradingViewWidget 
+                    title="Global Equity Heatmap"
+                    scriptUrl="https://s3.tradingview.com/external-embedding/embed-widget-stock-heatmap.js"
+                    config={HEATMAP_WIDGET_CONFIG}
+                    height={700}
+                />
+            </div>
+        </TabsContent>
+
+        <TabsContent value="sectors" className="mt-0">
         <div className="bg-[#0a0a0a] border border-white/5 rounded-3xl p-6 shadow-xl">
           <h2 className="text-lg font-bold text-white mb-6">Sector Performance</h2>
           <div className="h-96 w-full">
@@ -386,9 +403,9 @@ const MarketPage: React.FC = () => {
             )}
           </div>
         </div>
-      )}
+        </TabsContent>
 
-      {activeTab === 'fno' && (
+        <TabsContent value="fno" className="mt-0">
         <div className="space-y-6">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-[#0a0a0a] border border-white/5 rounded-2xl p-4 shadow-xl">
             <div className="flex bg-white/5 p-1 rounded-lg">
@@ -483,7 +500,8 @@ const MarketPage: React.FC = () => {
              </div>
           )}
         </div>
-      )}
+        </TabsContent>
+      </Tabs>
 
     </div>
   );

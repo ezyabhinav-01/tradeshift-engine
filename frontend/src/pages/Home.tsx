@@ -1,9 +1,13 @@
 import { useState } from 'react';
 import { CalendarRange } from 'lucide-react';
-import ChartArea from '../components/features/ChartArea';
-import NewsPanel from '../components/features/NewsPanel';
 import TopToolbar from '../components/layout/TopToolbar';
 import LeftToolbar from '../components/layout/LeftToolbar';
+import ChartArea from '../components/features/ChartArea';
+import NewsPanel from '../components/features/NewsPanel';
+import TradingViewWidget from '@/components/ui/TradingViewWidget';
+import { NEWS_WIDGET_CONFIG } from '@/lib/constants';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Newspaper, BrainCircuit } from 'lucide-react';
 
 const Home = () => {
   const [isNewsOpen, setIsNewsOpen] = useState(false);
@@ -24,7 +28,39 @@ const Home = () => {
 
         {/* RIGHT NEWS PANEL (Toggleable) */}
         <div className={`transition-all duration-300 ease-in-out overflow-hidden flex-shrink-0 ${isNewsOpen ? 'w-80 border-l border-tv-border' : 'w-0'}`}>
-          {isNewsOpen && <div className="w-80 h-full"><NewsPanel /></div>}
+          {isNewsOpen && (
+            <div className="w-80 h-full flex flex-col bg-[#050505]">
+              <Tabs defaultValue="live" className="flex flex-col h-full">
+                <div className="p-4 border-b border-white/5">
+                  <TabsList className="grid w-full grid-cols-2 bg-black/40">
+                    <TabsTrigger value="live" className="text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-primary data-[state=active]:text-black">
+                      <Newspaper className="w-3 h-3 mr-2" />
+                      Live News
+                    </TabsTrigger>
+                    <TabsTrigger value="ai" className="text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-primary data-[state=active]:text-black">
+                      <BrainCircuit className="w-3 h-3 mr-2" />
+                      AI Analysis
+                    </TabsTrigger>
+                  </TabsList>
+                </div>
+
+                <TabsContent value="live" className="flex-1 overflow-hidden mt-0">
+                  <div className="h-full p-2">
+                      <TradingViewWidget 
+                        title=""
+                        scriptUrl="https://s3.tradingview.com/external-embedding/embed-widget-timeline.js"
+                        config={NEWS_WIDGET_CONFIG}
+                        height={800}
+                      />
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="ai" className="flex-1 overflow-hidden mt-0">
+                  <NewsPanel />
+                </TabsContent>
+              </Tabs>
+            </div>
+          )}
         </div>
       </div>
 

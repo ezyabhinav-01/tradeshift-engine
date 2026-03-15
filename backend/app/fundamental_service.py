@@ -12,13 +12,18 @@ class FundamentalService:
         Fetch the fundamental profile and yearly financials for a stock.
         Returns mock data if no data exists in DB.
         """
+        if db is None:
+            logger.info(f"📁 Backend disconnected. Serving mock profile for {symbol}")
+            return FundamentalService._get_mock_data(symbol)
+            
         fundamental = db.query(StockFundamental).filter(StockFundamental.symbol == symbol).first()
         financials = db.query(StockFinancial).filter(StockFinancial.symbol == symbol).order_by(StockFinancial.year.desc()).all()
 
         if not fundamental:
-            # Provide high-quality mock data for the "Research Hub" demo
+            logger.info(f"🔍 No DB data for {symbol}. Serving high-quality mock candidates.")
             return FundamentalService._get_mock_data(symbol)
 
+        logger.info(f"✅ Serving live DB profile for {symbol}")
         return {
             "fundamentals": fundamental,
             "financials": financials

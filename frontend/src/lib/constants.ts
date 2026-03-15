@@ -170,6 +170,28 @@ export const MARKET_DATA_WIDGET_CONFIG = {
     ],
 };
 
+export const SCREENER_WIDGET_CONFIG = {
+    width: '100%',
+    height: 600,
+    defaultColumn: 'overview',
+    defaultScreen: 'most_capitalized',
+    market: 'india',
+    showToolbar: true,
+    colorTheme: 'dark',
+    locale: 'en',
+    isTransparent: true,
+};
+
+export const NEWS_WIDGET_CONFIG = {
+    feedMode: 'all_symbols',
+    colorTheme: 'dark',
+    isTransparent: true,
+    displayMode: 'regular',
+    width: '100%',
+    height: '100%',
+    locale: 'en',
+};
+
 export const SYMBOL_INFO_WIDGET_CONFIG = (symbol: string) => ({
     symbol: symbol.toUpperCase(),
     colorTheme: 'dark',

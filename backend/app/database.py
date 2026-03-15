@@ -63,17 +63,25 @@ def connect_to_database():
 def get_db():
     """
     FastAPI Dependency to get DB session.
+    Yields None if connection fails to allow fallback logic.
     """
-    # Ensure connection exists
-    if not _db_cache["session_maker"]:
-        connect_to_database()
-    
-    SessionLocal = _db_cache["session_maker"]
-    db = SessionLocal()
     try:
-        yield db
-    finally:
-        db.close()
+        # Ensure connection exists
+        if not _db_cache["session_maker"]:
+            connect_to_database()
+        
+        SessionLocal = _db_cache["session_maker"]
+        if SessionLocal:
+            db = SessionLocal()
+            try:
+                yield db
+            finally:
+                db.close()
+        else:
+            yield None
+    except Exception as e:
+        logger.error(f"⚠️ get_db failed: {e}")
+        yield None
 
 def get_session():
     """

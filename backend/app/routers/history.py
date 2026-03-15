@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Request, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, extract, desc, asc
-from app.database import get_db
+from app.database import get_db, get_db_sync
 from app.models import TradeLog, User
 from app.config import SECRET_KEY, ALGORITHM
 from app.sector_mapping import get_sector
@@ -37,8 +37,10 @@ def _get_user_id(request: Request, db: Session) -> int:
     return 1  # fallback for dev
 
 
-def _apply_filters(query, date_from, date_to, symbol, direction, search):
+def _apply_filters(query, date_from, date_to, symbol, direction, search, session_type):
     """Apply common filters to a TradeLog query."""
+    if session_type:
+        query = query.filter(TradeLog.session_type == session_type)
     if date_from:
         try:
             dt = datetime.strptime(date_from, "%Y-%m-%d")
@@ -68,9 +70,9 @@ def _apply_filters(query, date_from, date_to, symbol, direction, search):
 
 
 @router.get("/trades")
-async def get_trade_history(
+def get_trade_history(
     request: Request,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
     date_from: str = Query(None, alias="from"),
     date_to: str = Query(None, alias="to"),
     symbol: str = Query(None),
@@ -80,6 +82,7 @@ async def get_trade_history(
     sort_order: str = Query("desc"),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
+    session_type: str = Query('LIVE'),
 ):
     """Paginated, filterable trade history."""
     try:
@@ -87,7 +90,7 @@ async def get_trade_history(
             TradeLog.exit_price.isnot(None),
             TradeLog.exit_price != 0,
         )
-        q = _apply_filters(q, date_from, date_to, symbol, direction, search)
+        q = _apply_filters(q, date_from, date_to, symbol, direction, search, session_type)
 
         # Count before pagination
         total = q.count()
@@ -141,14 +144,15 @@ async def get_trade_history(
 
 
 @router.get("/trades/export")
-async def export_trades_csv(
+def export_trades_csv(
     request: Request,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_sync),
     date_from: str = Query(None, alias="from"),
     date_to: str = Query(None, alias="to"),
     symbol: str = Query(None),
     direction: str = Query(None),
     search: str = Query(None),
+    session_type: str = Query('LIVE'),
 ):
     """Export filtered trades as CSV download."""
     try:
@@ -156,7 +160,7 @@ async def export_trades_csv(
             TradeLog.exit_price.isnot(None),
             TradeLog.exit_price != 0,
         )
-        q = _apply_filters(q, date_from, date_to, symbol, direction, search)
+        q = _apply_filters(q, date_from, date_to, symbol, direction, search, session_type)
         q = q.order_by(desc(TradeLog.entry_time))
         trades = q.all()
 
@@ -188,13 +192,15 @@ async def export_trades_csv(
 
 
 @router.get("/monthly-summary")
-async def get_monthly_summary(
+def get_monthly_summary(
     request: Request,
-    db: Session = Depends(get_db),
+    session_type: str = Query('LIVE'),
+    db: Session = Depends(get_db_sync),
 ):
     """Monthly aggregated trade stats."""
     try:
         trades = db.query(TradeLog).filter(
+            TradeLog.session_type == session_type,
             TradeLog.exit_price.isnot(None),
             TradeLog.exit_price != 0,
         ).order_by(TradeLog.entry_time).all()
@@ -240,10 +246,10 @@ async def get_monthly_summary(
 
 
 @router.get("/symbols")
-async def get_traded_symbols(db: Session = Depends(get_db)):
+def get_traded_symbols(session_type: str = Query('LIVE'), db: Session = Depends(get_db_sync)):
     """Get distinct symbols from trade history for filter dropdown."""
     try:
-        symbols = db.query(TradeLog.symbol).distinct().order_by(TradeLog.symbol).all()
+        symbols = db.query(TradeLog.symbol).filter(TradeLog.session_type == session_type).distinct().order_by(TradeLog.symbol).all()
         return {"symbols": [s[0] for s in symbols if s[0]]}
     except Exception as e:
         logger.error(f"Error fetching symbols: {e}")

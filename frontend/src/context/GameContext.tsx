@@ -44,14 +44,38 @@ interface GameState {
   availableDates: string[];
   isLoadingHistory: boolean;
   isReplayActive: boolean;
+  sessionType: 'LIVE' | 'REPLAY';
+  userSettings: {
+    max_daily_loss: number;
+    max_order_quantity: number;
+    one_click_trading_enabled: boolean;
+    require_session_confirmation: boolean;
+  } | null;
   togglePlay: () => void;
   toggleReplay: () => void;
   toggleTheme: () => void;
   setSpeed: (s: number) => void;
   setSymbol: (symbol: string, token: string) => void;
   setDate: (dateStr: string) => void;
-  placeOrder: (type: 'BUY' | 'SELL', qty: number) => void;
-  closePosition: (tradeId: string) => void;
+  updateUserSettings: (updates: any) => Promise<void>;
+  placeOrder: (
+    type: 'BUY' | 'SELL', 
+    quantity: number,
+    orderType?: string,
+    price?: number,
+    stopLoss?: number,
+    takeProfit?: number,
+    alert?: boolean,
+    simulatedTime?: string | Date
+  ) => void;
+  closePosition: (
+    tradeId: string | number, 
+    exitType?: 'MARKET' | 'LIMIT', 
+    limitPrice?: number,
+    simulatedTime?: string | Date
+  ) => void;
+  closeAllPositions: () => Promise<void>;
+  modifyOrder: (orderId: number | string, updates: any) => Promise<void>;
   resetSimulation: () => void;
   clearHistoryForReplay: () => void;
   askNewsQuestion: (newsId: number, question: string) => void;
@@ -82,6 +106,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
   const [selectedSymbol, setSelectedSymbol] = useState(DEFAULT_SYMBOL);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isReplayActive, setIsReplayActive] = useState(false);
+  const [sessionType, setSessionType] = useState<'LIVE' | 'REPLAY'>('LIVE');
+  const [userSettings, setUserSettings] = useState<any>(null);
 
   const [selectedDate, setSelectedDate] = useState('');
   const [availableDates, setAvailableDates] = useState<string[]>([]);
@@ -138,15 +164,53 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
   // Load on mount
   useEffect(() => {
     loadAvailableDatesAndHistory(DEFAULT_SYMBOL);
+    fetchUserSettings();
   }, []);
+
+  const fetchUserSettings = async () => {
+    try {
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+      const response = await fetch(`${API_BASE}/api/user/settings`);
+      if (response.ok) {
+        const data = await response.json();
+        setUserSettings(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch user settings:', err);
+    }
+  };
+
+  const updateUserSettings = async (updates: any) => {
+    try {
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+      const response = await fetch(`${API_BASE}/api/user/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates)
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to update settings');
+      }
+      
+      const data = await response.json();
+      setUserSettings(data);
+      toast.success('Settings updated successfully');
+    } catch (err: any) {
+      console.error('Update User Settings Error:', err);
+      toast.error(err.message);
+    }
+  };
 
   // ── WebSocket streaming ─────────────────────────────────────────────────
   useEffect(() => {
     if (!isPlaying) {
       marketDataService.disconnect();
+      setSessionType('LIVE');
       return;
     }
 
+    setSessionType('REPLAY');
     // Clear existing chart and index data — replay starts from 9:15
     setHistoricalCandles([]);
     setCurrentCandle(null);
@@ -251,6 +315,35 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
           });
       }
 
+      if (payload.type === 'order_update') {
+        const order = payload.data;
+        setTrades(prev => {
+          const index = prev.findIndex(t => t.id === order.trade_id);
+          const updatedTrade: Trade = {
+            id: order.trade_id,
+            symbol: order.symbol,
+            direction: order.direction,
+            type: order.direction,
+            entryPrice: order.entry_price,
+            quantity: order.quantity,
+            pnl: order.pnl,
+            status: order.status,
+            stopLoss: order.stop_loss,
+            takeProfit: order.take_profit,
+            sessionType: order.session_type,
+            timestamp: new Date(),
+          };
+          
+          if (index !== -1) {
+            const next = [...prev];
+            next[index] = updatedTrade;
+            return next;
+          } else {
+            return [updatedTrade, ...prev];
+          }
+        });
+      }
+
       // TICK event: sub-minute price updates within a candle
       if (payload.type === 'TICK') {
         const tick = payload.data;
@@ -323,32 +416,125 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
     });
   };
 
-  const placeOrder = (type: 'BUY' | 'SELL', quantity: number) => {
-    const newTrade: Trade = {
-      id: Math.random().toString(36).substr(2, 9),
-      symbol: selectedSymbol,
-      type,
-      entryPrice: currentPrice,
-      quantity,
-      timestamp: new Date(currentCandle ? currentCandle.time * 1000 : Date.now()),
-      status: 'OPEN',
-    };
-    setTrades(prev => [newTrade, ...prev]);
+  const placeOrder = async (
+    type: 'BUY' | 'SELL', 
+    quantity: number,
+    orderType: string = 'MARKET',
+    price?: number,
+    stopLoss?: number,
+    takeProfit?: number,
+    alert: boolean = false,
+    simulatedTime?: string | Date
+  ) => {
+    try {
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+      const response = await fetch(`${API_BASE}/api/trade/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          symbol: selectedSymbol,
+          direction: type,
+          quantity,
+          price: price || currentPrice,
+          order_type: orderType,
+          stop_loss: stopLoss,
+          take_profit: takeProfit,
+          alert,
+          session_type: sessionType,
+          simulated_time: simulatedTime || (sessionType === 'REPLAY' ? currentTime : undefined)
+        })
+      });
+      
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.detail || 'Trade failed');
+      }
+      
+      const result = await response.json();
+      toast.success(result.message);
+      // 'trades' will be updated via the 'order_update' WebSocket message
+    } catch (err: any) {
+      console.error('Trading Error:', err);
+      toast.error(err.message);
+    }
   };
 
-  const closePosition = (tradeId: string) => {
-    setTrades(prevTrades =>
-      prevTrades.map(trade => {
-        if (trade.id === tradeId && trade.status === 'OPEN') {
-          const exitPrice = currentPrice;
-          const multiplier = trade.type === 'BUY' ? 1 : -1;
-          const pnl = (exitPrice - trade.entryPrice) * trade.quantity * multiplier;
-          setBalance(prev => prev + pnl);
-          return { ...trade, status: 'CLOSED', exitPrice, pnl };
-        }
-        return trade;
-      }),
-    );
+  const modifyOrder = async (orderId: number | string, updates: any) => {
+    try {
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+      const response = await fetch(`${API_BASE}/api/trade/order/${orderId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...updates,
+          session_type: sessionType,
+          simulated_time: sessionType === 'REPLAY' ? currentTime : undefined
+        })
+      });
+      
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.detail || 'Failed to modify order');
+      }
+      
+      const result = await response.json();
+      toast.success(result.message || 'Order modified');
+      // Update will flow back via WebSocket order_update
+    } catch (err: any) {
+      console.error('Modify Order Error:', err);
+      toast.error(err.message);
+    }
+  };
+
+  const closePosition = async (tradeId: string | number, exitType: 'MARKET' | 'LIMIT' = 'MARKET', limitPrice?: number, simulatedTime?: string | Date) => {
+    try {
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+      const response = await fetch(`${API_BASE}/api/trade/close/${tradeId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          exit_type: exitType,
+          limit_price: limitPrice,
+          simulated_time: simulatedTime || (sessionType === 'REPLAY' ? currentTime : undefined)
+        })
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.detail || 'Failed to close position');
+      }
+
+      const result = await response.json();
+      toast.success(result.message || 'Position closing initiated');
+    } catch (err: any) {
+      console.error('Close Position Error:', err);
+      toast.error(err.message);
+    }
+  };
+
+  const closeAllPositions = async () => {
+    try {
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+      const response = await fetch(`${API_BASE}/api/trade/close-all`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_type: sessionType,
+          simulated_time: sessionType === 'REPLAY' ? currentTime : undefined
+        })
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.detail || 'Failed to close all positions');
+      }
+
+      const result = await response.json();
+      toast.success(result.message || 'All positions closed successfully');
+    } catch (err: any) {
+      console.error('Close All Positions Error:', err);
+      toast.error(err.message);
+    }
   };
 
   const resetSimulation = () => {
@@ -361,15 +547,24 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
     setCurrentCandle(null);
   };
 
+  const contextValue = React.useMemo(() => ({
+    isPlaying, speed, balance, currentPrice, currentCandle, currentTime,
+    historicalCandles, trades, newsItems, simulatedIndices, theme, selectedSymbol, selectedDate, availableDates, isLoadingHistory, isReplayActive,
+    sessionType,
+    userSettings,
+    togglePlay, toggleTheme, setSpeed, setSymbol, setDate,
+    placeOrder, modifyOrder, closePosition, closeAllPositions, resetSimulation, toggleReplay, clearHistoryForReplay, askNewsQuestion, updateUserSettings
+  }), [
+    isPlaying, speed, balance, currentPrice, currentCandle, currentTime,
+    historicalCandles, trades, newsItems, simulatedIndices, theme, selectedSymbol, selectedDate, availableDates, isLoadingHistory, isReplayActive,
+    sessionType,
+    userSettings,
+    togglePlay, toggleTheme, setSpeed, setSymbol, setDate,
+    placeOrder, modifyOrder, closePosition, closeAllPositions, resetSimulation, toggleReplay, clearHistoryForReplay, askNewsQuestion, updateUserSettings
+  ]);
+
   return (
-    <GameContext.Provider
-      value={{
-        isPlaying, speed, balance, currentPrice, currentCandle, currentTime,
-        historicalCandles, trades, newsItems, simulatedIndices, theme, selectedSymbol, selectedDate, availableDates, isLoadingHistory, isReplayActive,
-        togglePlay, toggleTheme, setSpeed, setSymbol, setDate,
-        placeOrder, closePosition, resetSimulation, toggleReplay, clearHistoryForReplay, askNewsQuestion
-      }}
-    >
+    <GameContext.Provider value={contextValue}>
       {children}
     </GameContext.Provider>
   );

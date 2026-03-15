@@ -17,12 +17,13 @@ from redis import Redis
 from prometheus_fastapi_instrumentator import Instrumentator
 from app.oms import OrderManager
 from app import auth
-from app.routers import inngest, portfolio, history
+from app.routers import inngest, portfolio, history, trading
+from app.websocket_manager import order_manager
 from app.models import User
 from app.database import get_db
 from app.news_service import fetch_news_for_date
 from app.nlp_engine import analyze_news_impact, ask_news_question
-from app.database import Base, connect_to_database
+from app.database import Base, connect_to_database, get_db_sync
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO)
@@ -109,6 +110,10 @@ app.include_router(auth.router)
 app.include_router(inngest.router)
 app.include_router(portfolio.router)
 app.include_router(history.router)
+from app.routers import inngest, portfolio, history, trading, user
+# ...
+app.include_router(trading.router)
+app.include_router(user.router)
 
 # --- 3. INFRASTRUCTURE CONNECTIONS ---
 
@@ -450,7 +455,7 @@ class StockChatRequest(BaseModel):
     history: list = []
 
 @app.get("/api/screener/multibagger")
-async def get_multibagger_screener(db=Depends(get_db)):
+def get_multibagger_screener(db=Depends(get_db_sync)):
     """
     Returns a list of potential multi-bagger stocks based on fundamental screeners.
     """
@@ -462,7 +467,7 @@ async def get_multibagger_screener(db=Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/stock/{symbol}/profile")
-async def get_stock_profile(symbol: str, db=Depends(get_db)):
+def get_stock_profile(symbol: str, db=Depends(get_db_sync)):
     """
     Returns fundamental metrics and yearly financials for a stock.
     """
@@ -474,7 +479,7 @@ async def get_stock_profile(symbol: str, db=Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/stock/{symbol}/analyze")
-async def get_stock_analysis(symbol: str, db=Depends(get_db)):
+async def get_stock_analysis(symbol: str, db=Depends(get_db_sync)):
     """
     Triggers FinGPT deep professional analysis.
     """
@@ -505,7 +510,7 @@ async def get_layman_explanation(symbol: str, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/stock/{symbol}/chat")
-async def chat_about_stock_endpoint(symbol: str, request: StockChatRequest, db=Depends(get_db)):
+async def chat_about_stock_endpoint(symbol: str, request: StockChatRequest, db=Depends(get_db_sync)):
     """
     Interactive chat for users to ask questions about a stock's fundamentals.
     """
@@ -584,6 +589,45 @@ async def get_market_options(symbol: str):
         raise HTTPException(status_code=500, detail="Failed to fetch options chain")
 
 # --- 6. WEBSOCKET ENDPOINTS ---
+
+# --- Order Updates WebSocket ---
+@app.websocket("/ws/orders")
+async def orders_websocket(websocket: WebSocket):
+    """
+    WebSocket endpoint for receiving order_update events.
+    Clients authenticate by sending their user_id on connect.
+    Events are pushed to user rooms (user-{user_id}).
+    """
+    # Accept connection first, then wait for auth message
+    await websocket.accept()
+    user_id = None
+    try:
+        # Expect an auth message with user_id
+        auth_data = await asyncio.wait_for(websocket.receive_json(), timeout=10.0)
+        user_id = auth_data.get("user_id", 1)
+        
+        # Re-register with the connection manager (re-accept not needed)
+        room = f"user-{user_id}"
+        if room not in order_manager.active_connections:
+            order_manager.active_connections[room] = []
+        order_manager.active_connections[room].append(websocket)
+        
+        logger.info(f"🟢 Orders WS: user-{user_id} connected")
+        await websocket.send_json({"type": "connected", "data": {"room": room}})
+        
+        # Keep the connection alive
+        while True:
+            msg = await websocket.receive_text()
+    except asyncio.TimeoutError:
+        logger.warning("Orders WS: auth timeout")
+    except WebSocketDisconnect:
+        logger.info(f"🔴 Orders WS: user-{user_id} disconnected")
+    except Exception as e:
+        logger.error(f"Orders WS error: {e}")
+    finally:
+        if user_id is not None:
+            order_manager.disconnect(websocket, user_id)
+
 @app.websocket("/ws/live_indices")
 async def live_indices_websocket(websocket: WebSocket):
     await websocket.accept()
@@ -628,7 +672,9 @@ async def websocket_endpoint(websocket: WebSocket):
     is_running      = False
     speed           = 1.0
     synthesizer     = TickSynthesizer()
-    oms             = OrderManager()
+    # Local OrderManager is replaced by global oms_service
+    # last_tick_price = 21500.0 # Will be updated in tick loop
+    current_user_id = 1 # Default
     last_tick_price = 21500.0
     iterator        = None
     indices_iterators = {}    # { "NIFTY": iterator, "BANKNIFTY": iterator }
@@ -636,6 +682,7 @@ async def websocket_endpoint(websocket: WebSocket):
     current_symbol  = "NIFTY"
     df_current      = None  # keep reference for restart
     active_impact_observers = [] # Track news for 15-minute impact assessment
+    tick_time       = datetime.datetime.now() # track for commands
 
     try:
         while True:
@@ -646,6 +693,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 command = message.get("command")
 
                 if command == "START":
+                    current_user_id = message.get("user_id") or 1
                     symbol      = message.get("symbol") or "NIFTY"
                     target_date = message.get("date")
                     speed       = float(message.get("speed", 1.0))
@@ -754,10 +802,42 @@ async def websocket_endpoint(websocket: WebSocket):
                         active_news = []
 
                 elif command == "BUY":
-                    oms.buy(last_tick_price, qty=50)
+                    # oms.buy(last_tick_price, qty=50)
+                    from app.schemas import TradeExecuteRequest, TradeDirection, OrderType
+                    request = TradeExecuteRequest(
+                        symbol=current_symbol,
+                        direction=TradeDirection.BUY,
+                        quantity=message.get("quantity", 50),
+                        price=last_tick_price,
+                        order_type=OrderType.MARKET,
+                        session_type="REPLAY",
+                        simulated_time=tick_time # current simulated time
+                    )
+                    from app.database import get_session
+                    db = await get_session()
+                    try:
+                        await TradeEngine.execute_trade(request, current_user_id, db)
+                    finally:
+                        await db.close()
 
                 elif command == "SELL":
-                    oms.sell(last_tick_price, qty=50)
+                    # oms.sell(last_tick_price, qty=50)
+                    from app.schemas import TradeExecuteRequest, TradeDirection, OrderType
+                    request = TradeExecuteRequest(
+                        symbol=current_symbol,
+                        direction=TradeDirection.SELL,
+                        quantity=message.get("quantity", 50),
+                        price=last_tick_price,
+                        order_type=OrderType.MARKET,
+                        session_type="REPLAY",
+                        simulated_time=tick_time # current simulated time
+                    )
+                    from app.database import get_session
+                    db = await get_session()
+                    try:
+                        await TradeEngine.execute_trade(request, current_user_id, db)
+                    finally:
+                        await db.close()
 
                 elif command == "STOP":
                     is_running = False
@@ -857,8 +937,11 @@ async def websocket_endpoint(websocket: WebSocket):
             num_ticks = 60
             for i, price in enumerate(ticks):
                 last_tick_price = float(price)
-                current_pnl     = oms.calculate_pnl(last_tick_price)
                 tick_time       = base_time + datetime.timedelta(seconds=i)
+
+                # 🔥 TRIGGER OMS PRICE UPDATE (to trigger SL/TP)
+                from app.services.order_management import oms_service
+                await oms_service.on_price_update(current_symbol, last_tick_price, simulated_time=tick_time, session_type="REPLAY")
 
                 payload = {
                     "type": "TICK",
@@ -866,7 +949,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         "symbol":    current_symbol,
                         "price":     round(last_tick_price, 2),
                         "timestamp": tick_time.isoformat(),
-                        "pnl":       round(current_pnl, 2),
+                        "pnl":       0.0, # Frontend will calculate PnL from its own state
                         "volume":    int(row.get('volume', 0)),
                     }
                 }

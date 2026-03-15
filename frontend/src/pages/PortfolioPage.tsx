@@ -10,6 +10,8 @@ import {
   Shield, Target, Zap, Clock, Award, ArrowUpRight, ArrowDownRight,
 } from 'lucide-react';
 
+import { useGame } from '../context/GameContext';
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 const api = axios.create({ baseURL: API_BASE_URL, withCredentials: true });
 
@@ -31,6 +33,7 @@ export default function PortfolioPage() {
   const [sectors, setSectors] = useState<any>(null);
   const [research, setResearch] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const { sessionType } = useGame();
 
   const fallback = {
     current_value: 0, total_invested: 0, total_pnl: 0,
@@ -40,12 +43,13 @@ export default function PortfolioPage() {
   const fetchAll = async () => {
     setLoading(true);
     try {
+      const params = { session_type: sessionType };
       const [sumR, holdR, posR, secR, resR] = await Promise.all([
-        api.get('/api/portfolio/summary'),
-        api.get('/api/portfolio/holdings'),
-        api.get('/api/portfolio/positions'),
-        api.get('/api/portfolio/sectors'),
-        api.get('/api/portfolio/research'),
+        api.get('/api/portfolio/summary', { params }),
+        api.get('/api/portfolio/holdings', { params }),
+        api.get('/api/portfolio/positions', { params }),
+        api.get('/api/portfolio/sectors', { params }),
+        api.get('/api/portfolio/research', { params }),
       ]);
       setSummary(sumR.data || fallback);
       setHoldings(holdR.data?.holdings || []);
@@ -60,7 +64,9 @@ export default function PortfolioPage() {
     }
   };
 
-  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => { 
+    fetchAll(); 
+  }, [sessionType]);
 
   if (loading) {
     return (
@@ -187,10 +193,10 @@ function HoldingsTab({ data, holdings, isPositive }: any) {
           <table className="w-full text-left">
             <thead>
               <tr className="bg-sidebar-accent/10 border-b border-sidebar-border/50 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                <th className="px-6 py-3">Symbol</th><th className="px-6 py-3">Qty</th>
-                <th className="px-6 py-3">Avg Cost</th><th className="px-6 py-3">LTP</th>
-                <th className="px-6 py-3">P&L</th><th className="px-6 py-3">Day Change</th>
-                <th className="px-6 py-3 text-center">Actions</th>
+                <th className="px-4 py-2.5">Symbol</th><th className="px-4 py-2.5">Qty</th>
+                <th className="px-4 py-2.5">Avg Cost</th><th className="px-4 py-2.5">LTP</th>
+                <th className="px-4 py-2.5">P&L</th><th className="px-4 py-2.5">Day Change</th>
+                <th className="px-4 py-2.5 text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-sidebar-border/30">
@@ -199,27 +205,25 @@ function HoldingsTab({ data, holdings, isPositive }: any) {
                 const dayPct = (Math.random() * 4 - 2).toFixed(2);
                 const dayPos = parseFloat(dayPct) >= 0;
                 return (
-                  <tr key={h.id} className="hover:bg-sidebar-accent/5 transition-colors group">
-                    <td className="px-6 py-3.5"><div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-sidebar-primary/10 flex items-center justify-center text-[10px] font-bold text-sidebar-primary border border-sidebar-primary/20">{h.symbol.substring(0, 2)}</div>
+                  <tr key={h.id} className="hover:bg-sidebar-accent/5 transition-colors group text-sm">
+                    <td className="px-4 py-2.5"><div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-sm bg-sidebar-primary/10 flex items-center justify-center text-[10px] font-bold text-sidebar-primary border border-sidebar-primary/20">{h.symbol.substring(0, 2)}</div>
                       <span className="font-bold text-white">{h.symbol}</span>
                     </div></td>
-                    <td className="px-6 py-3.5 font-mono text-muted-foreground">{h.quantity}</td>
-                    <td className="px-6 py-3.5 font-mono text-muted-foreground">₹{h.average_cost.toFixed(2)}</td>
-                    <td className="px-6 py-3.5 font-mono font-medium text-white">₹{h.ltp.toFixed(2)}</td>
-                    <td className="px-6 py-3.5"><div className="flex flex-col">
+                    <td className="px-4 py-2.5 font-mono text-muted-foreground">{h.quantity}</td>
+                    <td className="px-4 py-2.5 font-mono text-muted-foreground">₹{h.average_cost.toFixed(2)}</td>
+                    <td className="px-4 py-2.5 font-mono font-medium text-white">₹{h.ltp.toFixed(2)}</td>
+                    <td className="px-4 py-2.5"><div className="flex flex-col">
                       <span className={`font-mono font-medium ${pos ? 'text-green-500' : 'text-red-500'}`}>{pos ? '+' : ''}₹{h.pnl.toFixed(2)}</span>
-                      <span className="text-xs text-muted-foreground">{pos ? '+' : ''}{h.pnl_percent.toFixed(2)}%</span>
+                      <span className="text-[10px] text-muted-foreground">{pos ? '+' : ''}{h.pnl_percent.toFixed(2)}%</span>
                     </div></td>
-                    <td className="px-6 py-3.5"><div className={`flex items-center gap-1 text-sm font-medium ${dayPos ? 'text-green-500' : 'text-red-500'}`}>
-                      {dayPos ? <TrendingUp size={14} /> : <TrendingDown size={14} />}{dayPos ? '+' : ''}{dayPct}%
+                    <td className="px-4 py-2.5"><div className={`flex items-center gap-1 text-xs font-medium ${dayPos ? 'text-green-500' : 'text-red-500'}`}>
+                      {dayPos ? <TrendingUp size={12} /> : <TrendingDown size={12} />}{dayPos ? '+' : ''}{dayPct}%
                     </div></td>
-                    <td className="px-6 py-3.5">
+                    <td className="px-4 py-2.5">
                       <div className="flex items-center justify-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button className="p-1.5 text-blue-500 hover:bg-blue-500/10 border border-sidebar-border rounded-md" title="Buy More"><Plus size={14} /></button>
-                        <button className="p-1.5 text-red-500 hover:bg-red-500/10 border border-sidebar-border rounded-md" title="Sell"><Minus size={14} /></button>
-                        <button className="p-1.5 text-purple-500 hover:bg-purple-500/10 border border-sidebar-border rounded-md" title="GTT"><Crosshair size={14} /></button>
-                        <button className="p-1.5 text-yellow-500 hover:bg-yellow-500/10 border border-sidebar-border rounded-md" title="Alert"><Bell size={14} /></button>
+                        <button className="p-1 px-2 text-[10px] font-bold text-blue-500 hover:bg-blue-500/10 border border-sidebar-border rounded" title="Buy More">BUY</button>
+                        <button className="p-1 px-2 text-[10px] font-bold text-red-500 hover:bg-red-500/10 border border-sidebar-border rounded" title="Sell">SELL</button>
                       </div>
                     </td>
                   </tr>
@@ -259,32 +263,34 @@ function PositionsTab({ positions }: { positions: any[] }) {
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
-                <tr className="bg-sidebar-accent/10 border-b border-sidebar-border/50 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  <th className="px-6 py-3">Symbol</th><th className="px-6 py-3">Direction</th>
-                  <th className="px-6 py-3">Qty</th><th className="px-6 py-3">Entry</th>
-                  <th className="px-6 py-3">LTP</th><th className="px-6 py-3">Unrealized P&L</th>
-                  <th className="px-6 py-3">Holding Time</th><th className="px-6 py-3">Sector</th>
+                <tr className="bg-sidebar-accent/10 border-b border-sidebar-border/50 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                  <th className="px-4 py-2.5">Symbol</th><th className="px-4 py-2.5">Direction</th>
+                  <th className="px-4 py-2.5">Qty</th><th className="px-4 py-2.5">Entry</th>
+                  <th className="px-4 py-2.5">LTP</th><th className="px-4 py-2.5">Unrealized P&L</th>
+                  <th className="px-4 py-2.5">Holding Time</th><th className="px-4 py-2.5">Sector</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-sidebar-border/30">
                 {positions.map((p: any) => (
-                  <tr key={p.id} className="hover:bg-sidebar-accent/5 transition-colors">
-                    <td className="px-6 py-3.5 font-bold text-white">{p.symbol}</td>
-                    <td className="px-6 py-3.5">
-                      <span className={`px-2 py-0.5 rounded text-xs font-bold ${p.direction === 'BUY' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>{p.direction}</span>
+                  <tr key={p.id} className="hover:bg-sidebar-accent/5 transition-colors text-sm">
+                    <td className="px-4 py-2.5 font-bold text-white">{p.symbol}</td>
+                    <td className="px-4 py-2.5">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${p.direction === 'BUY' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>{p.direction}</span>
                     </td>
-                    <td className="px-6 py-3.5 font-mono text-muted-foreground">{p.quantity}</td>
-                    <td className="px-6 py-3.5 font-mono text-muted-foreground">₹{p.entry_price}</td>
-                    <td className="px-6 py-3.5 font-mono text-white">₹{p.ltp}</td>
-                    <td className="px-6 py-3.5">
-                      <span className={`font-mono font-medium ${p.is_positive ? 'text-green-500' : 'text-red-500'}`}>
+                    <td className="px-4 py-2.5 font-mono text-muted-foreground">{p.quantity}</td>
+                    <td className="px-4 py-2.5 font-mono text-muted-foreground">₹{p.entry_price}</td>
+                    <td className="px-4 py-2.5 font-mono text-white">₹{p.ltp}</td>
+                    <td className="px-4 py-2.5">
+                      <span className={`font-mono font-bold ${p.is_positive ? 'text-green-500' : 'text-red-500'}`}>
                         {p.is_positive ? '+' : ''}₹{p.unrealized_pnl} ({p.pnl_percent}%)
                       </span>
                     </td>
-                    <td className="px-6 py-3.5 text-muted-foreground text-sm flex items-center gap-1">
-                      <Clock size={12} />{p.holding_minutes > 60 ? `${(p.holding_minutes / 60).toFixed(1)}h` : `${p.holding_minutes}m`}
+                    <td className="px-4 py-2.5 text-muted-foreground text-xs">
+                      <div className="flex items-center gap-1">
+                        <Clock size={12} />{p.holding_minutes > 60 ? `${(p.holding_minutes / 60).toFixed(1)}h` : `${p.holding_minutes}m`}
+                      </div>
                     </td>
-                    <td className="px-6 py-3.5"><span className="text-xs bg-sidebar-accent/20 text-muted-foreground px-2 py-1 rounded">{p.sector}</span></td>
+                    <td className="px-4 py-2.5"><span className="text-[10px] uppercase font-black tracking-widest bg-sidebar-accent/20 text-muted-foreground px-2 py-1 rounded">{p.sector}</span></td>
                   </tr>
                 ))}
               </tbody>

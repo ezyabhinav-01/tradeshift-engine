@@ -5,6 +5,7 @@ import {
   Clock, Target, RefreshCw, AlertCircle, Award, Briefcase, FileText, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { useGame } from '../context/GameContext';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 const api = axios.create({ baseURL: API_BASE_URL, withCredentials: true });
@@ -13,6 +14,7 @@ export default function HistoryPage() {
   const [trades, setTrades] = useState<any[]>([]);
   const [summary, setSummary] = useState<any[]>([]);
   const [symbols, setSymbols] = useState<string[]>([]);
+  const { sessionType } = useGame();
   
   // Pagination & Filtering state
   const [loading, setLoading] = useState(true);
@@ -32,15 +34,18 @@ export default function HistoryPage() {
   const [sortConfig, setSortConfig] = useState({ key: 'entry_time', order: 'desc' });
 
   // Load symbols once
+  // Load symbols and summary when session changes
   useEffect(() => {
-    api.get('/api/history/symbols').then(res => setSymbols(res.data.symbols || [])).catch(console.error);
+    api.get('/api/history/symbols', { params: { session_type: sessionType } })
+      .then(res => setSymbols(res.data.symbols || []))
+      .catch(console.error);
     fetchSummary();
-  }, []);
+  }, [sessionType]);
 
   // Fetch Summary
   const fetchSummary = async () => {
     try {
-      const res = await api.get('/api/history/monthly-summary');
+      const res = await api.get('/api/history/monthly-summary', { params: { session_type: sessionType } });
       setSummary(res.data.months || []);
     } catch (e) {
       console.error('Failed to fetch summary:', e);
@@ -62,6 +67,7 @@ export default function HistoryPage() {
       params.append('sort_order', sortConfig.order);
       params.append('page', page.toString());
       params.append('limit', limit.toString());
+      params.append('session_type', sessionType);
 
       const res = await api.get(`/api/history/trades?${params.toString()}`);
       setTrades(res.data.trades || []);
@@ -72,7 +78,7 @@ export default function HistoryPage() {
     } finally {
       setLoading(false);
     }
-  }, [filters, sortConfig, page, limit]);
+  }, [filters, sortConfig, page, limit, sessionType]);
 
   // Refetch trades on dep change
   useEffect(() => {
@@ -90,11 +96,9 @@ export default function HistoryPage() {
 
   const handleExport = () => {
     const params = new URLSearchParams();
-    if (filters.dateFrom) params.append('from', filters.dateFrom);
-    if (filters.dateTo) params.append('to', filters.dateTo);
-    if (filters.symbol) params.append('symbol', filters.symbol);
     if (filters.direction) params.append('direction', filters.direction);
     if (filters.search) params.append('search', filters.search);
+    params.append('session_type', sessionType);
     
     window.location.href = `${API_BASE_URL}/api/history/trades/export?${params.toString()}`;
   };
@@ -255,7 +259,7 @@ export default function HistoryPage() {
           <div className="overflow-x-auto w-full">
             <table className="w-full text-left whitespace-nowrap">
               <thead>
-                <tr className="bg-sidebar-accent/10 border-b border-sidebar-border/50 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <tr className="bg-sidebar-accent/10 border-b border-sidebar-border/50 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
                   <Th label="Date/Time" sortKey="entry_time" currentSort={sortConfig} onSort={handleSort} />
                   <Th label="Symbol" sortKey="symbol" currentSort={sortConfig} onSort={handleSort} />
                   <Th label="Type" sortKey="direction" currentSort={sortConfig} onSort={handleSort} />
@@ -270,15 +274,15 @@ export default function HistoryPage() {
               <tbody className="divide-y divide-sidebar-border/30">
                 {trades.map((t) => (
                   <tr key={t.id} className="hover:bg-sidebar-accent/5 transition-colors group">
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-2.5">
                       <div className="flex flex-col">
                         <span className="text-sm font-medium text-white">{t.entry_time?.split(' ')[0]}</span>
                         <span className="text-xs text-muted-foreground">{t.entry_time?.split(' ')[1]}</span>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-sidebar-primary/10 flex items-center justify-center text-[10px] font-bold text-sidebar-primary border border-sidebar-primary/20">
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-full bg-sidebar-primary/10 flex items-center justify-center text-[10px] font-bold text-sidebar-primary border border-sidebar-primary/20">
                           {t.symbol.substring(0, 2)}
                         </div>
                         <div>
@@ -287,15 +291,15 @@ export default function HistoryPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2 py-0.5 rounded text-xs font-bold ${t.direction === 'BUY' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
+                    <td className="px-4 py-2.5">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-black tracking-widest uppercase ${t.direction === 'BUY' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
                         {t.direction}
                       </span>
                     </td>
-                    <td className="px-6 py-4 font-mono text-sm text-muted-foreground">{t.quantity}</td>
-                    <td className="px-6 py-4 font-mono text-sm text-white">₹{t.entry_price}</td>
-                    <td className="px-6 py-4 font-mono text-sm text-white">₹{t.exit_price}</td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-2.5 font-mono text-sm text-muted-foreground">{t.quantity}</td>
+                    <td className="px-4 py-2.5 font-mono text-sm text-white">₹{t.entry_price}</td>
+                    <td className="px-4 py-2.5 font-mono text-sm text-white">₹{t.exit_price}</td>
+                    <td className="px-4 py-2.5">
                       <div className="flex items-center gap-1.5">
                         {t.is_win ? <TrendingUp size={14} className="text-green-500" /> : <TrendingDown size={14} className="text-red-500" />}
                         <span className={`font-mono text-sm font-bold ${t.is_win ? 'text-green-500' : 'text-red-500'}`}>
@@ -303,11 +307,13 @@ export default function HistoryPage() {
                         </span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-muted-foreground flex items-center gap-1.5 mt-2">
-                       <Clock size={12} /> {t.holding_time > 60 ? `${(t.holding_time / 60).toFixed(1)}h` : `${t.holding_time}m`}
+                    <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-1.5">
+                        <Clock size={12} /> {t.holding_time > 60 ? `${(t.holding_time / 60).toFixed(1)}h` : `${t.holding_time}m`}
+                      </div>
                     </td>
-                    <td className="px-6 py-4 text-xs text-muted-foreground">
-                       <span className="bg-white/5 border border-white/10 px-2 py-1 rounded">{t.exit_reason || 'Manual'}</span>
+                    <td className="px-4 py-2.5 text-[10px] text-muted-foreground">
+                       <span className="bg-white/5 border border-white/10 px-2 py-1 rounded uppercase font-black tracking-widest">{t.exit_reason || 'Manual'}</span>
                     </td>
                   </tr>
                 ))}
@@ -377,7 +383,7 @@ function Th({ label, sortKey, currentSort, onSort }: { label: string, sortKey?: 
 
   return (
     <th 
-      className="px-6 py-4 cursor-pointer hover:bg-sidebar-accent/10 transition-colors select-none group"
+      className="px-4 py-3 cursor-pointer hover:bg-sidebar-accent/10 transition-all select-none group"
       onClick={() => onSort(sortKey)}
     >
       <div className="flex items-center gap-1">

@@ -48,8 +48,11 @@ def xirr(cash_flows: List[tuple]) -> float:
 
 class PortfolioService:
     
-    def get_holdings(self, db: Session, user_id: int) -> List[Dict[str, Any]]:
-        holdings = db.query(PortfolioHolding).filter(PortfolioHolding.user_id == user_id).all()
+    def get_holdings(self, db: Session, user_id: int, session_type: str = 'LIVE') -> List[Dict[str, Any]]:
+        holdings = db.query(PortfolioHolding).filter(
+            PortfolioHolding.user_id == user_id,
+            PortfolioHolding.session_type == session_type
+        ).all()
         
         results = []
         for h in holdings:
@@ -87,8 +90,8 @@ class PortfolioService:
         # Sort by invested value descending
         return sorted(results, key=lambda x: x["invested_value"], reverse=True)
 
-    def get_summary(self, db: Session, user_id: int) -> Dict[str, Any]:
-        holdings = self.get_holdings(db, user_id)
+    def get_summary(self, db: Session, user_id: int, session_type: str = 'LIVE') -> Dict[str, Any]:
+        holdings = self.get_holdings(db, user_id, session_type)
         
         total_invested = sum(h["invested_value"] for h in holdings)
         total_current = sum(h["current_value"] for h in holdings)
@@ -154,10 +157,11 @@ class PortfolioService:
             "equity_curve": equity_curve
         }
 
-    def get_positions(self, db: Session, user_id: int) -> List[Dict[str, Any]]:
+    def get_positions(self, db: Session, user_id: int, session_type: str = 'LIVE') -> List[Dict[str, Any]]:
         """Get currently open positions from TradeLog (exit_price is null or 0)."""
         open_trades = db.query(TradeLog).filter(
             TradeLog.session_id.isnot(None),
+            TradeLog.session_type == session_type,
             (TradeLog.exit_price == None) | (TradeLog.exit_price == 0)
         ).all()
 
@@ -200,9 +204,9 @@ class PortfolioService:
             })
         return results
 
-    def get_sector_analysis(self, db: Session, user_id: int) -> Dict[str, Any]:
+    def get_sector_analysis(self, db: Session, user_id: int, session_type: str = 'LIVE') -> Dict[str, Any]:
         """Get sector allocation and concentration risks from holdings."""
-        holdings = self.get_holdings(db, user_id)
+        holdings = self.get_holdings(db, user_id, session_type)
 
         # Add sector info to each holding
         for h in holdings:
@@ -227,9 +231,10 @@ class PortfolioService:
             "risk_level": "Low" if diversity_score > 70 else ("Medium" if diversity_score > 40 else "High"),
         }
 
-    def get_trade_research(self, db: Session, user_id: int) -> Dict[str, Any]:
+    def get_trade_research(self, db: Session, user_id: int, session_type: str = 'LIVE') -> Dict[str, Any]:
         """Analyze historical trade patterns and generate behavioral insights."""
         all_trades = db.query(TradeLog).filter(
+            TradeLog.session_type == session_type,
             TradeLog.exit_price.isnot(None),
             TradeLog.exit_price != 0
         ).all()

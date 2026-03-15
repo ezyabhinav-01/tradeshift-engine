@@ -1,0 +1,103 @@
+
+================================================================================
+          TRADESHIFT: END-TO-END TRADING SYSTEM GUIDE (USER & DEVELOPER)
+================================================================================
+
+This guide provides a comprehensive overview of the TradeShift trading ecosystem, 
+covering the user experience, risk management, and the underlying technical 
+implementation of the Order Management System (OMS) and Risk Engine.
+
+--------------------------------------------------------------------------------
+PART 1: USER GUIDE - "HOW TO TRADE LIKE A PRO"
+--------------------------------------------------------------------------------
+
+TradeShift is designed to provide a professional-grade trading experience with 
+built-in safety nets and high-fidelity simulation.
+
+1. STARTING YOUR SESSION
+   - LIVE MODE: Trade with your actual paper trading balance. Data is persistent 
+     and reflects your real performance.
+   - SIMULATION (REPLAY): Practice strategies using historical data. This mode 
+     is completely isolated—your simulated trades won't affect your Live portfolio.
+   - Look for the badge in the Top Toolbar to confirm your active mode.
+
+2. PLACING ORDERS
+   - MARKET ORDERS: Buy or Sell immediately at the current price.
+   - LIMIT ORDERS: Specify the price you want to enter at. Your order stays 
+     'PENDING' until the market hits your target.
+   - STOP LOSS (SL) & TAKE PROFIT (TP): Always set these to protect your capital. 
+     The system automatically closes your trade when these levels are touched.
+
+3. TRADING ON THE CHART
+   - DRAG-TO-MODIFY: You can drag your SL/TP lines directly on the chart to 
+     adjust your risk dynamically.
+   - PNL TRACKING: Real-time PnL is displayed on your entry line.
+   - ONE-CLICK EXIT: Click the entry line or the 'Exit All' button for 
+     immediate liquidation.
+
+4. RISK MANAGEMENT
+   - Go to 'Settings' to configure your safety limits:
+     * MAX ORDER QUANTITY: Prevents accidental oversized bets.
+     * DAILY LOSS LIMIT: The "Circuit Breaker"—if you hit this loss, the 
+       Risk Engine will block further trades for the day.
+     * ONE-CLICK TRADING: Toggle this 'ON' for faster execution if you are an 
+       advanced user.
+
+--------------------------------------------------------------------------------
+PART 2: DEVELOPER GUIDE - "UNDER THE HOOD"
+--------------------------------------------------------------------------------
+
+The backend is built for ultra-low latency (<50ms pipeline) and modularity.
+
+1. THE RISK ENGINE (app/services/risk_engine.py)
+   - PHILOSOPHY: Guardrail-first design. Every order must pass risk checks 
+     before reaching the Trade Engine.
+   - ARCHITECTURE:
+     * Uses Redis for ultra-fast tracking of daily losses.
+     * Fetches user-specific limits from PostgreSQL (cached in Redis).
+     * Validates: Order Quantity <= Max Limit; Current Loss + Order Risk <= Daily Limit.
+   - FALLBACK: Operates in "degraded mode" (skipping Redis checks) if the cache 
+     is unreachable, ensuring system availability.
+
+2. TRADE ENGINE (app/trade_engine.py)
+   - ROLE: Stateless executor and record-keeper.
+   - FLOW:
+     1. Receives 'TradeExecuteRequest' (Pydantic model).
+     2. Calls 'risk_engine.check_order()'.
+     3. Creates a 'TradeLog' entry (Status: OPEN or PENDING).
+     4. If MARKET: Spawns child 'PENDING' orders for SL and TP linked via 'parent_trade_id'.
+
+3. ORDER MANAGEMENT SYSTEM (app/services/order_management.py)
+   - ROLE: The "Brain" that monitors market ticks and manages lifecycles.
+   - CONDITIONAL LOGIC:
+     * Scans for 'PENDING' orders matching the incoming price symbol.
+     * Triggers based on OrderType (LIMIT <= price, STOP >= price, etc.).
+   - LIFECYCLE MANAGEMENT:
+     * When a child order (SL/TP) is triggered, it calls 'close_trade()' 
+       on the parent trade automatically.
+     * Marks parent as 'CLOSED', child as 'FILLED', and cancels any 
+       remaining sibling orders.
+
+4. DATABASE SCHEMA (app/models.py)
+   - 'trade_logs': Unified table for all order types. Key fields: 'status', 
+     'parent_trade_id', 'session_type', 'simulated_time'.
+   - 'portfolio_holdings': Tracks active exposure. Segregated by 'session_type'.
+
+5. WEBSOCKET SYNC (app/websocket_manager.py)
+   - All state changes (Trigger -> Filled -> Closed) are broadcasted via 
+     'order_update' events to the frontend for real-time UI updates.
+
+--------------------------------------------------------------------------------
+PART 3: SUMMARY OF END-TO-END FLOW
+--------------------------------------------------------------------------------
+
+1. User clicks "BUY" -> Frontend sends POST /api/trade/execute.
+2. Backend API calls TradeEngine -> RiskEngine validates limits.
+3. Database record created -> Trade status "OPEN".
+4. OMS monitors Price Ticks -> Price hits SL.
+5. OMS triggers child order -> Parent trade "CLOSED" -> PnL calculated.
+6. WebSocket emits update -> Frontend UI clears lines and updates Portfolio.
+
+================================================================================
+                    (C) 2026 TRADESHIFT ENGINE TEAM
+================================================================================

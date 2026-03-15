@@ -9,13 +9,17 @@ export interface CandleData {
 }
 
 export interface Trade {
-    id: string;
+    id: string | number;
     symbol: string;
-    type: 'BUY' | 'SELL';
+    direction?: 'BUY' | 'SELL'; // backend uses direction
+    type?: 'BUY' | 'SELL';      // legacy frontend uses type
     entryPrice: number;
     quantity: number;
     pnl?: number;
     exitPrice?: number;
     timestamp: Date;
-    status: 'OPEN' | 'CLOSED';
+    status: 'OPEN' | 'CLOSED' | 'PENDING' | 'TRIGGERED' | 'FILLED' | 'CANCELLED';
+    stopLoss?: number;
+    takeProfit?: number;
+    sessionType?: 'LIVE' | 'REPLAY';
 }

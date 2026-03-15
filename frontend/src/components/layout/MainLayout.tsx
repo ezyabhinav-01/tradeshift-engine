@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { Activity } from 'lucide-react';
 import Sidebar from './Sidebar';
-import type { Page } from './Sidebar';
+type Page = 'terminal' | 'history' | 'settings';
 import Topbar from './Topbar';
 import ChartArea from '../features/ChartArea';
 import OrderPanel from '../features/OrderPanel';
+import TradePanel from '../TradePanel/TradePanel';
 import PlaybackControls from '../features/PlaybackControls';
 import HistoryPage from '../../pages/HistoryPage';
 import SettingsPage from '../../pages/SettingsPage';
@@ -12,7 +13,13 @@ import { useGame } from '../../context/GameContext';
 
 const MainLayout = () => {
   const [page, setPage] = useState<Page>('terminal');
-  const { speed, setSpeed, theme } = useGame();
+  const { speed, setSpeed, theme, placeOrder } = useGame();
+  const [selectedPrice, setSelectedPrice] = useState<number | null>(null);
+
+  const handleExecuteOrder = (orderData: any) => {
+    console.log('🚀 Executing Order (Terminal):', orderData);
+    placeOrder(orderData.direction, orderData.quantity);
+  };
 
   return (
     <div className={`flex h-screen w-screen font-sans overflow-hidden transition-colors duration-500
@@ -23,7 +30,7 @@ const MainLayout = () => {
         : 'bg-gradient-to-br from-slate-50 via-blue-50 to-emerald-50 text-gray-900'
       }`}>
 
-      <Sidebar page={page} setPage={setPage} />
+      <Sidebar />
 
       <div className="flex-1 flex flex-col min-w-0">
         <Topbar />
@@ -32,9 +39,21 @@ const MainLayout = () => {
           {page === 'terminal' && (
             <>
               {/* Chart Area */}
-              <ChartArea />
+              <ChartArea
+                onPriceClick={(price) => setSelectedPrice(price)}
+                previewPrice={selectedPrice}
+              />
               <OrderPanel />
               <PlaybackControls />
+
+              {/* Trade Panel */}
+              {selectedPrice !== null && (
+                <TradePanel
+                  price={selectedPrice}
+                  onExecute={handleExecuteOrder}
+                  onClose={() => setSelectedPrice(null)}
+                />
+              )}
 
               {/* Floating Speed Control Widget */}
               <div className={`absolute bottom-6 left-6 p-3 rounded-lg flex items-center gap-3 shadow-xl z-40 backdrop-blur-md border transition-all duration-300 hover:scale-105

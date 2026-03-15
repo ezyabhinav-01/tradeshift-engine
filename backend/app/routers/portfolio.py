@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
-from app.database import get_db
+from app.database import get_db, get_db_sync
 from app.models import User
 from app.portfolio_service import portfolio_service
 from app.config import SECRET_KEY, ALGORITHM
@@ -39,11 +39,11 @@ def _get_user_id(request: Request, db: Session) -> int:
 
 
 @router.get("/summary")
-async def get_portfolio_summary(request: Request, db: Session = Depends(get_db)):
+def get_portfolio_summary(request: Request, session_type: str = 'LIVE', db: Session = Depends(get_db_sync)):
     """Portfolio summary: XIRR, total invested, P&L, equity curve."""
     try:
         user_id = _get_user_id(request, db)
-        return portfolio_service.get_summary(db, user_id)
+        return portfolio_service.get_summary(db, user_id, session_type)
     except Exception as e:
         logger.error(f"Error fetching portfolio summary: {e}")
         return {
@@ -53,11 +53,11 @@ async def get_portfolio_summary(request: Request, db: Session = Depends(get_db))
 
 
 @router.get("/holdings")
-async def get_portfolio_holdings(request: Request, db: Session = Depends(get_db)):
+def get_portfolio_holdings(request: Request, session_type: str = 'LIVE', db: Session = Depends(get_db_sync)):
     """All held equity positions with LTP and P&L."""
     try:
         user_id = _get_user_id(request, db)
-        holdings = portfolio_service.get_holdings(db, user_id)
+        holdings = portfolio_service.get_holdings(db, user_id, session_type)
         return {"holdings": holdings}
     except Exception as e:
         logger.error(f"Error fetching portfolio holdings: {e}")
@@ -65,11 +65,11 @@ async def get_portfolio_holdings(request: Request, db: Session = Depends(get_db)
 
 
 @router.get("/positions")
-async def get_portfolio_positions(request: Request, db: Session = Depends(get_db)):
+def get_portfolio_positions(request: Request, session_type: str = 'LIVE', db: Session = Depends(get_db_sync)):
     """Open trade positions from TradeLog."""
     try:
         user_id = _get_user_id(request, db)
-        positions = portfolio_service.get_positions(db, user_id)
+        positions = portfolio_service.get_positions(db, user_id, session_type)
         return {"positions": positions}
     except Exception as e:
         logger.error(f"Error fetching positions: {e}")
@@ -77,22 +77,22 @@ async def get_portfolio_positions(request: Request, db: Session = Depends(get_db
 
 
 @router.get("/sectors")
-async def get_sector_analysis(request: Request, db: Session = Depends(get_db)):
+def get_sector_analysis(request: Request, session_type: str = 'LIVE', db: Session = Depends(get_db_sync)):
     """Sector allocation breakdown with concentration risk alerts."""
     try:
         user_id = _get_user_id(request, db)
-        return portfolio_service.get_sector_analysis(db, user_id)
+        return portfolio_service.get_sector_analysis(db, user_id, session_type)
     except Exception as e:
         logger.error(f"Error fetching sector analysis: {e}")
         return {"allocation": [], "risks": [], "diversity_score": 0, "total_sectors": 0, "risk_level": "Unknown"}
 
 
 @router.get("/research")
-async def get_trade_research(request: Request, db: Session = Depends(get_db)):
+def get_trade_research(request: Request, session_type: str = 'LIVE', db: Session = Depends(get_db_sync)):
     """Trade behavior analytics and insights."""
     try:
         user_id = _get_user_id(request, db)
-        return portfolio_service.get_trade_research(db, user_id)
+        return portfolio_service.get_trade_research(db, user_id, session_type)
     except Exception as e:
         logger.error(f"Error fetching trade research: {e}")
         return {

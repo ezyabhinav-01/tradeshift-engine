@@ -82,16 +82,26 @@ const TopToolbar = ({ isNewsOpen, onToggleNews }: TopToolbarProps) => {
                     <span className="text-sm">Alert</span>
                 </Button>
 
-                {/* Replay */}
-                <Button
-                    variant="ghost"
-                    onClick={toggleReplay}
-                    className={`h-8 gap-2 px-2 ml-2 border border-tv-border text-tv-text-primary hover:opacity-90 ${isReplayActive ? 'bg-gradient-to-r from-blue-600/20 to-blue-700/20 text-blue-500 border-blue-500/50' : 'bg-tv-bg-pane'
-                        }`}
-                >
-                    <Rewind size={18} />
-                    <span className="text-sm font-bold">Replay</span>
-                </Button>
+                {/* Replay & Status Indicator */}
+                <div className="flex items-center gap-2 ml-2">
+                    <Button
+                        variant="ghost"
+                        onClick={toggleReplay}
+                        className={`h-8 gap-2 px-2 border border-tv-border text-tv-text-primary hover:opacity-90 ${isReplayActive ? 'bg-gradient-to-r from-blue-600/20 to-blue-700/20 text-blue-500 border-blue-500/50' : 'bg-tv-bg-pane'
+                            }`}
+                    >
+                        <Rewind size={18} />
+                        <span className="text-sm font-bold">Replay</span>
+                    </Button>
+
+                    <div className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border ${
+                        isReplayActive 
+                        ? 'bg-blue-500/10 border-blue-500/30 text-blue-500' 
+                        : 'bg-green-500/10 border-green-500/30 text-green-500'
+                    }`}>
+                        {isReplayActive ? 'Simulation' : 'Live Mode'}
+                    </div>
+                </div>
             </div>
 
             {/* RIGHT CONTROLS */}

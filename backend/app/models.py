@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime
+from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean
 from datetime import datetime
 from app.database import Base  # Import Base from database.py
 
@@ -37,6 +37,17 @@ class TradeLog(Base):
 
     time_since_last_trade = Column(Float, nullable=True)
 
+    # 🚀 ADVANCED ORDER FIELDS
+    user_id = Column(Integer, nullable=True, index=True)
+    alert = Column(Boolean, default=False)
+    order_type = Column(String, default="MARKET")  # MARKET, LIMIT, STOP, GTT
+    limit_price = Column(Float, nullable=True)
+    stop_price = Column(Float, nullable=True)
+    triggered = Column(Boolean, default=False)
+    status = Column(String, default="OPEN")  # OPEN, CLOSED, PENDING, CANCELLED, TRIGGERED, FILLED
+    parent_trade_id = Column(Integer, nullable=True, index=True) # For SL/TP linked to a parent trade
+    session_type = Column(String, default="LIVE", index=True) # LIVE or REPLAY
+
 class PortfolioHolding(Base):
     """
     Model representing an actively held position in the user's portfolio.
@@ -49,6 +60,7 @@ class PortfolioHolding(Base):
     quantity = Column(Integer)
     average_cost = Column(Float)
     first_purchase_date = Column(DateTime, default=datetime.utcnow)
+    session_type = Column(String, default="LIVE", index=True) # LIVE or REPLAY
 
 class User(Base):
     __tablename__ = "users"
@@ -62,6 +74,25 @@ class User(Base):
     risk_tolerance = Column(String, nullable=True)    # e.g., "Low", "Medium", "High"
     preferred_industries = Column(String, nullable=True) # e.g., "Technology", "Healthcare"
     created_at = Column(DateTime, default=datetime.utcnow)
+
+class UserSettings(Base):
+    """
+    User-specific risk limits and trading preferences.
+    """
+    __tablename__ = "user_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, unique=True, index=True) # One-to-one with User
+
+    # Risk Limits
+    max_daily_loss = Column(Float, default=5000.0)
+    max_order_quantity = Column(Integer, default=100)
+    
+    # Trading Preferences
+    one_click_trading_enabled = Column(Boolean, default=False)
+    require_session_confirmation = Column(Boolean, default=True)
+
+    last_updated = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class StockFundamental(Base):

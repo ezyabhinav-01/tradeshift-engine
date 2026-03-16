@@ -12,6 +12,7 @@ asyncpg
 pandas
 pyarrow
 numpy
+yfinance
 
 # === Object Storage ===
 minio
@@ -58,3 +59,4 @@ pyotp
 
 # === Utilities ===
 python-dotenv
+apscheduler

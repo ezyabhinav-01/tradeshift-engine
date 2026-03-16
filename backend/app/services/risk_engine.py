@@ -18,7 +18,7 @@ class RiskEngine:
 
     def __init__(self, redis_host: Optional[str] = None, redis_port: int = 6379):
         if redis_host is None:
-            redis_host = os.getenv("REDIS_HOST", "localhost")
+            redis_host = os.getenv("REDIS_HOST", "redis")
         try:
             self.redis = Redis(host=redis_host, port=redis_port, decode_responses=True)
             # Test connection

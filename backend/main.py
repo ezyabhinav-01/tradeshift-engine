@@ -23,7 +23,7 @@ from app.models import User
 from app.database import get_db
 from app.news_service import fetch_news_for_date
 from app.nlp_engine import analyze_news_impact, ask_news_question
-from app.database import Base, connect_to_database, get_db_sync
+from app.database import Base, connect_to_database, connect_to_database_sync, get_db_sync
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO)
@@ -32,8 +32,8 @@ logger = logging.getLogger(__name__)
 # --- DB INITIALIZATION ---
 # Connect and Create Tables using the cached connection pattern
 try:
-    engine = connect_to_database()
-    Base.metadata.create_all(bind=engine)
+    engine_sync = connect_to_database_sync()
+    Base.metadata.create_all(bind=engine_sync)
     print("✅ Database Tables Created/Verified")
 except Exception as e:
     print(f"❌ Database Initialization Failed: {e}")
@@ -127,7 +127,7 @@ except Exception:
     pass
 
 try:
-    redis_client = Redis(host='tradeshift_redis', port=6379, decode_responses=True)
+    redis_client = Redis(host=os.getenv("REDIS_HOST", "redis"), port=6379, decode_responses=True)
 except Exception:
     print("⚠️ Redis not connected")
 

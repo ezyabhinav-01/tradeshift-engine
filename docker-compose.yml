@@ -57,6 +57,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://user:password@db:5432/tradeshift
       - REDIS_URL=redis://redis:6379/0
+      - REDIS_HOST=redis
       - MINIO_ENDPOINT=http://minio:9000
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin

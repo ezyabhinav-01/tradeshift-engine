@@ -1,4 +1,9 @@
 import asyncio
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 async def test_live():
     from app.live_market import shoonya_live

@@ -21,6 +21,7 @@ class ShoonyaLiveService:
         self.api = None
         self.connected = False
         self.callbacks = []
+        self.loop = None
         
         # We will subscribe to NIFTY, BANKNIFTY, SENSEX, INDIA VIX
         self.subscription_tokens = {
@@ -75,18 +76,23 @@ class ShoonyaLiveService:
             self.latest_data[name] = {**self.latest_data.get(name, {}), **update}
             
             if "price" in update:
-               asyncio.create_task(self._notify_callbacks(self.latest_data[name]))
+               if self.loop:
+                   asyncio.run_coroutine_threadsafe(self._notify_callbacks(self.latest_data[name]), self.loop)
+               else:
+                   logger.warning("Event loop not capture, cannot notify callbacks")
 
-    def on_open(self):
+    def on_open(self, *args):
         logger.info("🟢 Shoonya WebSocket Connected")
         self.connected = True
         self._subscribe()
 
-    def on_close(self, code, reason):
-        logger.warning(f"🔴 Shoonya WebSocket Closed: {code} - {reason}")
+    def on_close(self, *args):
+        # NorenApi might pass (code, reason) or nothing depending on version
+        logger.warning(f"🔴 Shoonya WebSocket Closed. Args: {args}")
         self.connected = False
 
     def on_error(self, err):
+        # Some versions might pass (ws, err), but NorenApi usually wraps it
         logger.error(f"⚠️ Shoonya WebSocket Error: {err}")
 
     def _subscribe(self):
@@ -100,14 +106,21 @@ class ShoonyaLiveService:
             logger.error("Cannot connect to Shoonya: NorenRestApiPy missing")
             return
             
-        user_id = os.getenv('SHOONYA_USER_ID')
-        password = os.getenv('SHOONYA_PASSWORD')
-        vendor_code = os.getenv('SHOONYA_VENDOR_CODE')
-        api_secret = os.getenv('SHOONYA_API_SECRET')
-        totp_secret = os.getenv('SHOONYA_TOTP_SECRET')
+        try:
+            self.loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self.loop = None
+            
+        user_id = os.getenv('SHOONYA_USER_ID', '').strip()
+        password = os.getenv('SHOONYA_PASSWORD', '').strip()
+        vendor_code = os.getenv('SHOONYA_VENDOR_CODE', '').strip()
+        api_secret = os.getenv('SHOONYA_API_SECRET', '').strip()
+        totp_secret = os.getenv('SHOONYA_TOTP_SECRET', '').strip()
+        imei = os.getenv('SHOONYA_IMEI', 'abc1234').strip()
         
         if not all([user_id, password, vendor_code, api_secret, totp_secret]):
-            logger.error("Missing Shoonya credentials in .env")
+            missing = [k for k,v in {'user_id': user_id, 'password': password, 'vendor_code': vendor_code, 'api_secret': api_secret, 'totp_secret': totp_secret}.items() if not v]
+            logger.error(f"Missing Shoonya credentials in .env: {missing}")
             return
             
         class CustomNoren(NorenApi):
@@ -115,11 +128,20 @@ class ShoonyaLiveService:
                super().__init__(host=host, websocket=websocket)
                
         API_ENDPOINT = "https://api.shoonya.com/NorenWClientTP/"
-        self.api = CustomNoren(host=API_ENDPOINT, websocket=API_ENDPOINT)
+        WS_ENDPOINT = "wss://api.shoonya.com/NorenWSTP/"
+        self.api = CustomNoren(host=API_ENDPOINT, websocket=WS_ENDPOINT)
         
         try:
-            # Need to run in executor to not block async loop if it takes time
+            # Time synchronization check
+            now = datetime.datetime.now()
+            logger.info(f"System Time: {now.strftime('%Y-%m-%d %H:%M:%S')} | UTC: {datetime.datetime.utcnow().strftime('%H:%M:%S')}")
+            
             totp = pyotp.TOTP(totp_secret).now()
+            # Obscure the TOTP for safety but log its length and first digit
+            logger.info(f"Generated TOTP (length {len(totp)}): {totp[0]}****")
+            
+            logger.info(f"Attempting Shoonya login for ID: {user_id} | Vendor: {vendor_code} | IMEI: {imei}")
+            
             login_resp = await asyncio.to_thread(
                 self.api.login,
                 userid=user_id,
@@ -127,7 +149,7 @@ class ShoonyaLiveService:
                 twoFA=totp,
                 vendor_code=vendor_code,
                 api_secret=api_secret,
-                imei="abc1234"
+                imei=imei
             )
             
             if login_resp and login_resp.get("stat") == "Ok":
@@ -139,7 +161,15 @@ class ShoonyaLiveService:
                     socket_error_callback=self.on_error
                 )
             else:
-                logger.error(f"❌ Shoonya API Login Failed: {login_resp}")
+                logger.error(f"❌ Shoonya API Login Failed. Response: {login_resp}")
+                if login_resp is None:
+                    logger.error("Shoonya API returned 'None'. Check if credentials/secret are correct and specifically if system time matches real time (TOTP issue).")
+                elif login_resp.get("emsg"):
+                    logger.error(f"Error Message from Shoonya: {login_resp.get('emsg')}")
+        except Exception as e:
+            logger.error(f"❌ Exception during Shoonya login: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
         except Exception as e:
             logger.error(f"❌ Error connecting to Shoonya: {e}")
 

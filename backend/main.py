@@ -22,7 +22,7 @@ from app.websocket_manager import order_manager
 from app.models import User
 from app.database import get_db
 from app.news_service import fetch_news_for_date
-from app.nlp_engine import analyze_news_impact, ask_news_question
+from app.nlp_engine import analyze_news_impact, ask_news_question, generate_news_explainer
 from app.database import Base, connect_to_database, connect_to_database_sync, get_db_sync
 
 # Configure Logging
@@ -273,7 +273,7 @@ async def search_instruments(query: str):
             LIMIT 10
         """)
         
-        with engine.connect() as conn:
+        with engine_sync.connect() as conn:
             result = conn.execute(search_query, {"query": f"%{query}%"})
             rows = result.fetchall()
             
@@ -308,14 +308,18 @@ async def get_available_symbols():
         # Open connection ONCE, not in loop
         conn = None
         try:
-            conn = engine.connect()
+            conn = engine_sync.connect()
             print("✅ DB Connection established")
         except Exception as e:
             print(f"⚠️ DB Connection failed: {e}")
 
+        import re
         for file_path in parquet_files:
             basename = os.path.basename(file_path).replace('.parquet', '')
-            symbol = basename.replace('_1min', '').replace('_2026', '').replace('_2025', '')
+            # Robust symbol extraction: Remove the _YYYY-MM-DD suffix if present
+            symbol = re.sub(r'_\d{4}-\d{2}-\d{2}$', '', basename)
+            # Legacy cleanup support
+            symbol = symbol.replace('_1min', '').replace('_2026', '').replace('_2025', '')
             print(f"   Processing symbol: {symbol} from {basename}")
             
             name = symbol # Default
@@ -1011,22 +1015,38 @@ async def websocket_endpoint(websocket: WebSocket):
                             }
                         }))
                         
-                        # 2. Trigger FinGPT analysis in background
+                        # 2. Trigger FinGPT analysis & Explainer in background
                         async def perform_analysis(item, item_idx, sym):
                             import traceback
                             try:
-                                result = await analyze_news_impact(item["title"], item["description"], sym)
+                                # Run impact analysis and explainer generation in parallel
+                                impact_task = analyze_news_impact(item["title"], item["description"], sym)
+                                explainer_task = generate_news_explainer(item["title"], item["description"], sym)
+                                
+                                impact_res, explainer_res = await asyncio.gather(impact_task, explainer_task)
+                                
+                                # Send Impact Analysis
                                 await websocket.send_json({
                                     "type": "NEWS_ANALYSIS",
                                     "data": {
                                         "id": item_idx,
-                                        "analysis": result["analysis"],
-                                        "sentiment": result["sentiment"],
-                                        "predicted_impact": result.get("predicted_impact", "Unknown")
+                                        "analysis": impact_res["analysis"],
+                                        "sentiment": impact_res["sentiment"],
+                                        "predicted_impact": impact_res.get("predicted_impact", "Unknown")
                                     }
                                 })
+                                
+                                # Send Explainer
+                                await websocket.send_json({
+                                    "type": "NEWS_EXPLAINER",
+                                    "data": {
+                                        "id": item_idx,
+                                        "explainer": explainer_res
+                                    }
+                                })
+                                
                             except Exception as ex:
-                                print(f"Error in FinGPT analysis: {ex}\n{traceback.format_exc()}")
+                                print(f"Error in FinGPT analysis/explainer: {ex}\n{traceback.format_exc()}")
                                 
                         asyncio.create_task(perform_analysis(n_item, idx, current_symbol))
 

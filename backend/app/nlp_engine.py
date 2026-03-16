@@ -1,4 +1,5 @@
 import os
+import json
 import asyncio
 import aiohttp
 import google.generativeai as genai
@@ -301,3 +302,66 @@ async def chat_about_stock(symbol: str, fund_data: dict, question: str, chat_his
     except Exception as e:
         print(f"❌ Equity Chat Error: {e}")
         return f"Sorry, I couldn't generate an answer right now. Error: {str(e)}"
+async def generate_news_explainer(news_title: str, news_desc: str, symbol: str) -> dict:
+    """
+    Generates a beginner-friendly, educational breakdown of a news event.
+    Returns: { essence, analogy, golden_rule }
+    """
+    print(f"📖 FinGPT (Gemini) generating News Explainer for {symbol}: '{news_title}'")
+    
+    explainer_prompt = f"""
+    You are a world-class financial educator (Zerodha Varsity style). 
+    Help a beginner understand the core meaning of this news for '{symbol}'.
+    
+    Headline: {news_title}
+    Details: {news_desc}
+    
+    Provide the explanation in this JSON format (strictly):
+    {{
+        "essence": "What this news actually means for the business/market in 2 simple sentences.",
+        "analogy": "A brilliant real-world analogy to explain the market reaction.",
+        "golden_rule": "One universal principle of investing to learn from this specific event."
+    }}
+    
+    Avoid jargon. Use clear, encouraging language.
+    """
+
+    try:
+        if gemini_model:
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(None, lambda: gemini_model.generate_content(explainer_prompt))
+            output = response.text.strip()
+            
+            # Basic JSON extraction if Gemini adds markdown markers
+            if "```json" in output:
+                output = output.split("```json")[1].split("```")[0].strip()
+            elif "```" in output:
+                output = output.split("```")[1].split("```")[0].strip()
+                
+            data = json.loads(output)
+            return {
+                "essence": data.get("essence", "Explanation pending..."),
+                "analogy": data.get("analogy", "Looking for a good analogy..."),
+                "golden_rule": data.get("golden_rule", "The rule is simple: stay informed.")
+            }
+        else:
+            # Fallback to HF for explainer
+            messages = [
+                {"role": "system", "content": "You are a world-class financial educator."},
+                {"role": "user", "content": explainer_prompt}
+            ]
+            output = await _call_hf_inference(messages)
+            # Rough parsing for HF if it doesn't return clean JSON
+            return {
+                "essence": output[:200] + "...",
+                "analogy": "Analogy coming soon.",
+                "golden_rule": "Stay disciplined."
+            }
+            
+    except Exception as e:
+        print(f"❌ News Explainer Error: {e}")
+        return {
+            "essence": f"We're having trouble simplifying this right now. {str(e)}",
+            "analogy": "Imagine a library where the books are rearranged.",
+            "golden_rule": "Knowledge is the greatest hedge."
+        }

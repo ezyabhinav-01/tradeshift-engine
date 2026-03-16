@@ -17,6 +17,11 @@ export interface NewsItem {
   predicted_impact?: string;
   actual_impact?: string;
   qa_history?: {question: string, answer: string}[];
+  explainer?: {
+    essence: string;
+    analogy: string;
+    golden_rule: string;
+  };
 }
 
 export interface IndexData {
@@ -233,7 +238,18 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
 
       // --- NEWS EVENTS ---
       if (payload.type === 'NEWS_FLASH') {
-        toast.info(payload.data.title, { description: "FinGPT is analyzing..." });
+        toast.info(payload.data.title, {
+          description: payload.data.description,
+          duration: 10000,
+          position: 'top-right',
+          action: {
+            label: 'Explain ✨',
+            onClick: () => {
+              const aiTab = document.querySelector('[data-tab="analysis"]') as HTMLElement;
+              if (aiTab) aiTab.click();
+            }
+          }
+        });
         const newsEvent: NewsItem = { ...payload.data, analysis: "Analyzing impact...", sentiment: "NEUTRAL" };
         setNewsItems(prev => [newsEvent, ...prev]);
       }
@@ -265,6 +281,13 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
           }
           return item;
         }));
+      }
+
+      if (payload.type === 'NEWS_EXPLAINER') {
+        const { id, explainer } = payload.data;
+        setNewsItems(prev => prev.map(item => 
+          item.id === id ? { ...item, explainer } : item
+        ));
       }
       // -------------------
 

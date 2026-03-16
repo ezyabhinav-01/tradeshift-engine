@@ -8,7 +8,7 @@ import NewsPanel from '../components/features/NewsPanel';
 import TradingViewWidget from '@/components/ui/TradingViewWidget';
 import { NEWS_WIDGET_CONFIG } from '@/lib/constants';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Newspaper, BrainCircuit } from 'lucide-react';
+import { Newspaper, BrainCircuit, Sparkles } from 'lucide-react';
 import { useGame } from '../hooks/useGame';
 
 const Home = () => {
@@ -107,13 +107,17 @@ const Home = () => {
               <Tabs defaultValue="live" className="flex flex-col h-full">
                 <div className="p-4 border-b border-white/5">
                   <TabsList className="grid w-full grid-cols-2 bg-black/40">
-                    <TabsTrigger value="live" className="text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-primary data-[state=active]:text-black">
-                      <Newspaper className="w-3 h-3 mr-2" />
-                      Live News
+                    <TabsTrigger value="live" className="text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-primary data-[state=active]:text-black flex items-center gap-1.5">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                      </span>
+                      Live Pulse
                     </TabsTrigger>
-                    <TabsTrigger value="ai" className="text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-primary data-[state=active]:text-black">
-                      <BrainCircuit className="w-3 h-3 mr-2" />
-                      AI Analysis
+                    <TabsTrigger value="ai" className="text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-primary data-[state=active]:text-black gap-1.5">
+                      <Sparkles className="w-3 h-3 text-orange-400 animate-pulse" />
+                      FinGPT Explainer
+                      <span className="bg-black/20 text-[7px] px-1 rounded ml-1 animate-bounce">USP</span>
                     </TabsTrigger>
                   </TabsList>
                 </div>

@@ -11,8 +11,8 @@ WORKDIR /app
 COPY package.json ./
 
 # 4. Install dependencies inside the container
-# We force all platforms to ensure native binaries (Rollup, LightningCSS) are present
-RUN npm install --include=optional --os=linux --cpu=arm64
+# We use standard npm install to support cross-platform (macOS ARM64, Windows x86_64)
+RUN npm install
 
 # 5. Copy the rest of your code
 COPY . .

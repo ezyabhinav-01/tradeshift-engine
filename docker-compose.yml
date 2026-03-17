@@ -23,6 +23,11 @@ services:
     container_name: tradeshift_redis
     ports:
       - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   # 3. MinIO (S3 compatible storage)
   minio:
@@ -51,7 +56,7 @@ services:
       db:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
       minio:
         condition: service_started
     environment:
@@ -112,8 +117,12 @@ services:
     container_name: tradeshift_worker
     command: python workers/news_worker.py
     depends_on:
-      - db
-      - rabbitmq
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+      redis:
+        condition: service_healthy
     environment:
       - DATABASE_URL=postgresql://user:password@db:5432/tradeshift
       - PYTHONUNBUFFERED=1

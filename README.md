@@ -110,12 +110,20 @@ graph TD
 ### 🐳 Option 1: Docker (Recommended)
 The quickest way to get TradeShift running is via Docker Compose.
 
-```bash
-git clone https://github.com/Ritsham/tradeshift-engine.git
-cd tradeshift-engine
-docker-compose up -d
-```
-Visit `http://localhost:3000` to start practicing.
+1. **Set Up Environment Variables**
+   Before running Docker, securely set up your API keys. Copy the example file and edit it:
+   ```bash
+   cp backend/.env.example backend/.env
+   # Edit backend/.env to include your NEWSAPI_KEY, ALPHA_VANTAGE_KEY, etc.
+   ```
+
+2. **Start the Containers**
+   ```bash
+   git clone https://github.com/Ritsham/tradeshift-engine.git
+   cd tradeshift-engine
+   docker-compose up -d
+   ```
+   Visit `http://localhost:5173` to start practicing.
 
 ### 🛠️ Option 2: Manual Development
 **Backend:**

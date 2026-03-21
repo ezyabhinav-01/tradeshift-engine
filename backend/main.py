@@ -17,7 +17,7 @@ from redis import Redis
 from prometheus_fastapi_instrumentator import Instrumentator
 from app.oms import OrderManager
 from app import auth
-from app.routers import inngest, portfolio, history, trading
+from app.routers import inngest, portfolio, history, trading, news
 from app.websocket_manager import order_manager
 from app.models import User
 from app.database import get_db
@@ -120,6 +120,7 @@ from app.routers import inngest, portfolio, history, trading, user
 # ...
 app.include_router(trading.router)
 app.include_router(user.router)
+app.include_router(news.router)
 
 # --- 3. INFRASTRUCTURE CONNECTIONS ---
 
@@ -406,7 +407,7 @@ async def get_historical_candles(symbol: str, limit: int = 500, date: str = None
     """
     try:
         base_symbol = symbol.split('-')[0] if '-' in symbol else symbol
-        df, _, _ = load_parquet_for_symbol(base_symbol, date)
+        df, _, _ = load_parquet_for_symbol(base_symbol, date, allow_fallback=True)
 
         # Resolve the datetime column
         time_col = next((c for c in ['datetime', 'date', 'time'] if c in df.columns), None)

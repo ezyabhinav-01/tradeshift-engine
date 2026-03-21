@@ -6,10 +6,7 @@ import axios from 'axios';
 const API_BASE = '/api/user';
 
 export const useTemplatePersistence = () => {
-  const { 
-    templates, setTemplates, 
-    toolTemplates, setToolTemplates 
-  } = useChartObjects();
+  const { setTemplates, setToolTemplates } = useChartObjects();
 
   const fetchTemplates = useCallback(async () => {
     try {

@@ -326,7 +326,7 @@ export const ProChart: React.FC<ProChartProps> = ({
     
     const chart = createChart(chartContainerRef.current, {
       layout: { 
-        background: { type: ColorType.Solid, color: isDark ? 'transparent' : '#ffffff' }, 
+        background: { type: ColorType.Solid, color: isDark ? '#121212' : '#ffffff' }, 
         textColor: isDark ? '#D1D4DC' : '#131722',
         fontSize: 12,
         fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",

@@ -14,6 +14,7 @@ import MarketPage from './pages/MarketPage';
 import HistoryPage from './pages/HistoryPage';
 import SettingsPage from './pages/SettingsPage';
 import PortfolioPage from './pages/PortfolioPage';
+import NewsPage from './pages/NewsPage';
 import { Toaster } from 'sonner';
 
 import { useChartPersistence } from './hooks/useChartPersistence';
@@ -33,11 +34,13 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Layout />}>
                 <Route index element={<Home />} />
+                <Route path="trade" element={<Home />} />
                 <Route path="home1" element={<Home1 />} />
                 <Route path="markets" element={<MarketPage />} />
                 <Route path="screener" element={<ScreenerPage />} />
                 <Route path="history" element={<HistoryPage />} />
                 <Route path="portfolio" element={<PortfolioPage />} />
+                <Route path="news" element={<NewsPage />} />
                 <Route path="settings" element={<SettingsPage />} />
                 <Route path="research/:symbol" element={<ResearchHub />} />
               </Route>

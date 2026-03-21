@@ -1,4 +1,4 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { Sun, Moon, Search, Bell } from 'lucide-react';
 import { useThemeStore } from '../../store/themeStore';
@@ -9,16 +9,15 @@ import { SymbolSearchModal } from '../features/SymbolSearchModal';
 const Topbar = () => {
   const { theme, toggleTheme } = useThemeStore();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const location = useLocation();
-  const isChartRoute = location.pathname === '/' || location.pathname === '/terminal';
+  // const location = useLocation(); // This was removed as it was unused.
 
   return (
-    <header className={`sticky top-0 h-14 min-h-[56px] flex items-center justify-between px-4 lg:px-6 transition-all duration-300 z-50 bg-white/95 dark:bg-tv-bg-pane/95 border-b border-slate-200 dark:border-white/10 backdrop-blur-sm`}>
+    <header className={`sticky top-0 h-14 min-h-[56px] flex items-center justify-between px-4 lg:px-6 transition-all duration-300 z-50 bg-white dark:bg-[#121212] border-b border-slate-200 dark:border-white/10 backdrop-blur-sm shadow-sm`}>
       <SymbolSearchModal open={isSearchOpen} onOpenChange={setIsSearchOpen} />
 
       {/* Left Section - Logo */}
       <div className="flex items-center gap-4 w-[250px] shrink-0">
-        <Link to="/Home1" className="flex items-center gap-3">
+        <Link to="/" className="flex items-center gap-3">
           <img src="/assets/icons/logo.svg" alt="Logo" width={32} height={32} className='h-8 w-auto cursor-pointer' />
           <h1 className="hidden sm:block text-xl font-bold tracking-wide text-tv-text-primary">
             TRADE<span className="text-tv-primary">SHIFT</span>

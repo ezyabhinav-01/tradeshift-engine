@@ -4,10 +4,11 @@ import {
   Hash, Triangle, Waves,
   Square, Circle, ArrowUpRight, Paintbrush, Type,
   Ruler, ZoomIn,
-  Magnet, Lock, Eye, Trash2, Library
+  Trash2, Library
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import type { DrawingToolId } from '../../hooks/useDrawingTools';
+import { Button } from '../ui/button';
+import React from 'react';
 
 interface LeftToolbarProps {
   activeTool: DrawingToolId;
@@ -64,7 +65,7 @@ const TOOL_SECTIONS: { tools: ToolDef[]; separator?: boolean }[] = [
   },
 ];
 
-const LeftToolbar = () => {
+const LeftToolbar: React.FC<LeftToolbarProps> = ({ activeTool, onSelectTool, onClearAll, onToggleLibrary }) => {
 
     const ToolButton = ({ icon: Icon, active = false }: { icon: any, active?: boolean; }) => (
         <Button
@@ -78,15 +79,29 @@ const LeftToolbar = () => {
     );
 
     return (
-        <div className="w-[52px] bg-tv-bg-base flex flex-col items-center py-2 h-full select-none overflow-y-auto custom-scrollbar">
-            {TOOL_GROUPS.map((group, i) => (
-                <div key={i} className="flex flex-col w-full items-center mb-2">
-                    {group.map((Icon, j) => (
-                        <ToolButton key={j} icon={Icon} active={i === 0 && j === 0} />
+        <div className="w-[52px] bg-tv-bg-base flex flex-col items-center py-2 h-full select-none overflow-y-auto custom-scrollbar border-r border-tv-border">
+            {TOOL_SECTIONS.map((section, i) => (
+                <div key={i} className="flex flex-col w-full items-center">
+                    {section.tools.map((tool, j) => (
+                        <div key={tool.id || j} title={tool.title} onClick={() => tool.id && onSelectTool(tool.id)}>
+                            <ToolButton 
+                                icon={tool.icon} 
+                                active={activeTool === tool.id} 
+                            />
+                        </div>
                     ))}
-                    {i < TOOL_GROUPS.length - 1 && <div className="h-[1px] w-6 bg-tv-border my-2" />}
+                    {i < TOOL_SECTIONS.length - 1 && <div className="h-[1px] w-6 bg-tv-border my-2" />}
                 </div>
             ))}
+            
+            <div className="mt-auto flex flex-col items-center gap-2 mb-2">
+                <div onClick={onToggleLibrary}>
+                    <ToolButton icon={Library} />
+                </div>
+                <div onClick={onClearAll}>
+                    <ToolButton icon={Trash2} />
+                </div>
+            </div>
         </div>
     );
 };

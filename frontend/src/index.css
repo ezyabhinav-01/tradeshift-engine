@@ -115,12 +115,9 @@
   --tv-text-secondary: #a7a8aa;
 
   color-scheme: dark;
-}
 
-
-.dark {
-  /* Enforce Dark Mode Theme (Deep Slate) */
-  --background: 222.2 84% 4.9%;
+  /* Neutral Dark Theme (Slate) */
+  --background: 222.2 0% 7%;  /* Neutral blackish */
   --foreground: 210 40% 98%;
 
   --card: 217.2 32.6% 11%;
@@ -144,7 +141,7 @@
   --destructive: 0 62.8% 30.6%;
   --destructive-foreground: 210 40% 98%;
 
-  --border: 217.2 32.6% 17.5%;
+  --border: 217.2 32.6% 14%;
   --input: 217.2 32.6% 17.5%;
   --ring: 221.2 83.2% 53.3%;
 

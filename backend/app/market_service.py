@@ -109,8 +109,14 @@ class MarketService:
             
             for sym in symbols:
                 if sym in data and not data[sym].empty and len(data[sym]) >= 2:
-                    current_price = float(data[sym]['Close'].iloc[-1])
-                    prev_close = float(data[sym]['Close'].iloc[-2])
+                    current_val = data[sym]['Close'].iloc[-1]
+                    prev_val = data[sym]['Close'].iloc[-2]
+                    
+                    if pd.isna(current_val) or pd.isna(prev_val):
+                        continue
+                        
+                    current_price = float(current_val)
+                    prev_close = float(prev_val)
                     
                     change = current_price - prev_close
                     change_percent = (change / prev_close) * 100

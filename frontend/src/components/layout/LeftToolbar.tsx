@@ -99,30 +99,33 @@ const LeftToolbar = ({ activeTool, onSelectTool, onClearAll, onToggleLibrary }: 
               >
                 <tool.icon size={20} strokeWidth={1.5} />
               </Button>
-            ))}
-          </div>
-        ))}
-      </div>
-
-      {/* Utilities — bottom */}
-      <div className="flex flex-col w-full items-center">
-        <div className="h-[1px] w-6 bg-tv-border my-1.5" />
-        {UTILITY_TOOLS.map((util) => (
-          <Button
-            key={util.action}
-            variant="ghost"
-            title={util.title}
-            onClick={() => {
-              if (util.action === 'clear') onClearAll();
-              if (util.action === 'library') onToggleLibrary();
-            }}
-            className="w-10 h-10 p-0 rounded-none hover:bg-tv-bg-pane text-tv-text-secondary"
-          >
-            <util.icon size={20} strokeWidth={1.5} />
-          </Button>
-        ))}
-      </div>
+      ))}
     </div>
+  ))
+}
+      </div >
+
+  {/* Utilities — bottom */ }
+  < div className = "flex flex-col w-full items-center" >
+    <div className="h-[1px] w-6 bg-tv-border my-1.5" />
+{
+  UTILITY_TOOLS.map((util) => (
+    <Button
+      key={util.action}
+      variant="ghost"
+      title={util.title}
+      onClick={() => {
+        if (util.action === 'clear') onClearAll();
+        if (util.action === 'library') onToggleLibrary();
+      }}
+      className="w-10 h-10 p-0 rounded-none hover:bg-tv-bg-pane text-tv-text-secondary"
+    >
+      <util.icon size={20} strokeWidth={1.5} />
+    </Button>
+  ))
+}
+      </div >
+    </div >
   );
 };
 

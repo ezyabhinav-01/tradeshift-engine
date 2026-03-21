@@ -157,7 +157,14 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
         ) : (
           <div className="prose prose-invert max-w-none prose-sm">
             <div className="text-gray-300 leading-relaxed whitespace-pre-wrap">
-              {currentContent?.split('###').map((section, idx) => {
+              {currentContent?.includes('<!DOCTYPE html>') || currentContent?.includes('<html') || currentContent?.includes('401') ? (
+                <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm flex flex-col gap-2">
+                  <span className="font-bold flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4" /> AI Engine Unavailable
+                  </span>
+                  <span>The AI analysis engine is currently unavailable. This is usually caused by missing or invalid API keys (e.g., HuggingFace). Please check your backend configuration.</span>
+                </div>
+              ) : currentContent?.split('###').map((section, idx) => {
                 if (!section.trim()) return null;
                 const isVarsity = section.includes('VARSITY LESSON');
                 

@@ -326,7 +326,7 @@ export const ProChart: React.FC<ProChartProps> = ({
     
     const chart = createChart(chartContainerRef.current, {
       layout: { 
-        background: { type: ColorType.Solid, color: '#131722' }, 
+        background: { type: ColorType.Solid, color: isDark ? 'transparent' : '#ffffff' }, 
         textColor: isDark ? '#D1D4DC' : '#131722',
         fontSize: 12,
         fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
@@ -577,7 +577,7 @@ export const ProChart: React.FC<ProChartProps> = ({
   }, [currentPrice, alerts, selectedSymbol, updateAlert]);
 
   return (
-    <div className="relative w-full h-full bg-[#131722] overflow-hidden pl-12 flex flex-col">
+    <div className="relative w-full h-full bg-transparent overflow-hidden pl-12 flex flex-col">
       <div className="absolute top-4 left-16 z-40 flex flex-col gap-0.5 pointer-events-none select-none min-w-[300px]">
         {/* Symbol and OHLC Row */}
         <div className="flex items-center gap-2 px-1 py-0.5 rounded-sm">

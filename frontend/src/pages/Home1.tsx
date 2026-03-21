@@ -9,7 +9,7 @@ import {
 const Home1 = () => {
     const scriptUrl = `https://s3.tradingview.com/external-embedding/embed-widget-`;
     return (
-        <div className="flex flex-col h-full w-full overflow-y-auto home-wrapper p-6 bg-tv-bg-base">
+        <div className="flex flex-col h-full w-full overflow-y-auto home-wrapper p-6">
             <section className="grid w-full gap-8 home-section">
                 <div className="md:col-span-1 xl:col-span-1"> {/* It Wraps our first chart */}
                     <TradingViewWidget title="Market Overview"

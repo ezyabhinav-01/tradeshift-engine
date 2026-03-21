@@ -46,7 +46,7 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = (props) => {
   };
 
   return (
-    <div className="absolute top-0 bottom-0 left-0 z-50 flex flex-col items-center bg-[#131722] border-r border-[#2a2e39] w-12 py-2 select-none group/sidebar">
+    <div className="absolute top-0 bottom-0 left-0 z-50 flex flex-col items-center bg-transparent border-r border-[#2a2e39] w-12 py-2 select-none group/sidebar">
       <div className="flex flex-col gap-1 w-full items-center">
         {DRAWING_CATEGORIES.map((cat) => {
           const Icon = cat.icon;

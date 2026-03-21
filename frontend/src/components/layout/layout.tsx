@@ -27,12 +27,12 @@ const Layout = () => {
             {/* 5. Actual Content (z-index ensures it stays above the background) */}
             <div className="relative z-10 flex flex-col h-full w-full">
                 <Topbar />
-                <div className="w-full bg-transparent py-1">
+                <div className="w-full bg-transparent border-none">
                     <GlobalTicker />
                 </div>
                 
-                <div className="flex-1 flex overflow-hidden">
-                    <div className="flex-1 flex flex-col overflow-hidden custom-scrollbar">
+                <div className="flex-1 flex min-h-0 overflow-hidden">
+                    <div className="flex-1 flex flex-col min-h-0 overflow-y-auto custom-scrollbar">
                         <Outlet />
                     </div>
                 </div>

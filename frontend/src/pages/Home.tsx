@@ -123,7 +123,7 @@ const Home = () => {
   const openTradesCount = trades.filter(t => t.status === 'OPEN' || t.status === 'TRIGGERED').length;
 
   return (
-    <div className="flex flex-col flex-1 w-full bg-transparent text-tv-text-primary overflow-hidden font-sans border-t-3 border-tv-border">
+    <div className="flex flex-col flex-1 min-h-0 w-full bg-transparent text-tv-text-primary overflow-hidden font-sans border-t-3 border-tv-border">
       {/* TOP TOOLBAR */}
       <TopToolbar
         isNewsOpen={isNewsOpen}
@@ -138,7 +138,7 @@ const Home = () => {
 
       <div className="flex flex-1 min-h-0 relative">
         {/* CENTER CHART AREA */}
-        <div className="flex-1 relative bg-tv-bg-base">
+        <div className="flex-1 relative bg-transparent">
           <ProChart
             data={mappedCandles}
             activeDrawingTool={activeDrawingTool}

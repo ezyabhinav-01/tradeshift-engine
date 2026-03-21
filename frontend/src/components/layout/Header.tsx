@@ -13,7 +13,7 @@ const Topbar = () => {
   const isChartRoute = location.pathname === '/' || location.pathname === '/terminal';
 
   return (
-    <header className={`sticky top-0 h-14 min-h-[56px] border-b-3 border-tv-border bg-tv-bg-base  flex items-center justify-between px-4 lg:px-6 transition-colors duration-300 z-50 ${isChartRoute ? 'bg-tv-bg-pane' : 'bg-transparent'}`}>
+    <header className={`sticky top-0 h-14 min-h-[56px] flex items-center justify-between px-4 lg:px-6 transition-colors duration-300 z-50 ${isChartRoute ? 'bg-tv-bg-pane' : 'bg-transparent'}`}>
       <SymbolSearchModal open={isSearchOpen} onOpenChange={setIsSearchOpen} />
 
       {/* Left Section - Logo */}

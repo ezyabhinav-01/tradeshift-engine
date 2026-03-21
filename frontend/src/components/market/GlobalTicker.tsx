@@ -79,11 +79,11 @@ export const GlobalTicker = () => {
         return (
           <Fragment key={idx.name + i}>
             <div 
-              className="flex items-center gap-2 shrink-0 cursor-pointer hover:bg-white/3 px-2 py-1 rounded transition-colors"
+              className="flex items-center gap-2 shrink-0 cursor-pointer hover:bg-slate-100 dark:hover:bg-white/5 px-2 py-1 rounded transition-colors"
               onClick={() => setSymbol(idx.name, '')}
             >
-              <span className="text-gray-100 font-bold uppercase tracking-wide">{idx.name}</span>
-              <span className="text-gray-100">{idx.price.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+              <span className="text-tv-text-primary font-bold uppercase tracking-wide">{idx.name}</span>
+              <span className="text-tv-text-primary font-medium">{idx.price.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
               <span className={colorClass}>
                 {idx.change.toFixed(2)} ({sign}{idx.change_percent.toFixed(2)}%)
               </span>

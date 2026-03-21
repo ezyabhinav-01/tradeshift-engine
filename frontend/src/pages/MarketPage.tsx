@@ -144,8 +144,9 @@ const MarketPage: React.FC = () => {
     // Only connect to live WS if we are NOT playing the simulator
     if (isPlaying) return;
 
-    // Determine WS URL based on API_BASE
-    const wsUrl = API_BASE.replace('http', 'ws') + '/ws/live_indices';
+    // Determine WS URL reliably based on current protocol
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${wsProtocol}//${window.location.host}/ws/live_indices`;
     const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
@@ -203,7 +204,10 @@ const MarketPage: React.FC = () => {
   // Determine what indices to show based on simulation state
   const displayIndices = isPlaying ? simulatedIndices : indices;
 
-  const formatCurrency = (val: number) => new Intl.NumberFormat('en-IN').format(val);
+  const formatCurrency = (val: number | string | undefined | null) => {
+    if (val === undefined || val === null || isNaN(Number(val))) return '0.00';
+    return new Intl.NumberFormat('en-IN').format(Number(val));
+  };
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-12 bg-gradient-to-br from-slate-200/50 via-slate-100 to-slate-200 dark:from-blue-900/10 dark:via-black dark:to-black min-h-screen text-black dark:text-white" style={{ fontFamily: 'Inter, sans-serif' }}>
@@ -301,10 +305,10 @@ const MarketPage: React.FC = () => {
               onScroll={checkScroll}
               className="flex overflow-x-auto gap-4 pb-4 snap-x [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
             >
-              {isLoading && displayIndices.length === 0 ? (
+              {isLoading && (displayIndices?.length ?? 0) === 0 ? (
                 [1, 2, 3, 4].map(i => <div key={i} className="min-w-[260px] md:min-w-[280px] flex-1 flex-shrink-0 snap-start h-28 bg-slate-200 dark:bg-white/5 animate-pulse rounded-lg"></div>)
               ) : (
-                displayIndices.map((idx: any) => (
+                displayIndices?.map((idx: any) => (
                   <div key={idx.symbol} className="min-w-[260px] md:min-w-[280px] flex-1 flex-shrink-0 snap-start bg-white dark:bg-[#121212] border border-slate-200 dark:border-white/10 p-5 rounded-lg hover:border-slate-300 dark:hover:border-white/30 transition-all cursor-pointer group shadow-sm dark:shadow-[0_4px_20px_rgba(255,255,255,0.03)]">
                     <div className="flex justify-between items-start mb-2">
                       <h3 className="text-sm font-semibold text-slate-500 dark:text-gray-300 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">{idx.name}</h3>
@@ -358,7 +362,7 @@ const MarketPage: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-white/5">
-                    {gainers.slice(0, 5).map((stock: any) => (
+                    {gainers?.slice(0, 5).map((stock: any) => (
                       <tr
                         key={stock.symbol}
                         onClick={() => navigate(`/research/${stock.symbol}`)}
@@ -378,7 +382,7 @@ const MarketPage: React.FC = () => {
                         </td>
                       </tr>
                     ))}
-                    {gainers.length === 0 && !isLoading && (
+                    {(gainers?.length ?? 0) === 0 && !isLoading && (
                       <tr><td colSpan={3} className="py-8 text-center text-slate-500 dark:text-gray-500 text-xs">No data available. Market might be closed.</td></tr>
                     )}
                   </tbody>
@@ -425,7 +429,7 @@ const MarketPage: React.FC = () => {
                         </td>
                       </tr>
                     ))}
-                    {losers.length === 0 && !isLoading && (
+                    {(losers?.length ?? 0) === 0 && !isLoading && (
                       <tr><td colSpan={3} className="py-8 text-center text-slate-500 dark:text-gray-500 text-xs">No data available. Market might be closed.</td></tr>
                     )}
                   </tbody>
@@ -553,12 +557,12 @@ const MarketPage: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-white/5 font-mono text-xs">
-                    {optionsData.chain.map((row: any) => (
+                    {optionsData?.chain?.map((row: any) => (
                       <tr key={row.strike} className={`hover:bg-slate-50 dark:hover:bg-white/5 transition-colors ${row.is_atm ? 'bg-blue-50 dark:bg-primary/10 relative z-10' : ''}`}>
-                        {isOptionsAdvanced && <td className="py-4 px-3 text-slate-500 dark:text-gray-500">{row.call.oi.toLocaleString('en-IN')}</td>}
-                        {isOptionsAdvanced && <td className="py-4 px-3 text-slate-400 dark:text-gray-400">{row.call.iv}%</td>}
-                        <td className="py-4 px-3 text-green-600/70 dark:text-green-500/70 text-right">{row.call.bid}</td>
-                        <td className="py-4 px-3 border-r border-slate-100 dark:border-white/5 font-semibold text-green-600 dark:text-green-400 text-right">{row.call.ltp}</td>
+                        {isOptionsAdvanced && <td className="py-4 px-3 text-slate-500 dark:text-gray-500">{row.call?.oi?.toLocaleString('en-IN') || '0'}</td>}
+                        {isOptionsAdvanced && <td className="py-4 px-3 text-slate-400 dark:text-gray-400">{row.call?.iv}%</td>}
+                        <td className="py-4 px-3 text-green-600/70 dark:text-green-500/70 text-right">{row.call?.bid}</td>
+                        <td className="py-4 px-3 border-r border-slate-100 dark:border-white/5 font-semibold text-green-600 dark:text-green-400 text-right">{row.call?.ltp}</td>
 
                         <td className={`py-4 px-3 font-semibold text-[13px] ${row.is_atm ? 'text-blue-700 bg-blue-100 dark:text-primary dark:bg-primary/20 shadow-inner dark:shadow-[inset_0_0_10px_rgba(59,130,246,0.3)]' : 'text-slate-700 dark:text-gray-300 bg-white dark:bg-white/[0.01]'}`}>
                           {row.is_atm && <span className="absolute -left-3 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-primary animate-pulse"></span>}

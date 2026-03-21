@@ -13,7 +13,7 @@ const Topbar = () => {
   const isChartRoute = location.pathname === '/' || location.pathname === '/terminal';
 
   return (
-    <header className={`sticky top-0 h-14 min-h-[56px] flex items-center justify-between px-4 lg:px-6 transition-colors duration-300 z-50 ${isChartRoute ? 'bg-tv-bg-pane' : 'bg-transparent'}`}>
+    <header className={`sticky top-0 h-14 min-h-[56px] flex items-center justify-between px-4 lg:px-6 transition-all duration-300 z-50 bg-white/95 dark:bg-tv-bg-pane/95 border-b border-slate-200 dark:border-white/10 backdrop-blur-sm`}>
       <SymbolSearchModal open={isSearchOpen} onOpenChange={setIsSearchOpen} />
 
       {/* Left Section - Logo */}
@@ -31,10 +31,10 @@ const Topbar = () => {
         {/* Search Bar - Modal Trigger */}
         <div 
           onClick={() => setIsSearchOpen(true)}
-          className="hidden md:flex items-center bg-[#2a2e39] hover:bg-[#2a2e39]/80 border border-[#2a2e39] hover:border-tv-primary/40 rounded-full px-4 py-1.5 transition-colors cursor-pointer group shrink-0"
+          className="hidden md:flex items-center bg-slate-100 dark:bg-[#2a2e39] hover:bg-slate-200 dark:hover:bg-[#2a2e39]/80 border border-slate-200 dark:border-[#2a2e39] hover:border-tv-primary/40 dark:hover:border-tv-primary/40 rounded-full px-4 py-1.5 transition-all cursor-pointer group shrink-0"
         >
-          <Search size={18} className="text-[#a3a6af] mr-2 group-hover:text-tv-text-primary transition-colors" />
-          <span className="text-[15px] text-[#a3a6af] group-hover:text-tv-text-primary transition-colors select-none whitespace-nowrap overflow-hidden">
+          <Search size={18} className="text-slate-500 dark:text-[#a3a6af] mr-2 group-hover:text-tv-text-primary transition-colors" />
+          <span className="text-[15px] text-slate-600 dark:text-[#a3a6af] group-hover:text-tv-text-primary transition-colors select-none whitespace-nowrap overflow-hidden">
             Search symbol...
           </span>
         </div>

@@ -8,7 +8,7 @@ const Layout = () => {
 
     return (
         /* 1. Main Container: Set the base dark color */
-        <main className={`relative h-screen w-screen flex flex-col overflow-hidden text-tv-text-primary ${isChartRoute ? 'bg-[#121212]' : 'bg-[#020617]'}`}>
+        <main className={`relative h-screen w-screen flex flex-col overflow-hidden text-tv-text-primary bg-background transition-colors duration-300`}>
             
             {/* Conditional Fancy Background layers */}
             {!isChartRoute && (

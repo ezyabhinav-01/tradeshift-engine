@@ -218,11 +218,19 @@ def load_parquet_for_symbol(symbol: str, target_date: str = None, allow_fallback
     if 'time' in df.columns:
         # Shoonya sometimes prefixes with "Ok " (e.g., "Ok 2026-02-13 12:12:00")
         df['time'] = df['time'].astype(str).str.replace('Ok ', '', regex=False).str.strip()
-        df['datetime'] = pd.to_datetime(df['time'], format='%d-%m-%Y %H:%M:%S', errors='coerce')
+        
+        # Try multiple formats
+        for fmt in ['%d-%m-%Y %H:%M:%S', '%Y-%m-%d %H:%M:%S', '%m/%d/%Y %H:%M:%S']:
+            try:
+                df['datetime'] = pd.to_datetime(df['time'], format=fmt, errors='coerce')
+                if not df['datetime'].isnull().all():
+                    break
+            except:
+                continue
+        
         # Fallback for ISO format
-        mask = df['datetime'].isnull()
-        if mask.any():
-            df.loc[mask, 'datetime'] = pd.to_datetime(df.loc[mask, 'time'], errors='coerce')
+        if 'datetime' not in df.columns or df['datetime'].isnull().all():
+            df['datetime'] = pd.to_datetime(df['time'], errors='coerce')
     
     # FORCE NUMERIC TYPES for OHLC (DO THIS BEFORE CHECKING FOR REQUIRED COLUMNS)
     # This fixes the "ufunc 'add' did not contain a loop..." error
@@ -424,11 +432,17 @@ async def get_historical_candles(symbol: str, limit: int = 500, date: str = None
         df = df.dropna(subset=[time_col])
         df = df.sort_values(time_col)
 
-        # Filter to the selected date so the static chart shows the full trading day timeline
+        # Filter to the selected date if provided
         if date:
             target_dt = pd.to_datetime(date).date()
-            df = df[df[time_col].dt.date == target_dt]
-
+            filtered_df = df[df[time_col].dt.date == target_dt]
+            
+            # If date filter returns data, use it. 
+            # Otherwise, if we allow fallback, use the whole file (most recent data)
+            if not filtered_df.empty:
+                df = filtered_df
+            else:
+                print(f"⚠️ No data found for {symbol} on {date}. Using most recent data instead.")
 
         # Take the most recent `limit` candles
         df = df.tail(limit)

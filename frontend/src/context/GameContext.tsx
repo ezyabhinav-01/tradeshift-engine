@@ -71,7 +71,8 @@ interface GameState {
     stopLoss?: number,
     takeProfit?: number,
     alert?: boolean,
-    simulatedTime?: string | Date
+    simulatedTime?: string | Date,
+    symbol?: string
   ) => void;
   closePosition: (
     tradeId: string | number, 
@@ -313,7 +314,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
           volume: d.volume || 0,
         };
         setCurrentCandle(newCandle);
-        setHistoricalCandles(prev => [...prev, newCandle]); // Add to history
+        setHistoricalCandles(prev => {
+          const next = [...prev, newCandle];
+          // Sliding window: keep at most 500 candles to limit memory
+          return next.length > 500 ? next.slice(next.length - 500) : next;
+        });
         setCurrentPrice(d.close);
         setCurrentTime(new Date(isoStr));
       }
@@ -469,14 +474,15 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
     stopLoss?: number,
     takeProfit?: number,
     alert: boolean = false,
-    simulatedTime?: string | Date
+    simulatedTime?: string | Date,
+    symbol?: string
   ) => {
     try {
       const response = await fetch(`/api/trade/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          symbol: selectedSymbol,
+          symbol: symbol || selectedSymbol,
           direction: type,
           quantity,
           price: price || currentPrice,

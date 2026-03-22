@@ -1,7 +1,11 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { CalendarRange, X } from 'lucide-react';
 import TopToolbar from '../components/layout/TopToolbar';
 import ProChart from '../components/ProChart/ProChart';
+import { MultiChartGrid } from '../components/ProChart/MultiChartGrid';
+import type { GameData } from '../components/ProChart/ProChart';
+import { useMultiChartStore } from '../store/useMultiChartStore';
+import { fetchHistoricalCandles } from '../services/MarketDataService';
 import TradePanel from '../components/TradePanel/TradePanel';
 import NewsPanel from '../components/features/NewsPanel';
 import ObjectTreePanel from '../components/ProChart/ObjectTreePanel';
@@ -11,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Sparkles } from 'lucide-react';
 import { useGame } from '../hooks/useGame';
 import type { DrawingToolId } from '../hooks/useDrawingTools';
+import { toast } from 'sonner';
 
 import type { IndicatorTemplate } from '../store/useChartObjects';
 
@@ -30,6 +35,7 @@ const Home = () => {
   }, []);
 
   // Keyboard Shortcuts
+  const { addChart } = useMultiChartStore();
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.altKey && e.key === 't') {
@@ -38,20 +44,86 @@ const Home = () => {
       if (e.altKey && e.key === 'n') {
         setIsNewsOpen(prev => !prev);
       }
+      // Ctrl+N / Cmd+N: Add new chart
+      if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+        e.preventDefault();
+        addChart();
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [addChart]);
   const [selectedPrice, setSelectedPrice] = useState<number | null>(null);
   const [tradeToExit, setTradeToExit] = useState<any | null>(null);
   const [exitLimitPrice, setExitLimitPrice] = useState<string>('');
 
-  const { placeOrder, closePosition, closeAllPositions, trades, userSettings, updateUserSettings, historicalCandles, currentCandle } = useGame();
+  const {
+    placeOrder, closePosition, closeAllPositions, trades,
+    userSettings, updateUserSettings, historicalCandles, currentCandle,
+    currentPrice, selectedSymbol, isPlaying, togglePlay,
+    isReplayActive, toggleReplay,
+    selectedDate, availableDates, setDate,
+    speed, setSpeed, modifyOrder, setSymbol
+  } = useGame();
   const [showExitAllConfirm, setShowExitAllConfirm] = useState(false);
   const [pendingOrder, setPendingOrder] = useState<any | null>(null);
 
   const [activeDrawingTool, setActiveDrawingTool] = useState<DrawingToolId>(null);
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
+
+  const { charts, activeChartId, setChartData } = useMultiChartStore();
+
+  // 1. Sync useGame's selectedSymbol with the active chart
+  const prevActiveChartIdRef = useRef(activeChartId);
+  useEffect(() => {
+    const activeChart = charts.find(c => c.id === activeChartId);
+    if (activeChart && activeChart.symbol !== selectedSymbol) {
+      if (isPlaying && prevActiveChartIdRef.current !== activeChartId) {
+        toast.info(`Replay switching to ${activeChart.symbol}`, {
+          description: 'Replay will restart for the new symbol.',
+          duration: 3000,
+        });
+      }
+      setSymbol(activeChart.symbol, '');
+    }
+    prevActiveChartIdRef.current = activeChartId;
+  }, [activeChartId, charts, selectedSymbol, setSymbol, isPlaying]);
+
+  // 2. Multi-Chart Data Fetcher: Fetch data for each chart slot independently
+  const lastFetchedRef = useRef<Record<string, string>>({});
+
+  useEffect(() => {
+    const fetchVisibleCharts = async () => {
+      // Only fetch for visible charts (up to layout limit)
+      const layoutType = useMultiChartStore.getState().layoutType;
+      const visibleCharts = charts.slice(0, layoutType);
+
+      for (const chart of visibleCharts) {
+        const fetchKey = `${chart.id}-${chart.symbol}-${selectedDate}`;
+        
+        // Fetch if symbol/date changed and it's not currently being fetched
+        if (chart.symbol && lastFetchedRef.current[chart.id] !== fetchKey) {
+          lastFetchedRef.current[chart.id] = fetchKey;
+          try {
+            console.log(`🌐 Fetching independent data for Slot ${chart.id}: ${chart.symbol}`);
+            const candles = await fetchHistoricalCandles(chart.symbol, 500, selectedDate || '');
+            setChartData(chart.id, candles);
+          } catch (err) {
+            console.error(`❌ Failed to fetch data for ${chart.symbol} in slot ${chart.id}:`, err);
+            // Optionally set empty data so we don't retry forever
+            setChartData(chart.id, []);
+          }
+        }
+      }
+    };
+
+    fetchVisibleCharts();
+  }, [charts, selectedDate, setChartData]);
+
+  // 3. Force refresh data for all charts when symbol changes in store
+  // (Handled by the effect above since candleData is cleared when symbol changes in store)
+  // Wait, I should ensure updateChart clears old data!
+
 
   const mappedCandles = useMemo(() => {
     const data = [...historicalCandles].filter(c => 'open' in c && c.open !== undefined).map(c => ({
@@ -75,6 +147,56 @@ const Home = () => {
     return data;
   }, [historicalCandles, currentCandle]);
 
+  // Memoized callbacks for chart props
+  const onToggleLibraryCb = useCallback(() => setIsLibraryOpen(false), []);
+  const onPriceClickCb = useCallback((price: number) => setSelectedPrice(price), []);
+  const onToggleIndicatorsCb = useCallback(() => setIsIndicatorsOpen(false), []);
+  const onToggleAlertsCb = useCallback(() => setIsAlertsOpen(false), []);
+
+  const handleEntryLineClick = useCallback((tradeId: string | number) => {
+    const trade = trades.find(t => t.id === tradeId);
+    if (trade) {
+      setTradeToExit(trade);
+      setExitLimitPrice(trade.entryPrice.toString());
+    }
+  }, [trades]);
+
+  // Memoized gameData to prevent new object refs each render
+  const gameData = useMemo(() => ({
+    currentPrice, currentCandle, isPlaying, selectedSymbol,
+    togglePlay, isReplayActive, toggleReplay,
+    selectedDate, availableDates, setDate,
+    speed, setSpeed, trades, modifyOrder,
+  } as GameData), [
+    currentPrice, currentCandle, isPlaying, selectedSymbol,
+    togglePlay, isReplayActive, toggleReplay,
+    selectedDate, availableDates, setDate,
+    speed, setSpeed, trades, modifyOrder,
+  ]);
+
+  // Memoized chartProps for MultiChartGrid
+  const chartProps = useMemo(() => ({
+    data: mappedCandles,
+    gameData,
+    activeDrawingTool,
+    onDrawingToolChange: setActiveDrawingTool,
+    isLibraryOpen,
+    onToggleLibrary: onToggleLibraryCb,
+    onPriceClick: onPriceClickCb,
+    onEntryLineClick: handleEntryLineClick,
+    previewPrice: selectedPrice,
+    isIndicatorsOpen,
+    onToggleIndicators: onToggleIndicatorsCb,
+    isAlertsOpen,
+    onToggleAlerts: onToggleAlertsCb,
+    onIndicatorStateChange: handleIndicatorStateChange,
+  }), [
+    mappedCandles, gameData, activeDrawingTool, isLibraryOpen,
+    selectedPrice, isIndicatorsOpen, isAlertsOpen,
+    onToggleLibraryCb, onPriceClickCb, handleEntryLineClick,
+    onToggleIndicatorsCb, onToggleAlertsCb, handleIndicatorStateChange,
+  ]);
+
   const handleExecuteOrder = (orderData: any) => {
     if (userSettings?.one_click_trading_enabled) {
       executeOrder(orderData);
@@ -91,17 +213,11 @@ const Home = () => {
       orderData.price,
       orderData.stop_loss,
       orderData.take_profit,
-      orderData.alert
+      orderData.alert,
+      undefined, // simulatedTime
+      orderData.symbol
     );
     setPendingOrder(null);
-  };
-
-  const handleEntryLineClick = (tradeId: string | number) => {
-    const trade = trades.find(t => t.id === tradeId);
-    if (trade) {
-      setTradeToExit(trade);
-      setExitLimitPrice(trade.entryPrice.toString());
-    }
   };
 
   const handleConfirmExit = async (type: 'MARKET' | 'LIMIT') => {
@@ -139,20 +255,9 @@ const Home = () => {
       <div className="flex flex-1 min-h-0 relative">
         {/* CENTER CHART AREA */}
         <div className="flex-1 relative bg-transparent">
-          <ProChart
-            data={mappedCandles}
-            activeDrawingTool={activeDrawingTool}
-            onDrawingToolChange={setActiveDrawingTool}
-            isLibraryOpen={isLibraryOpen}
-            onToggleLibrary={() => setIsLibraryOpen(false)}
-            onPriceClick={(price) => setSelectedPrice(price)}
-            onEntryLineClick={handleEntryLineClick}
-            previewPrice={selectedPrice}
-            isIndicatorsOpen={isIndicatorsOpen}
-            onToggleIndicators={() => setIsIndicatorsOpen(false)}
-            isAlertsOpen={isAlertsOpen}
-            onToggleAlerts={() => setIsAlertsOpen(false)}
-            onIndicatorStateChange={handleIndicatorStateChange}
+          <MultiChartGrid
+            ProChartComponent={ProChart}
+            chartProps={chartProps}
           />
 
           {/* EMERGENCY EXIT ALL BUTTON */}

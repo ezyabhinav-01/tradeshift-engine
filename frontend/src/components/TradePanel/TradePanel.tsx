@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useGame } from '../../hooks/useGame';
+import { useMultiChartStore } from '../../store/useMultiChartStore';
 import { X, ChevronDown, Bell, BellOff, TrendingUp, TrendingDown, Info } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -24,6 +25,10 @@ interface TradePanelProps {
 
 const TradePanel = ({ price, onExecute, onClose }: TradePanelProps) => {
   const { isPlaying, selectedSymbol, userSettings } = useGame();
+  const { charts, activeChartId } = useMultiChartStore();
+  
+  const activeChart = charts.find(c => c.id === activeChartId);
+  const activeSymbol = activeChart?.symbol || selectedSymbol;
 
   const [direction, setDirection] = useState<'BUY' | 'SELL'>('BUY');
   const [qty, setQty] = useState(50);
@@ -94,7 +99,7 @@ const TradePanel = ({ price, onExecute, onClose }: TradePanelProps) => {
     }
 
     const orderData: OrderData = {
-      symbol: selectedSymbol,
+      symbol: activeSymbol,
       direction,
       quantity: qty,
       price,
@@ -139,9 +144,9 @@ const TradePanel = ({ price, onExecute, onClose }: TradePanelProps) => {
             <div className="flex items-end justify-between mb-8">
               <div>
                 <h2 className="text-3xl font-black text-white tracking-tight flex items-center gap-3">
-                  {selectedSymbol}
+                  {activeSymbol}
                   <span className="text-xs font-mono px-2 py-1 bg-white/5 border border-white/10 rounded text-white/40 align-middle">
-                    NIFTY 50 / NSE
+                    {activeSymbol.includes('NIFTY') ? 'INDEX / NSE' : 'EQ / NSE'}
                   </span>
                 </h2>
                 <div className="flex items-center gap-2 mt-1">

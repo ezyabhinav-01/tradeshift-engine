@@ -6,10 +6,12 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { SymbolSearchModal } from '../features/SymbolSearchModal';
+import { SymbolSearch } from '../features/SymbolSearch';
 import { useGame } from '../../hooks/useGame';
+import { useMultiChartStore } from '../../store/useMultiChartStore';
 import { toast } from 'sonner';
 import { IndicatorTemplateMenu } from '../ProChart/IndicatorTemplateMenu';
+import { LayoutSwitcher } from '../ProChart/MultiChartGrid';
 import type { IndicatorTemplate } from '../../store/useChartObjects';
 
 interface TopToolbarProps {
@@ -28,12 +30,18 @@ const TopToolbar = ({
     onToggleIndicators, onOpenAlerts, activeIndicatorIds, onApplyIndicatorTemplate 
 }: TopToolbarProps) => {
     const { selectedSymbol, isReplayActive, toggleReplay } = useGame();
+    const { activeChartId, updateChart } = useMultiChartStore();
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const navigate = useNavigate();
 
     return (
         <div className="h-12 bg-transparent flex items-center px-4 justify-between text-tv-text-secondary select-none">
-            <SymbolSearchModal open={isSearchOpen} onOpenChange={setIsSearchOpen} />
+            <SymbolSearch 
+                open={isSearchOpen} 
+                onOpenChange={setIsSearchOpen} 
+                onSelect={(symbol) => updateChart(activeChartId, { symbol })}
+                activeChartId={activeChartId}
+            />
 
             {/* LEFT CONTROLS */}
             <div className="flex items-center space-x-2 h-full">
@@ -78,6 +86,9 @@ const TopToolbar = ({
                     activeIndicatorIds={activeIndicatorIds}
                     onApplyTemplate={onApplyIndicatorTemplate}
                 />
+
+                {/* Multi-Chart Layout Switcher */}
+                <LayoutSwitcher />
 
                 <Separator orientation="vertical" className="h-6 bg-tv-border" />
 

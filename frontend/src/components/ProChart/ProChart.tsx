@@ -5,6 +5,8 @@ import { useChartIndicators } from '../../hooks/useChartIndicators';
 import { useDrawingTools } from '../../hooks/useDrawingTools';
 import type { DrawingToolId } from '../../hooks/useDrawingTools';
 import { useIndicatorSettings } from '../../store/useIndicatorSettings';
+import { useMultiChartStore } from '../../store/useMultiChartStore';
+import type { ChartInstance } from '../../store/useMultiChartStore';
 import { useDrawingSettings } from '../../store/useDrawingSettings';
 import IndicatorLegend from './IndicatorLegend';
 import { IndicatorDialog } from './IndicatorDialog';
@@ -34,6 +36,23 @@ interface OHLCV {
   volume?: number;
 }
 
+export interface GameData {
+  currentPrice: number;
+  currentCandle: any;
+  isPlaying: boolean;
+  selectedSymbol: string;
+  togglePlay: () => void;
+  isReplayActive: boolean;
+  toggleReplay: () => void;
+  selectedDate: string;
+  availableDates: string[];
+  setDate: (d: string) => void;
+  speed: number;
+  setSpeed: (s: number) => void;
+  trades: any[];
+  modifyOrder: (id: any, updates: any) => void;
+}
+
 interface ProChartProps {
   data: OHLCV[];
   width?: number;
@@ -51,22 +70,34 @@ interface ProChartProps {
   isAlertsOpen?: boolean;
   onToggleAlerts?: () => void;
   onIndicatorStateChange?: (ids: string[], applyFn: (template: IndicatorTemplate) => void) => void;
+  /** Unique chart ID for multi-chart support */
+  chartId?: string;
+  /** Is this the primary chart (shows trading UI, replay controls) */
+  isPrimary?: boolean;
+  /** Game data from parent — if provided, skips internal useGame() */
+  gameData?: GameData;
 }
 
 export const ProChart: React.FC<ProChartProps> = ({ 
   data, width, height, theme = 'dark', activeDrawingTool, onDrawingToolChange,
   isLibraryOpen, onToggleLibrary,
   onPriceClick, onEntryLineClick, previewPrice, isIndicatorsOpen, onToggleIndicators,
-  isAlertsOpen: externalAlertsOpen, onToggleAlerts, onIndicatorStateChange
+  isAlertsOpen: externalAlertsOpen, onToggleAlerts, onIndicatorStateChange,
+  chartId = 'chart-0', isPrimary = true, gameData,
 }) => {
   const { magnetMode } = useDrawingSettings();
+  const internalGame = useGame();
   const {
     currentPrice, currentCandle, isPlaying, 
     selectedSymbol, togglePlay, isReplayActive, toggleReplay,
     selectedDate, availableDates, setDate,
     speed, setSpeed,
     trades, modifyOrder
-  } = useGame();
+  } = gameData || internalGame;
+
+  const { charts } = useMultiChartStore();
+  const myChart = charts.find((c: ChartInstance) => c.id === chartId);
+  const mySymbol = myChart?.symbol || selectedSymbol;
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -577,13 +608,16 @@ export const ProChart: React.FC<ProChartProps> = ({
   }, [currentPrice, alerts, selectedSymbol, updateAlert]);
 
   return (
-    <div className="relative w-full h-full bg-transparent overflow-hidden pl-12 flex flex-col">
+    <div 
+      className={`relative w-full h-full bg-transparent overflow-hidden ${isPrimary ? 'pl-12' : 'pl-0'} flex flex-col`}
+      data-chart-id={chartId}
+    >
       <div className="absolute top-4 left-16 z-40 flex flex-col gap-0.5 pointer-events-none select-none min-w-[300px]">
         {/* Symbol and OHLC Row */}
         <div className="flex items-center gap-2 px-1 py-0.5 rounded-sm">
           <div className="flex items-center gap-1.5">
             <span className="font-bold text-[#d1d4dc] text-[13px] hover:text-white cursor-pointer pointer-events-auto">
-              {selectedSymbol || 'Indian Rupee'}
+              {mySymbol || 'Indian Rupee'}
             </span>
             <span className="text-[#d1d4dc]/40 text-[11px]">1m · NSE</span>
             <div className={`w-1.5 h-1.5 rounded-full ${isPlaying ? 'bg-[#089981] animate-pulse' : 'bg-[#5d606b]'}`} />
@@ -615,7 +649,8 @@ export const ProChart: React.FC<ProChartProps> = ({
           </div>
         </div>
 
-        {/* Trade Buttons Row */}
+        {/* Trade Buttons Row - Primary only */}
+        {isPrimary && (
         <div className="flex items-center gap-1 pointer-events-auto ml-1">
           <div 
             className="flex flex-col items-center justify-center border border-[#f23645] bg-[#f23645]/5 rounded-[3px] px-2.5 py-0.5 cursor-pointer hover:bg-[#f23645]/15 group transition-colors min-w-[65px]" 
@@ -633,6 +668,7 @@ export const ProChart: React.FC<ProChartProps> = ({
             <span className="text-[#2962FF]/60 text-[8px] font-bold uppercase leading-none mt-0.5">Buy</span>
           </div>
         </div>
+        )}
 
         <div className="mt-0.5">
           <IndicatorLegend 
@@ -652,6 +688,7 @@ export const ProChart: React.FC<ProChartProps> = ({
         onHide={hideTool}
       />
 
+      {isPrimary && (
       <ErrorBoundary name="DrawingToolbar">
         <DrawingToolbar 
           activeTool={activeTool}
@@ -667,21 +704,26 @@ export const ProChart: React.FC<ProChartProps> = ({
           onZoomOut={zoomOut}
         />
       </ErrorBoundary>
+      )}
 
+      {isPrimary && (
       <ErrorBoundary name="FavoritesToolbar">
         <FavoritesToolbar 
           activeTool={activeTool}
           onSelectTool={selectTool as any}
         />
       </ErrorBoundary>
+      )}
 
       <AlertDialog 
         isOpen={isAlertsDialogOpen}
         onClose={closeAlertsDialog}
-        symbol={selectedSymbol || 'Symbol'}
+        symbol={mySymbol || 'Symbol'}
         currentPrice={currentPrice}
       />
 
+      {/* PnL Overlay - Primary only */}
+      {isPrimary && (
       <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
         {positionsWithPnL.map((pos) => (
           pos.y > 0 && (
@@ -696,8 +738,10 @@ export const ProChart: React.FC<ProChartProps> = ({
           )
         ))}
       </div>
+      )}
 
-      {isReplayActive && (
+      {/* Replay Toolbar - Primary only */}
+      {isPrimary && isReplayActive && (
         <div className={`absolute bottom-10 left-1/2 -translate-x-1/2 z-[50] flex items-center bg-[#1e222d] border border-[#2a2e39] rounded shadow-2xl p-1.5 gap-2 select-none backdrop-blur-lg transition-opacity ${activeTool ? 'opacity-40 pointer-events-none' : ''}`}>
           <div className="relative">
             <Button variant="ghost" size="sm" className="h-8 gap-2 text-[#d1d4dc] hover:bg-white/5" onClick={() => setIsDateDropdownOpen(!isDateDropdownOpen)}>
@@ -748,4 +792,4 @@ export const ProChart: React.FC<ProChartProps> = ({
   );
 };
 
-export default ProChart;
+export default React.memo(ProChart);

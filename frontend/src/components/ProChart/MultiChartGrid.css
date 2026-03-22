@@ -1,0 +1,264 @@
+/* ─── Multi-Chart Grid Layout ─────────────────────────────────────────────── */
+
+.multi-chart-grid {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  gap: 1px;
+  background: var(--tv-border, #1e222d);
+  transition: grid-template-columns 0.3s ease, grid-template-rows 0.3s ease;
+}
+
+/* Layout 1: Single full chart */
+.multi-chart-grid[data-layout="1"] {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+}
+
+/* Layout 2: Two charts side-by-side */
+.multi-chart-grid[data-layout="2"] {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr;
+}
+
+/* Layout 3: One wide on top, two stacked below */
+.multi-chart-grid[data-layout="3"] {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+.multi-chart-grid[data-layout="3"] > .chart-slot:first-child {
+  grid-column: 1 / -1;
+}
+
+/* Layout 4: 2×2 grid */
+.multi-chart-grid[data-layout="4"] {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+/* ─── Chart Slot ──────────────────────────────────────────────────────────── */
+
+@keyframes chartFadeIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.chart-slot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: #0a0a0a;
+  overflow: hidden;
+  min-height: 0;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  animation: chartFadeIn 0.3s ease-out;
+  border: 2px solid transparent;
+}
+
+.chart-slot:hover {
+  z-index: 1;
+}
+
+.chart-slot.active {
+  border-color: #2962ff;
+  box-shadow: 0 0 15px rgba(41, 98, 255, 0.3);
+  z-index: 2;
+}
+
+/* ─── Slot Header ─────────────────────────────────────────────────────────── */
+
+.chart-slot-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  height: 28px;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.chart-slot-header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart-slot-header-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chart-slot-index {
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.2);
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.chart-slot-search-btn {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  border: none;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  transition: all 0.15s;
+  padding: 0;
+}
+
+.chart-slot-search-btn:hover {
+  background: rgba(41, 98, 255, 0.15);
+  color: #2962ff;
+}
+
+.chart-slot-symbol {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.chart-slot-timeframe {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.3);
+  font-weight: 600;
+}
+
+/* ─── Active Badge ────────────────────────────────────────────────────────── */
+
+.chart-slot-active-badge {
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.15em;
+  color: #2962ff;
+  background: rgba(41, 98, 255, 0.12);
+  border: 1px solid rgba(41, 98, 255, 0.25);
+  padding: 1px 5px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  animation: badgePulse 2s ease-in-out infinite;
+}
+
+@keyframes badgePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* ─── Close Button ────────────────────────────────────────────────────────── */
+
+.chart-slot-close {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  transition: all 0.15s;
+  padding: 0;
+}
+
+.chart-slot-close:hover {
+  background: rgba(242, 54, 69, 0.15);
+  color: #f23645;
+}
+
+/* ─── Slot Body ───────────────────────────────────────────────────────────── */
+
+.chart-slot-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  position: relative;
+}
+
+.chart-slot-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.1);
+  user-select: none;
+}
+
+.chart-slot-placeholder-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px dashed rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chart-slot-placeholder-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+}
+
+/* ─── Layout Switcher Buttons ─────────────────────────────────────────────── */
+
+.layout-switcher {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.layout-btn {
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  transition: all 0.15s;
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.layout-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.layout-btn.active {
+  background: rgba(41, 98, 255, 0.15);
+  color: #2962ff;
+}
+
+.layout-btn svg {
+  width: 14px;
+  height: 14px;
+}

@@ -63,3 +63,5 @@ INFO:     127.0.0.1:54279 - "GET /api/chat/suggestions/welcome HTTP/1.1" 200 OK
 [Gemini] Response received successfully.
 [TradeGuideBot] Received response of length 320
 INFO:     127.0.0.1:54284 - "POST /api/chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57295 - "OPTIONS /api/chat/suggestions/welcome HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57295 - "GET /api/chat/suggestions/welcome HTTP/1.1" 200 OK

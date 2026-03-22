@@ -4,16 +4,30 @@ import { Sun, Moon, Search, Bell } from 'lucide-react';
 import { useThemeStore } from '../../store/themeStore';
 import { NavItems } from './NavItems';
 import { UserDropdown } from './UserDropdown';
-import { SymbolSearchModal } from '../features/SymbolSearchModal';
+import { SymbolSearch } from '../features/SymbolSearch';
+import { useGame } from '../../hooks/useGame';
+import { useMultiChartStore } from '../../store/useMultiChartStore';
 
 const Topbar = () => {
   const { theme, toggleTheme } = useThemeStore();
+  const { setSymbol } = useGame();
+  const { activeChartId } = useMultiChartStore();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   // const location = useLocation(); // This was removed as it was unused.
 
   return (
     <header className={`sticky top-0 h-14 min-h-[56px] flex items-center justify-between px-4 lg:px-6 transition-all duration-300 z-50 bg-white dark:bg-[#121212] border-b border-slate-200 dark:border-white/10 backdrop-blur-sm shadow-sm`}>
-      <SymbolSearchModal open={isSearchOpen} onOpenChange={setIsSearchOpen} />
+      <SymbolSearch 
+        open={isSearchOpen} 
+        onOpenChange={setIsSearchOpen} 
+        onSelect={(symbol, token) => {
+          setSymbol(symbol, token);
+          if (activeChartId) {
+            useMultiChartStore.getState().updateChart(activeChartId, { symbol });
+          }
+        }}
+        activeChartId={activeChartId}
+      />
 
       {/* Left Section - Logo */}
       <div className="flex items-center gap-4 w-[250px] shrink-0">

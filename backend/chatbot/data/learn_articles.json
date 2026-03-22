@@ -1,0 +1,20 @@
+[
+    {
+        "title": "Understanding the MACD Indicator",
+        "url": "/learn?topic=macd",
+        "tags": ["indicators", "momentum", "trend"],
+        "content": "Moving Average Convergence Divergence (MACD) is a trend-following momentum indicator that shows the relationship between two moving averages of a security's price. The MACD is calculated by subtracting the 26-period Exponential Moving Average (EMA) from the 12-period EMA. A nine-day EMA of the MACD called the 'signal line', is then plotted on top of the MACD line, which can function as a trigger for buy and sell signals."
+    },
+    {
+        "title": "What is the P/E Ratio?",
+        "url": "/learn?topic=pe-ratio",
+        "tags": ["fundamentals", "valuation", "ratios"],
+        "content": "The price-to-earnings ratio (P/E ratio) is the ratio for valuing a company that measures its current share price relative to its earnings per share (EPS). The P/E ratio is calculated by dividing the Current Stock Price by the Earnings Per Share (EPS). A high P/E could mean that a company's stock is overvalued, or else that investors are expecting high growth rates in the future."
+    },
+    {
+        "title": "Return on Equity (ROE)",
+        "url": "/learn?topic=roe",
+        "tags": ["fundamentals", "profitability", "ratios"],
+        "content": "Return on equity (ROE) is a measure of financial performance calculated by dividing net income by shareholders' equity. Because shareholders' equity is equal to a company's assets minus its debt, ROE is considered the return on net assets. ROE is considered a measure of a corporation's profitability in relation to stockholders' equity."
+    }
+]

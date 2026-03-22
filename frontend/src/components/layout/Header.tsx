@@ -17,8 +17,7 @@ const Topbar = () => {
 
       {/* Left Section - Logo */}
       <div className="flex items-center gap-4 w-[250px] shrink-0">
-        <Link to="/" className="flex items-center gap-3">
-          <img src="/assets/icons/logo.svg" alt="Logo" width={32} height={32} className='h-8 w-auto cursor-pointer' />
+        <Link to="/home1" className="flex items-center gap-3">
           <h1 className="hidden sm:block text-xl font-bold tracking-wide text-tv-text-primary">
             TRADE<span className="text-tv-primary">SHIFT</span>
           </h1>

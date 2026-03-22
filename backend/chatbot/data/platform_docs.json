@@ -1,0 +1,20 @@
+[
+    {
+        "title": "How to use Drawing Tools",
+        "url": "/trade",
+        "tags": ["platform", "charting", "tools"],
+        "content": "To use drawing tools on the Tradeshift Engine, open the ProChart from the left navigation. On the left side of the chart, you will find a toolbar containing various geometric tools. You can select Trend Lines, Horizontal Rays, Fibonacci Retracements, and Long Position calculators. Once a tool is selected, click on the chart canvas to anchor your starting point. You can edit the color and width of the drawing by right-clicking it to open the floating property menu."
+    },
+    {
+        "title": "Using the Historical Replay Mode",
+        "url": "/trade",
+        "tags": ["platform", "charting", "replay"],
+        "content": "The Historical Replay Mode allows you to backtest trading strategies by stepping through historical price action frame-by-frame. To activate Replay Mode, click the 'Replay' icon on the top toolbar above the chart. The chart will truncate real-time data up to the vertical red line you select. You can then use the Play, Pause, and Step Forward controls in the floating Replay Panel at the bottom to simulate live trading. Drawing tools and indicators can still be added and manipulated while Replay Mode is active."
+    },
+    {
+        "title": "Finding Mutlibagger Stocks",
+        "url": "/screener",
+        "tags": ["platform", "screener", "fundamentals"],
+        "content": "The Tradeshift Engine includes a dedicated Screener page designed to surface high-potential 'Multibagger' stocks. Navigate to the Screener via the sidebar. The engine automatically filters companies based on massive competitive moats, specifically highlighting Quality Consistent, High-Octane Compounders, and Growth Beasts. Key metrics like ROCE, PE Ratio, and Revenue Growth are displayed. Clicking 'Start Deep Learning' on any stock card will open the robust Research Hub for detailed AI-augmented analysis."
+    }
+]

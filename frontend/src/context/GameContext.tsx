@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback, createContext, useContext } fr
 import type { CandleData, Trade } from '../types';
 import { marketDataService, fetchHistoricalCandles, fetchAvailableDates } from '../services/MarketDataService';
 import { toast } from 'sonner';
+import { useMultiChartStore } from '../store/useMultiChartStore';
 
 export interface NewsItem {
   id: number;
@@ -40,6 +41,8 @@ interface GameState {
   currentCandle: CandleData | null;
   currentTime: Date | null;
   historicalCandles: CandleData[];
+  /** Per-symbol latest candle during replay — used by non-primary charts for independent tick-by-tick updates */
+  replayTicks: Record<string, CandleData>;
   trades: Trade[];
   newsItems: NewsItem[];
   simulatedIndices: IndexData[];
@@ -105,6 +108,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
   const [currentCandle, setCurrentCandle] = useState<CandleData | null>(null);
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [historicalCandles, setHistoricalCandles] = useState<CandleData[]>([]);
+  const [replayTicks, setReplayTicks] = useState<Record<string, CandleData>>({});
   const [trades, setTrades] = useState<Trade[]>([]);
   const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
   const [simulatedIndices, setSimulatedIndices] = useState<IndexData[]>([]);
@@ -114,6 +118,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
   const [isReplayActive, setIsReplayActive] = useState(false);
   const [sessionType, setSessionType] = useState<'LIVE' | 'REPLAY'>('LIVE');
   const [userSettings, setUserSettings] = useState<any>(null);
+
+  // NEW: Track all active symbols from the multi-chart store (joined as string for stable dependency)
+  const allChartSymbolsStr = useMultiChartStore(state => state.charts.map(c => c.symbol).join(','));
 
   const [selectedDate, setSelectedDate] = useState('');
   const [availableDates, setAvailableDates] = useState<string[]>([]);
@@ -128,6 +135,13 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
       setHistoricalCandles(candles);
       if (candles.length > 0) {
         setCurrentPrice(candles[candles.length - 1].close);
+        // Default: set currentTime to the last candle (end of day) if NOT in replay active mode
+        // If we are about to start a replay, we'll start at the beginning of the day (9:15 AM)
+        if (isReplayActive) {
+          setCurrentTime(new Date(candles[0].time * 1000));
+        } else {
+          setCurrentTime(new Date(candles[candles.length - 1].time * 1000));
+        }
         console.log(`📊 Loaded ${candles.length} historical candles for ${symbol} on ${date}`);
       } else {
         toast.error(`No data available for ${symbol} on ${date}`);
@@ -221,14 +235,19 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
     }
 
     setSessionType('REPLAY');
-    // Clear existing chart data — replay starts from 9:15
-    // Note: Don't clear newsItems here; they accumulate from the new session
+    // Clear ALL stale data so chart starts fresh from WebSocket CANDLE/TICK events.
+    // Without this, historicalCandles contains 376 end-of-day candles (up to 15:29),
+    // which causes ProChart's cutoff logic to break when ticks arrive at 09:15.
     setHistoricalCandles([]);
     setCurrentCandle(null);
+    setCurrentTime(null);
+    setReplayTicks({});
     setSimulatedIndices([]);
     setNewsItems([]);
 
-    marketDataService.connect(speed, selectedSymbol, selectedDate);
+    // Multi-symbol subscription: Send ALL symbols currently in layout
+    const uniqueSymbols = Array.from(new Set([selectedSymbol, ...allChartSymbolsStr.split(',').filter(Boolean)]));
+    marketDataService.connect(speed, uniqueSymbols, selectedSymbol, selectedDate);
 
     marketDataService.onMessage((payload: any) => {
       if (payload.type === 'ERROR') {
@@ -240,6 +259,21 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
       if (payload.type === 'END') {
         toast.success('Replay complete — end of trading day');
         setIsPlaying(false);
+        return;
+      }
+
+      // --- BACKFILL (History) ---
+      if (payload.type === 'BACKFILL') {
+        const { candles } = payload.data;
+        if (Array.isArray(candles)) {
+          setHistoricalCandles(candles);
+          if (candles.length > 0) {
+            const lastCandle = candles[candles.length - 1];
+            setCurrentPrice(lastCandle.close);
+            setCurrentTime(new Date(lastCandle.time * 1000));
+          }
+          console.log(`📚 Received ${candles.length} backfill candles`);
+        }
         return;
       }
 
@@ -296,57 +330,47 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
           item.id === id ? { ...item, explainer } : item
         ));
       }
-      // -------------------
 
-      // CANDLE event: backend sends the full OHLCV for each completed minute
+      // --- MARKET DATA ---
       if (payload.type === 'CANDLE') {
         const d = payload.data;
-        // Append 'Z' to treat naive ISO as UTC (matching Python .timestamp() on Windows)
         const isoStr = d.timestamp.endsWith('Z') ? d.timestamp : d.timestamp + 'Z';
         const timestamp = new Date(isoStr).getTime() / 1000;
+        const candleSymbol = d.symbol || selectedSymbol;
 
         const newCandle: CandleData = {
           time: timestamp,
-          open: d.open,
-          high: d.high,
-          low: d.low,
-          close: d.close,
+          open: d.open, high: d.high, low: d.low, close: d.close,
           volume: d.volume || 0,
+          symbol: candleSymbol
         };
         setCurrentCandle(newCandle);
-        setHistoricalCandles(prev => {
-          const next = [...prev, newCandle];
-          // Sliding window: keep at most 500 candles to limit memory
-          return next.length > 500 ? next.slice(next.length - 500) : next;
-        });
-        setCurrentPrice(d.close);
-        setCurrentTime(new Date(isoStr));
+        setReplayTicks(prev => ({ ...prev, [candleSymbol]: newCandle }));
+        
+        // Only append to historicalCandles if it's the primary symbol
+        if (candleSymbol === selectedSymbol) {
+          setHistoricalCandles(prev => {
+            const next = [...prev, newCandle];
+            return next.length > 500 ? next.slice(next.length - 500) : next;
+          });
+          setCurrentPrice(d.close);
+          setCurrentTime(new Date(isoStr));
+        }
       }
 
-      // INDICES_TICK event: synchronized background indices updates
       if (payload.type === 'INDICES_TICK') {
-          const indexUpdates = payload.data;
-          setSimulatedIndices(prev => {
-              if (prev.length === 0) {
-                  return Object.values(indexUpdates) as IndexData[];
-              }
-              
-              const updated = [...prev];
-              let changed = false;
-              
-              Object.values(indexUpdates).forEach((update: any) => {
-                  const idx = updated.findIndex(i => i.name === update.name);
-                  if (idx !== -1) {
-                      updated[idx] = update;
-                      changed = true;
-                  } else {
-                      updated.push(update);
-                      changed = true;
-                  }
-              });
-              
-              return changed ? updated : prev;
+        const indexUpdates = payload.data;
+        if (!indexUpdates || typeof indexUpdates !== 'object') return;
+        setSimulatedIndices(prev => {
+          const updated = [...prev];
+          let changed = false;
+          Object.values(indexUpdates).forEach((update: any) => {
+            const idx = updated.findIndex(i => i.name === update.name);
+            if (idx !== -1) { updated[idx] = update; changed = true; }
+            else { updated.push(update); changed = true; }
           });
+          return changed ? updated : prev;
+        });
       }
 
       if (payload.type === 'order_update') {
@@ -367,7 +391,6 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
             sessionType: order.session_type,
             timestamp: new Date(),
           };
-          
           if (index !== -1) {
             const next = [...prev];
             next[index] = updatedTrade;
@@ -378,28 +401,27 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
         });
       }
 
-      // TICK event: sub-minute price updates within a candle
       if (payload.type === 'TICK') {
         const tick = payload.data;
-        setCurrentPrice(tick.price);
+        const tickSymbol = tick.symbol || selectedSymbol;
         const isoStr = tick.timestamp.endsWith('Z') ? tick.timestamp : tick.timestamp + 'Z';
-        setCurrentTime(new Date(isoStr));
+        const rawTime = new Date(isoStr).getTime() / 1000;
+        const candleTime = Math.floor(rawTime / 60) * 60;
 
-        setCurrentCandle(prevCandle => {
-          const rawTime = new Date(isoStr).getTime() / 1000;
-          const candleTime = Math.floor(rawTime / 60) * 60;
+        if (tickSymbol === selectedSymbol) {
+          setCurrentPrice(tick.price);
+          setCurrentTime(new Date(isoStr));
+        }
 
+        const buildUpdatedCandle = (prevCandle: CandleData | null): CandleData => {
           if (!prevCandle || candleTime !== prevCandle.time) {
             return {
               time: candleTime,
-              open: tick.price,
-              high: tick.price,
-              low: tick.price,
-              close: tick.price,
+              open: tick.price, high: tick.price, low: tick.price, close: tick.price,
               volume: tick.volume || 0,
+              symbol: tickSymbol
             };
           }
-
           return {
             ...prevCandle,
             high: Math.max(prevCandle.high, tick.price),
@@ -407,7 +429,13 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
             close: tick.price,
             volume: tick.volume || prevCandle.volume,
           };
-        });
+        };
+
+        if (tickSymbol === selectedSymbol) {
+          setCurrentCandle(prevCandle => buildUpdatedCandle(prevCandle));
+        }
+        // Always update per-symbol replayTicks for independent multi-chart updates
+        setReplayTicks(prev => ({ ...prev, [tickSymbol]: buildUpdatedCandle(prev[tickSymbol] || null) }));
       }
     });
 
@@ -594,18 +622,19 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
     setNewsItems([]);
     setSimulatedIndices([]);
     setCurrentCandle(null);
+    setReplayTicks({});
   };
 
   const contextValue = React.useMemo(() => ({
     isPlaying, speed, balance, currentPrice, currentCandle, currentTime,
-    historicalCandles, trades, newsItems, simulatedIndices, theme, selectedSymbol, selectedDate, availableDates, isLoadingHistory, isReplayActive,
+    historicalCandles, replayTicks, trades, newsItems, simulatedIndices, theme, selectedSymbol, selectedDate, availableDates, isLoadingHistory, isReplayActive,
     sessionType,
     userSettings,
     togglePlay, toggleTheme, setSpeed, setSymbol, setDate,
     placeOrder, modifyOrder, closePosition, closeAllPositions, resetSimulation, toggleReplay, clearHistoryForReplay, askNewsQuestion, updateUserSettings
   }), [
     isPlaying, speed, balance, currentPrice, currentCandle, currentTime,
-    historicalCandles, trades, newsItems, simulatedIndices, theme, selectedSymbol, selectedDate, availableDates, isLoadingHistory, isReplayActive,
+    historicalCandles, replayTicks, trades, newsItems, simulatedIndices, theme, selectedSymbol, selectedDate, availableDates, isLoadingHistory, isReplayActive,
     sessionType,
     userSettings,
     togglePlay, toggleTheme, setSpeed, setSymbol, setDate,

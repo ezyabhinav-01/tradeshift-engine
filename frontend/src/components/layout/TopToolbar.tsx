@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { 
     Bell, Rewind, Settings, Maximize, Camera, Newspaper, SearchCode,
-    PlusCircle, BarChart2, LayoutTemplate, Layers 
+    PlusCircle, BarChart2, LayoutTemplate, Layers
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -122,6 +122,7 @@ const TopToolbar = ({
                     }`}>
                         {isReplayActive ? 'Simulation' : 'Live Mode'}
                     </div>
+
                 </div>
             </div>
 

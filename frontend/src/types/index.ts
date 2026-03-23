@@ -6,6 +6,7 @@ export interface CandleData {
     close: number;
     volume?: number;
     color?: string;
+    symbol?: string;
 }
 
 export interface Trade {

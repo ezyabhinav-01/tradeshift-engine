@@ -42,25 +42,38 @@ export const SymbolSearch: React.FC<SymbolSearchProps> = ({ open, onOpenChange, 
                 const response = await fetch(`/api/available-symbols`);
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
+                console.log('📦 SymbolSearch: Raw API Data:', data);
 
-                const formattedSymbols = data.symbols.map((s: any) => ({
-                    token: s.token,
-                    symbol: s.symbol,
-                    name: s.name,
-                    instrument_type: 'INDEX',
-                    file: s.file
-                }));
+                const rawSymbols = Array.isArray(data.symbols) ? data.symbols : [];
+                const formattedSymbols = rawSymbols.map((s: any) => {
+                    if (typeof s === 'string') {
+                        return {
+                            token: '0',
+                            symbol: s,
+                            name: s.replace('_', ' '),
+                            instrument_type: (s.includes('NIFTY') || s.includes('BANK')) ? 'INDEX' : 'EQUITY'
+                        };
+                    }
+                    return {
+                        token: s.token || '0',
+                        symbol: s.symbol,
+                        name: s.name || s.symbol,
+                        instrument_type: s.instrument_type || 'EQUITY',
+                        file: s.file
+                    };
+                }).filter(s => s.symbol);
 
-                // Ensure we have data
-                if (formattedSymbols.length === 0) throw new Error("No symbols returned by API");
+                if (formattedSymbols.length === 0) {
+                    console.warn('⚠️ SymbolSearch: No symbols found in API response');
+                    throw new Error("No symbols returned by API");
+                }
 
-                // Deduplicate by symbol to prevent key collisions (backend default token "0" would cause overlap)
                 const uniqueSymbols = Array.from(new Map(formattedSymbols.map((s: any) => [s.symbol, s])).values()) as Instrument[];
-
+                
                 setAvailableSymbols(uniqueSymbols);
                 setResults(uniqueSymbols);
             } catch (error) {
-                console.error('Error fetching available symbols, using fallback:', error);
+                console.error('❌ SymbolSearch Error:', error);
 
                 // FALLBACK MOCK DATA (So user always sees something)
                 // This ensures the UI works even if backend connection fails
@@ -137,10 +150,6 @@ export const SymbolSearch: React.FC<SymbolSearchProps> = ({ open, onOpenChange, 
                     <CommandGroup heading="Available Instruments">
                         {query.length > 0 && !results.find(r => r.symbol.toLowerCase() === query.toLowerCase()) && (
                             <CommandItem
-                                key="custom-search"
-                                value={query}
-                                onSelect={() => handleSelect({ symbol: query.toUpperCase(), token: '0', name: `Custom: ${query.toUpperCase()}`, instrument_type: 'EQUITY' })}
-                                className="p-0"
                                 key="custom-search"
                                 value={query}
                                 onSelect={() => handleSelect({ symbol: query.toUpperCase(), token: '0', name: `Custom: ${query.toUpperCase()}`, instrument_type: 'EQUITY' })}
@@ -226,4 +235,4 @@ export const SymbolSearch: React.FC<SymbolSearchProps> = ({ open, onOpenChange, 
     );
 };
 
-export default SymbolSearch;
+export default React.memo(SymbolSearch);

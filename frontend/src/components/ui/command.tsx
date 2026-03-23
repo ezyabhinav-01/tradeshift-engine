@@ -6,7 +6,7 @@ import { Command as CommandPrimitive } from "cmdk";
 import { Search } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 const Command = React.forwardRef<
     React.ElementRef<typeof CommandPrimitive>,
@@ -33,6 +33,8 @@ const CommandDialog = ({ children, shouldFilter, filter, ...props }: CommandDial
     return (
         <Dialog {...props}>
             <DialogContent className="overflow-hidden p-0 shadow-2xl bg-black/40 backdrop-blur-2xl border border-white/10 sm:rounded-2xl">
+                <DialogTitle className="sr-only">Command Search</DialogTitle>
+                <DialogDescription className="sr-only">Search for commands and instruments</DialogDescription>
                 <Command 
                     shouldFilter={shouldFilter}
                     filter={filter}

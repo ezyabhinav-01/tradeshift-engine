@@ -174,4 +174,17 @@ class DrawingTemplate(Base):
     tags = Column(String, default="[]") # JSON list
     data = Column(String) # JSON serialized drawing tools
     thumbnail = Column(String, nullable=True) # Base64 chart snapshot
-    timestamp = Column(DateTime, default=datetime.utcnow)
+class InstrumentMaster(Base):
+    """
+    Master table for all searchable instruments (Stocks, Indices, Options).
+    Used by /api/search endpoint.
+    """
+    __tablename__ = "instruments_master"
+
+    id = Column(Integer, primary_key=True, index=True)
+    token = Column(String, unique=True, index=True)
+    symbol = Column(String, index=True)
+    name = Column(String, nullable=True)
+    instrument_type = Column(String, index=True) # EQUITY, INDEX, OPTIDX
+    exchange = Column(String, default="NSE")
+    last_updated = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

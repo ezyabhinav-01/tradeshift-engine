@@ -2,6 +2,9 @@ __pycache__
 *.pyc
 *.pyo
 venv
+chatbot/venv
 .env
 .DS_Store
 .git
+node_modules
+*.parquet

@@ -1,6 +1,6 @@
 import React from 'react';
 import { ExternalLink, BrainCircuit, Clock } from 'lucide-react';
-import type { NewsItem } from '../../services/NewsService';
+import type { NewsItem } from '../../services/newsApi';
 
 interface NewsCardProps {
   news: NewsItem;

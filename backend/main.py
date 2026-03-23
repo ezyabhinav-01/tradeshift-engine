@@ -12,6 +12,7 @@ import os
 import json
 import asyncio
 import datetime
+import time
 import glob
 from redis import Redis
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -155,28 +156,32 @@ def load_parquet_for_symbol(symbol: str, target_date: str = None, allow_fallback
     Raises:
         FileNotFoundError: If no matching Parquet file is found
     """
+    # Use absolute path to ensure robustness
+    base_path = os.path.dirname(os.path.abspath(__file__))
+    data_dir = os.path.join(base_path, "data")
+    
     matching_files = []
     # Try exact match first for date format: NIFTY_2026-03-02.parquet
     if target_date:
-        pattern_date = f"data/{symbol}_{target_date}.parquet"
+        pattern_date = os.path.join(data_dir, f"{symbol}_{target_date}.parquet")
         date_match = glob.glob(pattern_date)
         if date_match:
             matching_files.extend(date_match)
 
     # Search for files matching the pattern (if no date or date file not found)
     if not matching_files and allow_fallback:
-        pattern = f"data/{symbol}_*.parquet"
+        pattern = os.path.join(data_dir, f"{symbol}_*.parquet")
         matching_files = glob.glob(pattern)
         print(f"🔄 Fallback triggered. Searching for {pattern}... found {len(matching_files)} files.")
         
         # Try exact match (e.g., NIFTY_50_1min.parquet for symbol "NIFTY_50")
-        pattern_exact = f"data/{symbol}.parquet"
+        pattern_exact = os.path.join(data_dir, f"{symbol}.parquet")
         exact_match = glob.glob(pattern_exact)
         if exact_match:
             matching_files.extend(exact_match)
     
     if not matching_files:
-        raise FileNotFoundError(f"No Parquet file found for symbol '{symbol}' (date: {target_date}) in data/ directory")
+        raise FileNotFoundError(f"No Parquet file found for symbol '{symbol}' (date: {target_date}) in {data_dir} directory")
     
     # Sort files to get the most recent (if multiple exist)
     # Files are typically named: SYMBOL_YEAR.parquet or SYMBOL_suffix.parquet
@@ -316,58 +321,30 @@ async def get_available_symbols():
     """
     print("🔍 API: /api/available-symbols called")
     try:
-        parquet_files = glob.glob("data/*.parquet")
-        print(f"📂 Found {len(parquet_files)} parquet files")
-        symbols = []
+        base_path = os.path.dirname(os.path.abspath(__file__))
+        data_dir = os.path.join(base_path, "data")
+        parquet_files = glob.glob(os.path.join(data_dir, "*.parquet"))
         
-        # Open connection ONCE, not in loop
-        conn = None
-        try:
-            conn = engine_sync.connect()
-            print("✅ DB Connection established")
-        except Exception as e:
-            print(f"⚠️ DB Connection failed: {e}")
-
-        import re
-        for file_path in parquet_files:
-            basename = os.path.basename(file_path).replace('.parquet', '')
-            # Robust symbol extraction: Remove the _YYYY-MM-DD suffix if present
-            symbol = re.sub(r'_\d{4}-\d{2}-\d{2}$', '', basename)
-            # Legacy cleanup support
-            symbol = symbol.replace('_1min', '').replace('_2026', '').replace('_2025', '')
-            print(f"   Processing symbol: {symbol} from {basename}")
+        available_symbols = []
+        seen_symbols = set()
+        for f in parquet_files:
+            basename = os.path.basename(f)
+            symbol_part = basename.split('_')[0]
+            if basename.startswith('NIFTY_50'): symbol_part = 'NIFTY_50'
+            elif basename.startswith('NIFTY_BANK'): symbol_part = 'BANKNIFTY'
+            elif basename.startswith('HDFCBANK'): symbol_part = 'HDFCBANK'
+            elif basename.startswith('BANKNIFTY'): symbol_part = 'BANKNIFTY'
             
-            name = symbol # Default
-            token = "0"   # Default
-            
-            # Try to get token from database if connection exists
-            if conn:
-                try:
-                    result = conn.execute(
-                        text("SELECT token, symbol, name FROM instruments_master WHERE symbol = :sym OR symbol LIKE :pattern LIMIT 1"),
-                        {"sym": symbol, "pattern": f"%{symbol}%"}
-                    )
-                    row = result.fetchone()
-                    if row:
-                        token = row[0]
-                        name = row[2] if len(row) > 2 else symbol
-                        print(f"      ✅ Found in DB: {name} ({token})")
-                except Exception as db_err:
-                    print(f"      ⚠️ DB Query failed for {symbol}: {db_err}")
-            
-            symbols.append({
-                "token": token, 
-                "symbol": symbol, 
-                "name": name,
-                "file": basename
-            })
-            
-        if conn:
-            conn.close()
-            print("🔒 DB Connection closed")
+            if symbol_part not in seen_symbols:
+                available_symbols.append({
+                    "symbol": symbol_part,
+                    "token": "0",  # Default token
+                    "name": symbol_part.replace('_', ' '),
+                    "instrument_type": "INDEX" if "NIFTY" in symbol_part or "BANK" in symbol_part else "EQUITY"
+                })
+                seen_symbols.add(symbol_part)
         
-        print(f"✅ Returning {len(symbols)} symbols")
-        return {"symbols": symbols}
+        return {"symbols": sorted(available_symbols, key=lambda x: x["symbol"])}
     except Exception as e:
         print(f"❌ Error getting available symbols: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get symbols: {str(e)}")
@@ -381,8 +358,18 @@ async def get_available_dates(symbol: str):
         import re
         # Extract the base symbol if it comes with a date suffix like RELIANCE-03-04
         base_symbol = symbol.split('-')[0] if '-' in symbol else symbol
-        pattern = f"data/{base_symbol}_*.parquet"
+        
+        base_path = os.path.dirname(os.path.abspath(__file__))
+        data_dir = os.path.join(base_path, "data")
+        pattern = os.path.join(data_dir, f"{base_symbol}_*.parquet")
         files = glob.glob(pattern)
+        
+        # Also try exact match for the symbol itself (without _date)
+        exact_match = os.path.join(data_dir, f"{base_symbol}.parquet")
+        if os.path.exists(exact_match):
+            files.append(exact_match)
+            
+        print(f"📅 Finding dates for {base_symbol} in {data_dir}... found {len(files)} files.")
         
         dates = []
         for f in files:
@@ -691,23 +678,27 @@ async def live_indices_websocket(websocket: WebSocket):
 @app.websocket("/ws/ticker")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    print("🟢 Client Connected")
+    print("🟢 Client Connected", flush=True)
 
     # State
-    is_running      = False
-    speed           = 1.0
-    synthesizer     = TickSynthesizer()
-    # Local OrderManager is replaced by global oms_service
-    # last_tick_price = 21500.0 # Will be updated in tick loop
-    current_user_id = 1 # Default
-    last_tick_price = 21500.0
-    iterator        = None
+    is_running       = False
+    speed            = 1.0
+    synthesizer      = TickSynthesizer()
+    current_user_id  = 1
+    last_tick_price  = 21500.0
+    
+    # NEW: Multiple symbols support
+    main_iterators   = {}    # { "RELIANCE": iterator, "HDFCBANK": iterator }
+    main_current_rows = {}   # { "RELIANCE": last_loaded_row }
+    main_symbols     = []    # List of active symbols being streamed
+    primary_symbol   = None  # The main symbol for OMS price updates
+    
     indices_iterators = {}    # { "NIFTY": iterator, "BANKNIFTY": iterator }
-    indices_opens   = {}      # { "NIFTY": open_price, "BANKNIFTY": open_price }
-    current_symbol  = "NIFTY"
-    df_current      = None  # keep reference for restart
+    indices_opens    = {}      # { "NIFTY": open_price, "BANKNIFTY": open_price }
+    active_news      = []
     active_impact_observers = [] # Track news for 15-minute impact assessment
-    tick_time       = datetime.datetime.now() # track for commands
+    tick_time        = datetime.datetime.now()
+    last_tick_price  = 0.0
 
     try:
         while True:
@@ -719,62 +710,95 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 if command == "START":
                     current_user_id = message.get("user_id") or 1
-                    symbol      = message.get("symbol") or "NIFTY"
+                    symbols_req = message.get("symbols") or []
+                    single_symbol = message.get("symbol")
+                    if single_symbol and single_symbol not in symbols_req:
+                        symbols_req.append(single_symbol)
+                    
+                    if not symbols_req:
+                        symbols_req = ["NIFTY"]
+                    
                     target_date = message.get("date")
                     speed       = float(message.get("speed", 1.0))
-                    current_symbol = symbol
+                    
+                    main_symbols = symbols_req
+                    primary_symbol = symbols_req[0]
+                    main_iterators = {}
+                    main_current_rows = {}
 
-                    # Load Parquet for the requested symbol
+                    # Load data for each requested symbol
+                    success_count = 0
+                    for symbol in symbols_req:
+                        try:
+                            # Extract base symbol if it has suffix (e.g. NIFTY-2026 -> NIFTY)
+                            base_symbol = symbol.split('-')[0] if '-' in symbol else symbol
+                            df_sym, file_path, _ = load_parquet_for_symbol(base_symbol, target_date, allow_fallback=True)
+                            
+                            # Find date column
+                            date_col = next((c for c in ['datetime', 'date', 'time'] if c in df_sym.columns), None)
+                            if not date_col: continue
+
+                            # Standardize dates
+                            temp_df = df_sym.copy()
+                            if not pd.api.types.is_datetime64_any_dtype(temp_df[date_col]):
+                                temp_df[date_col] = pd.to_datetime(
+                                    temp_df[date_col].astype(str).str.replace('Ok ', '', regex=False).str.strip(), 
+                                    dayfirst=False, errors='coerce'
+                                )
+
+                            if not target_date:
+                                first_date = temp_df[date_col].dropna().min().date()
+                                target_date = str(first_date)
+
+                            target_dt = pd.to_datetime(target_date).date()
+                            mask = (
+                                (temp_df[date_col].dt.date == target_dt) &
+                                (temp_df[date_col].dt.time >= datetime.time(9, 15)) &
+                                (temp_df[date_col].dt.time <= datetime.time(15, 30))
+                            )
+                            f_df = temp_df[mask].sort_values(by=date_col)
+                            
+                            if not f_df.empty:
+                                main_iterators[symbol] = iter(f_df.to_dict(orient="records"))
+                                success_count += 1
+                                print(f"✅ Loaded {len(f_df)} candles for {symbol} on {target_date}")
+                        except Exception as e:
+                            print(f"⚠️ Failed to load {symbol}: {e}")
+
+                    if success_count == 0:
+                        await websocket.send_json({"type": "ERROR", "message": f"No data found for any requested symbols on {target_date}"})
+                        continue
+
+                    # --- SEND BACKFILL (History) ---
                     try:
-                        base_symbol = symbol.split('-')[0] if '-' in symbol else symbol
-                        df_current, file_path, _ = load_parquet_for_symbol(base_symbol, target_date)
-                    except FileNotFoundError as e:
-                        await websocket.send_json({"type": "ERROR", "message": str(e)})
-                        print(f"❌ {e}")
-                        continue
-                    except Exception as e:
-                        await websocket.send_json({"type": "ERROR", "message": f"Error loading data: {str(e)}"})
-                        print(f"❌ Data loading error: {e}")
-                        continue
-
-                    print(f"✅ Loaded {len(df_current)} records from {file_path}")
-
-                    # Find the date column
-                    date_col = next(
-                        (c for c in ['datetime', 'date', 'time'] if c in df_current.columns),
-                        None
-                    )
-                    if not date_col:
-                        await websocket.send_json({"type": "ERROR", "message": "Dataset has no date/time column"})
-                        continue
-
-                    # Convert date column and filter by target_date
-                    temp_df = df_current.copy()
-                    if not pd.api.types.is_datetime64_any_dtype(temp_df[date_col]):
-                        temp_df[date_col] = pd.to_datetime(
-                            temp_df[date_col].astype(str).str.replace('Ok ', '', regex=False).str.strip(), 
-                            dayfirst=False, errors='coerce'
-                        )
-
-                    if not target_date:
-                        first_date  = temp_df[date_col].dropna().min().date()
-                        target_date = str(first_date)
-
-                    target_dt  = pd.to_datetime(target_date).date()
-                    mask       = (
-                        (temp_df[date_col].dt.date == target_dt) &
-                        (temp_df[date_col].dt.time >= datetime.time(9, 15)) &
-                        (temp_df[date_col].dt.time <= datetime.time(15, 30))
-                    )
-                    filtered_df = temp_df[mask].sort_values(by=date_col)
-
-                    if filtered_df.empty:
-                        await websocket.send_json({"type": "ERROR", "message": f"No data found for date: {target_date} in {symbol}"})
-                        continue
-
-                    print(f"✅ Streaming {len(filtered_df)} candles for {symbol} on {target_date}")
-                    # Use list-of-dicts — consistent with .get() row access below
-                    iterator   = iter(filtered_df.to_dict(orient="records"))
+                        backfill_candles = []
+                        df_backfill, _, _ = load_parquet_for_symbol(primary_symbol.split('-')[0], target_date, allow_fallback=True)
+                        backfill_ts_col = next((c for c in ['datetime', 'date', 'time'] if c in df_backfill.columns), None)
+                        if backfill_ts_col:
+                            if not pd.api.types.is_datetime64_any_dtype(df_backfill[backfill_ts_col]):
+                                df_backfill[backfill_ts_col] = pd.to_datetime(df_backfill[backfill_ts_col].astype(str).str.replace('Ok ', '', regex=False).str.strip(), errors='coerce')
+                            
+                            # Filter up to current target_date (start of day) - or take last 500
+                            # To be safe, just take the first 500 rows if it's the target date
+                            # Actually, we want candles BEFORE the current simulation clock.
+                            # Simulation starts at 9:15 AM today.
+                            market_open_today = pd.to_datetime(target_date).replace(hour=9, minute=15)
+                            hist_mask = (df_backfill[backfill_ts_col] < market_open_today)
+                            h_df = df_backfill[hist_mask].tail(300)
+                            
+                            for _, r in h_df.iterrows():
+                                backfill_candles.append({
+                                    "time": int(r[backfill_ts_col].timestamp()),
+                                    "open": float(r['open']), "high": float(r['high']),
+                                    "low": float(r['low']), "close": float(r['close']),
+                                    "volume": float(r.get('volume', 0))
+                                })
+                            
+                            if backfill_candles:
+                                print(f"📚 Sending {len(backfill_candles)} backfill candles for {primary_symbol}")
+                                await websocket.send_json({"type": "BACKFILL", "data": {"symbol": primary_symbol, "candles": backfill_candles}})
+                    except Exception as be:
+                        print(f"⚠️ Backfill error: {be}")
                     
                     # --- Load Benchmark Indices for Sync ---
                     indices_iterators = {}
@@ -816,21 +840,39 @@ async def websocket_endpoint(websocket: WebSocket):
                             print(f"⚠️ Could not sync index {idx_name}: {e}")
 
                     is_running = True
-                    print(f"▶️  Simulation Started | Symbol: {symbol} | Speed: {speed}x")
+                    print(f"▶️  Simulation Started | Symbols: {list(main_iterators.keys())} | Speed: {speed}x")
 
                     # Fetch today's news for alignment with simulation ticks
-                    # This will be awaited inline since it's before is_running really starts cranking
                     try:
-                        active_news = await fetch_news_for_date(symbol, target_date)
+                        raw_news = await fetch_news_for_date(primary_symbol, target_date)
+                        # Convert publishedAt → timestamp (datetime) for simulation time comparison
+                        active_news = []
+                        for n in raw_news:
+                            try:
+                                pub = n.get("publishedAt") or n.get("timestamp")
+                                if pub and isinstance(pub, str):
+                                    ts = pd.to_datetime(pub, errors="coerce")
+                                    if pd.notna(ts):
+                                        n["timestamp"] = ts.to_pydatetime()
+                                    else:
+                                        # Fallback: schedule at market open + random offset
+                                        n["timestamp"] = base_time if 'base_time' in dir() else datetime.datetime.now()
+                                elif pub and isinstance(pub, datetime.datetime):
+                                    n["timestamp"] = pub
+                                else:
+                                    n["timestamp"] = datetime.datetime.now()
+                                n["triggered"] = False
+                                active_news.append(n)
+                            except Exception:
+                                pass  # Skip malformed news items
                     except Exception as e:
                         print(f"⚠️ Failed to fetch news for {target_date}: {e}")
                         active_news = []
 
                 elif command == "BUY":
-                    # oms.buy(last_tick_price, qty=50)
                     from app.schemas import TradeExecuteRequest, TradeDirection, OrderType
                     request = TradeExecuteRequest(
-                        symbol=current_symbol,
+                        symbol=message.get("symbol", primary_symbol),
                         direction=TradeDirection.BUY,
                         quantity=message.get("quantity", 50),
                         price=last_tick_price,
@@ -884,7 +926,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                         "answer": ans
                                     }
                                 })
-                            asyncio.create_task(fetch_answer(q_text, target_news, current_symbol, news_id))
+                            asyncio.create_task(fetch_answer(q_text, target_news, primary_symbol, news_id))
 
                 elif command == "SPEED":
                     speed = float(message.get("speed", 1.0))
@@ -898,247 +940,293 @@ async def websocket_endpoint(websocket: WebSocket):
                 await asyncio.sleep(0.05)
                 continue
 
-            # Get next candle row
-            try:
-                row = next(iterator)  # type: dict
-            except StopIteration:
-                print("🏁 End of data for this date — stopping.")
-                await websocket.send_json({"type": "END", "message": "Data finished for date"})
+            # Advance all main symbol iterators for this minute
+            main_current_rows = {}
+            for sym in list(main_iterators.keys()):
+                try:
+                    main_current_rows[sym] = next(main_iterators[sym])
+                except StopIteration:
+                    del main_iterators[sym]
+            
+            if not main_iterators and not main_current_rows:
+                print("🏁 End of data for all symbols — stopping.")
+                await websocket.send_json({"type": "END", "message": "Data finished for all symbols"})
                 is_running = False
                 continue
 
-            # Extract OHLC
+            # Pick a base time from the first available symbol row
+            ref_row = next(iter(main_current_rows.values()))
             try:
-                open_p = float(row.get('open',  0))
-                high   = float(row.get('high',  0))
-                low    = float(row.get('low',   0))
-                close  = float(row.get('close', 0))
-                # Resolve timestamp from whichever date column exists
                 date_val = (
-                    row.get('datetime') or
-                    row.get('date')     or
-                    row.get('time')     or
+                    ref_row.get('datetime') or
+                    ref_row.get('date')     or
+                    ref_row.get('time')     or
                     datetime.datetime.now()
                 )
                 base_time = pd.to_datetime(date_val) if not isinstance(date_val, datetime.datetime) else date_val
             except Exception as e:
-                print(f"❌ Row parse error: {e} | Row keys: {list(row.keys())}")
+                print(f"❌ Ref row parse error: {e}")
                 continue
 
-            # Advance index iterators
-            indices_current_rows = {}
+            # Generate ticks for ALL main symbols
+            all_symbol_ticks = {}
+            for sym, row in main_current_rows.items():
+                try:
+                    all_symbol_ticks[sym] = synthesizer.generate_ticks(
+                        float(row.get('open', 0)),
+                        float(row.get('high', 0)),
+                        float(row.get('low', 0)),
+                        float(row.get('close', 0)),
+                        num_ticks=60
+                    )
+                except Exception as e:
+                    print(f"⚠️ Ticks Error ({sym}): {e}")
+                    all_symbol_ticks[sym] = [float(row.get('close', 0))] * 60
+
+            # Advance and generate ticks for indices
+            indices_ticks = {}
             for idx_name, idx_iter in list(indices_iterators.items()):
                 try:
-                    indices_current_rows[idx_name] = next(idx_iter)
+                    idx_row = next(idx_iter)
+                    indices_ticks[idx_name] = synthesizer.generate_ticks(
+                        float(idx_row.get('open', 0)), float(idx_row.get('high', 0)),
+                        float(idx_row.get('low', 0)), float(idx_row.get('close', 0)),
+                        num_ticks=60
+                    )
                 except StopIteration:
-                    # Remove depleted iterator
                     del indices_iterators[idx_name]
+                except Exception as e:
+                    print(f"⚠️ Index Error ({idx_name}): {e}")
 
-            # Generate micro-ticks (Brownian bridge across the minute)
+            # Stream each tick (second by second)
             try:
-                ticks = synthesizer.generate_ticks(open_p, high, low, close, num_ticks=60)
-                
-                # Generate corresponding ticks for synchronized indices
-                indices_ticks = {}
-                for idx_name, idx_row in indices_current_rows.items():
-                    try:
-                        idx_ticks = synthesizer.generate_ticks(
-                            float(idx_row.get('open', 0)), 
-                            float(idx_row.get('high', 0)), 
-                            float(idx_row.get('low', 0)), 
-                            float(idx_row.get('close', 0)), 
-                            num_ticks=60
-                        )
-                        indices_ticks[idx_name] = idx_ticks
-                    except Exception as e:
-                        print(f"⚠️ Index Ticks Error ({idx_name}): {e}")
-                        indices_ticks[idx_name] = [float(idx_row.get('close', 0))] * 60
-                        
-            except Exception as e:
-                print(f"❌ Synthesizer Error: {e}")
-                continue
+                last_tick_sent_at = time.time()
+                for i in range(60):
+                    tick_time = base_time + datetime.timedelta(seconds=i)
+                    
+                    # 1. Update Price for OMS (Primary Symbol only for now)
+                    if primary_symbol in all_symbol_ticks:
+                        current_price = all_symbol_ticks[primary_symbol][i]
+                        from app.services.order_management import oms_service
+                        await oms_service.on_price_update(primary_symbol, current_price, simulated_time=tick_time, session_type="REPLAY")
 
-            # Stream each tick
-            num_ticks = 60
-            for i, price in enumerate(ticks):
-                last_tick_price = float(price)
-                tick_time       = base_time + datetime.timedelta(seconds=i)
+                    # 2. Push Ticks for ALL MAIN symbols
+                    for sym, ticks in all_symbol_ticks.items():
+                        if i < len(ticks):
+                            try:
+                                await websocket.send_json({
+                                    "type": "TICK",
+                                    "data": {
+                                        "symbol": sym,
+                                        "price": round(float(ticks[i]), 2),
+                                        "timestamp": tick_time.isoformat(),
+                                        "volume": int(main_current_rows[sym].get('volume', 0)),
+                                    }
+                                })
+                            except Exception: break
 
-                # 🔥 TRIGGER OMS PRICE UPDATE (to trigger SL/TP)
-                from app.services.order_management import oms_service
-                await oms_service.on_price_update(current_symbol, last_tick_price, simulated_time=tick_time, session_type="REPLAY")
-
-                payload = {
-                    "type": "TICK",
-                    "data": {
-                        "symbol":    current_symbol,
-                        "price":     round(last_tick_price, 2),
-                        "timestamp": tick_time.isoformat(),
-                        "pnl":       0.0, # Frontend will calculate PnL from its own state
-                        "volume":    int(row.get('volume', 0)),
-                    }
-                }
-                
-                # Construct combined payload for indices
-                indices_payload = {}
-                for idx_name, ticks_arr in indices_ticks.items():
-                    if i < len(ticks_arr):
-                        curr_idx_price = float(ticks_arr[i])
-                        day_open = indices_opens.get(idx_name, curr_idx_price)
-                        change = curr_idx_price - day_open
-                        change_percent = (change / day_open) * 100 if day_open > 0 else 0
-                        # Formal mappings for the frontend
-                        display_name = idx_name
-                        if idx_name == "NIFTY": display_name = "NIFTY 50"
-                        
-                        indices_payload[display_name] = {
-                            "name": display_name,
-                            "price": round(curr_idx_price, 2),
-                            "change": round(change, 2),
-                            "change_percent": round(change_percent, 2),
-                            "is_positive": change >= 0
+                    # 3. Push INDICES_TICK (sync)
+                    indices_payload = {}
+                    for idx_name, ticks_arr in indices_ticks.items():
+                        if i < len(ticks_arr):
+                            curr_idx_price = float(ticks_arr[i])
+                            day_open = indices_opens.get(idx_name, curr_idx_price)
+                            change = curr_idx_price - day_open
+                            change_percent = (change / day_open) * 100 if day_open > 0 else 0
+                            
+                            display_name = idx_name
+                            if idx_name == "NIFTY": display_name = "NIFTY 50"
+                            
+                            indices_payload[display_name] = {
+                                "name": display_name,
+                                "price": round(curr_idx_price, 2),
+                                "change": round(change, 2),
+                                "change_percent": round(change_percent, 2),
+                                "is_positive": change >= 0
+                            }
+                    
+                    # NEW: Add Primary Symbol to top ticker if it's not already an index
+                    if primary_symbol and primary_symbol in all_symbol_ticks:
+                        curr_p = float(all_symbol_ticks[primary_symbol][i])
+                        # Use a simple change calculation based on first tick of day if open is not loaded
+                        indices_payload[primary_symbol] = {
+                            "name": primary_symbol,
+                            "price": round(curr_p, 2),
+                            "change": 0.0,
+                            "change_percent": 0.0,
+                            "is_positive": True
                         }
-                        
-                if sum(len(x) for x in indices_payload.values()) > 0:
-                     try:
-                        await websocket.send_json({
-                            "type": "INDICES_TICK",
-                            "data": indices_payload
-                        })
-                     except Exception:
-                        pass # Ignore index push failure, prioritize main tick
+                    
+                    if indices_payload:
+                        try:
+                            await websocket.send_json({ "type": "INDICES_TICK", "data": indices_payload })
+                            # NEW: Diagnostic version heartbeat
+                            await websocket.send_json({ "type": "STATS", "data": { "tick": i, "speed": speed } })
+                        except Exception: pass
 
-                try:
-                    await websocket.send_json(payload)
-                except (WebSocketDisconnect, Exception) as e:
-                    print(f"🔴 Send Error: {e}")
-                    is_running = False
+                    # ─── Smooth Sub-Tick Interpolation (10 steps) ───
+                    # Split the 5s delay into 10 x 500ms chunks with interpolated prices
+                    sub_steps = 10
+                    for step in range(sub_steps):
+                        # Command Check (Inner - run in each sub-step)
+                        trigger_next = False
+                        try:
+                            inner_data = await asyncio.wait_for(websocket.receive_text(), timeout=0.0001)
+                            inner_msg = json.loads(inner_data)
+                            inner_cmd = inner_msg.get("command")
+                            if inner_cmd == "SPEED":
+                                speed = float(inner_msg.get("speed", 1.0))
+                            elif inner_cmd == "STOP":
+                                is_running = False
+                                break
+                            elif inner_cmd == "STEP":
+                                trigger_next = True
+                        except asyncio.TimeoutError: pass
+                        except WebSocketDisconnect:
+                            is_running = False
+                            break
+                        except Exception: pass
+
+                        if not is_running: break
+                        if trigger_next: break 
+
+                        # Interpolation factor (0.1 to 1.0)
+                        factor = (step + 1) / sub_steps
+                        
+                        # --- BROADCAST INTERPOLATED TICKS ---
+                        # For Primary Symbol, we can interpolate if there's a next tick
+                        if primary_symbol and primary_symbol in all_symbol_ticks and i + 1 < len(all_symbol_ticks[primary_symbol]):
+                            curr_val = float(all_symbol_ticks[primary_symbol][i])
+                            next_val = float(all_symbol_ticks[primary_symbol][i+1])
+                            interp_price = curr_val + (next_val - curr_val) * factor
+                            
+                            try:
+                                # Send TICK
+                                await websocket.send_json({
+                                    "type": "TICK",
+                                    "data": {
+                                        "symbol": primary_symbol,
+                                        "price": round(interp_price, 2),
+                                        "timestamp": tick_time.isoformat(),
+                                        "volume": int(main_current_rows[primary_symbol].get('volume', 0)),
+                                    }
+                                })
+                                # Update Global Ticker (simulatedIndices)
+                                interp_indices = {**indices_payload}
+                                interp_indices[primary_symbol] = {
+                                    "name": primary_symbol,
+                                    "price": round(interp_price, 2),
+                                    "change": indices_payload[primary_symbol]["change"],
+                                    "change_percent": indices_payload[primary_symbol]["change_percent"],
+                                    "is_positive": indices_payload[primary_symbol]["is_positive"]
+                                }
+                                await websocket.send_json({ "type": "INDICES_TICK", "data": interp_indices })
+                            except Exception: break
+
+                        # ── Sleep for 1/10th of the interval ──
+                        actual_delay = 5.0 / (speed * sub_steps) if speed > 0 else 1.0 / sub_steps
+                        await asyncio.sleep(actual_delay)
+                    
+                    last_tick_sent_at = time.time()
+
+                    # --- NEW: Synchronized News Injection ---
+                    for idx, n_item in enumerate(list(active_news)):
+                        if not isinstance(n_item, dict): continue
+                        n_timestamp = n_item.get("timestamp")
+                        if not n_timestamp: continue
+                        
+                        if not n_item.get("triggered") and tick_time >= n_timestamp:
+                            active_news[idx]["triggered"] = True
+                            print(f"📰 FLASHING NEWS: {n_item['title']} at simulated time {tick_time}", flush=True)
+                            
+                            asyncio.create_task(websocket.send_json({
+                                "type": "NEWS_FLASH",
+                                "data": {
+                                    "id": idx,
+                                    "symbol": primary_symbol,
+                                    "title": n_item["title"],
+                                    "description": n_item["description"],
+                                    "time_str": n_item["time_str"],
+                                    "source": n_item["source"],
+                                    "url": n_item["url"]
+                                }
+                            }))
+                            
+                            async def perform_analysis(item, item_idx, sym):
+                                try:
+                                    impact_task = analyze_news_impact(item["title"], item["description"], sym)
+                                    explainer_task = generate_news_explainer(item["title"], item["description"], sym)
+                                    impact_res, explainer_res = await asyncio.gather(impact_task, explainer_task)
+                                    await websocket.send_json({
+                                        "type": "NEWS_ANALYSIS",
+                                        "data": {
+                                            "id": item_idx,
+                                            "analysis": impact_res["analysis"],
+                                            "sentiment": impact_res["sentiment"],
+                                            "predicted_impact": impact_res.get("predicted_impact", "Unknown")
+                                        }
+                                    })
+                                    await websocket.send_json({
+                                        "type": "NEWS_EXPLAINER",
+                                        "data": { "id": item_idx, "explainer": explainer_res }
+                                    })
+                                except Exception as ex:
+                                    print(f"⚠️ Error in News AI: {ex}", flush=True)
+                                    
+                            asyncio.create_task(perform_analysis(n_item, idx, primary_symbol))
+
+                            active_impact_observers.append({
+                                "news_id": idx,
+                                "baseline_price": all_symbol_ticks[primary_symbol][i] if primary_symbol in all_symbol_ticks else 0,
+                                "target_time": tick_time + datetime.timedelta(minutes=15)
+                            })
+                    
+                    # --- PROCESS IMPACT OBSERVERS ---
+                    for obs in list(active_impact_observers):
+                        if tick_time >= obs["target_time"] and primary_symbol in all_symbol_ticks:
+                            curr_p = all_symbol_ticks[primary_symbol][i]
+                            pct_change = ((curr_p - obs["baseline_price"]) / obs["baseline_price"]) * 100 if obs["baseline_price"] > 0 else 0
+                            asyncio.create_task(websocket.send_json({
+                                "type": "NEWS_IMPACT_RESULT",
+                                "data": {
+                                    "id": obs["news_id"],
+                                    "actual_impact": f"{pct_change:+.2f}% in 15m",
+                                    "price_start": obs["baseline_price"],
+                                    "price_end": curr_p
+                                }
+                            }))
+                            active_impact_observers.remove(obs)
+                
+                if not is_running:
                     break
 
-                # --- NEW: Synchronized News Injection ---
-                for idx, n_item in enumerate(list(active_news)):
-                    if not n_item.get("analyzed") and tick_time >= n_item["timestamp"]:
-                        # Mark as triggered in simulation context
-                        active_news[idx]["analyzed"] = True
-                        print(f"📰 FLASHING NEWS: {n_item['title']} at simulated time {tick_time}")
-                        
-                        # 1. Flash the news immediately to frontend
-                        asyncio.create_task(websocket.send_json({
-                            "type": "NEWS_FLASH",
-                            "data": {
-                                "id": idx,
-                                "symbol": current_symbol,
-                                "title": n_item["title"],
-                                "description": n_item["description"],
-                                "time_str": n_item["time_str"],
-                                "source": n_item["source"],
-                                "url": n_item["url"]
-                            }
-                        }))
-                        
-                        # 2. Trigger FinGPT analysis & Explainer in background
-                        async def perform_analysis(item, item_idx, sym):
-                            import traceback
-                            try:
-                                # Run impact analysis and explainer generation in parallel
-                                impact_task = analyze_news_impact(item["title"], item["description"], sym)
-                                explainer_task = generate_news_explainer(item["title"], item["description"], sym)
-                                
-                                impact_res, explainer_res = await asyncio.gather(impact_task, explainer_task)
-                                
-                                # Send Impact Analysis
-                                await websocket.send_json({
-                                    "type": "NEWS_ANALYSIS",
-                                    "data": {
-                                        "id": item_idx,
-                                        "analysis": impact_res["analysis"],
-                                        "sentiment": impact_res["sentiment"],
-                                        "predicted_impact": impact_res.get("predicted_impact", "Unknown")
-                                    }
-                                })
-                                
-                                # Send Explainer
-                                await websocket.send_json({
-                                    "type": "NEWS_EXPLAINER",
-                                    "data": {
-                                        "id": item_idx,
-                                        "explainer": explainer_res
-                                    }
-                                })
-                                
-                            except Exception as ex:
-                                print(f"Error in FinGPT analysis/explainer: {ex}\n{traceback.format_exc()}")
-                                
-                        asyncio.create_task(perform_analysis(n_item, idx, current_symbol))
+            except Exception as e:
+                print(f"❌ CRITICAL error in ticker loop: {e}", flush=True)
+                import traceback
+                traceback.print_exc()
+                await asyncio.sleep(1.0) # Prevent tight loop on error
 
-                        # 3. Register observer for 15m quantized impact
-                        active_impact_observers.append({
-                            "news_id": idx,
-                            "baseline_price": last_tick_price,
-                            "target_time": tick_time + datetime.timedelta(minutes=15)
-                        })
-                
-                # --- PROCESS IMPACT OBSERVERS ---
-                for obs in list(active_impact_observers):
-                    if tick_time >= obs["target_time"]:
-                        pct_change = ((last_tick_price - obs["baseline_price"]) / obs["baseline_price"]) * 100
-                        asyncio.create_task(websocket.send_json({
-                            "type": "NEWS_IMPACT_RESULT",
-                            "data": {
-                                "id": obs["news_id"],
-                                "actual_impact": f"{pct_change:+.2f}% in 15m",
-                                "price_start": obs["baseline_price"],
-                                "price_end": last_tick_price
-                            }
-                        }))
-                        active_impact_observers.remove(obs)
-                # ----------------------------------------
-
-                # Sleep per tick: 60s / (num_ticks * speed)
-                # At 1x: 60/60 = 1.0s per tick → 60s per candle
-                # At 5x: 60/300 = 0.2s per tick → 12s per candle
-                # At 20x: 60/1200 = 0.05s per tick → 3s per candle
-                tick_delay = 60.0 / (num_ticks * max(speed, 0.1))
-                await asyncio.sleep(tick_delay)
-
-                # Check for incoming commands (SPEED/STOP) between ticks
+            # Send CANDLE for ALL symbols at end of each minute
+            for sym, row in main_current_rows.items():
                 try:
-                    msg = await asyncio.wait_for(websocket.receive_json(), timeout=0.01)
-                    cmd = msg.get("command", "").upper()
-                    if cmd == "SPEED":
-                        speed = float(msg.get("speed", speed))
-                        print(f"⏩ Speed updated mid-tick to {speed}x")
-                    elif cmd == "STOP":
-                        is_running = False
-                        print("⏹️ Stopped mid-tick by client")
-                        break
-                except asyncio.TimeoutError:
-                    pass
-
-            if not is_running:
-                break
-
-            # Send CANDLE at end of each minute
-            try:
-                await websocket.send_json({
-                    "type": "CANDLE",
-                    "data": {
-                        "open":      open_p,
-                        "high":      high,
-                        "low":       low,
-                        "close":     close,
-                        "volume":    int(row.get('volume', 0)),
-                        "timestamp": base_time.isoformat(),
-                        "symbol":    current_symbol,
-                    }
-                })
-            except Exception:
-                break
+                    await websocket.send_json({
+                        "type": "CANDLE",
+                        "data": {
+                            "open":   float(row.get('open', 0)),
+                            "high":   float(row.get('high', 0)),
+                            "low":    float(row.get('low', 0)),
+                            "close":   float(row.get('close', 0)),
+                            "volume": int(row.get('volume', 0)),
+                            "timestamp": base_time.isoformat(),
+                            "symbol": sym,
+                        }
+                    })
+                except Exception: break
 
     except WebSocketDisconnect:
-        print("🔴 Client Disconnected")
+        print("🔴 Client Disconnected", flush=True)
     except Exception as e:
-        print(f"⚠️ Unhandled WS Error: {e}")
+        print(f"⚠️ Unhandled WS Error: {e}", flush=True)
         import traceback
         traceback.print_exc()
 

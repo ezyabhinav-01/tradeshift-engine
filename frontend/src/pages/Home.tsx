@@ -9,6 +9,7 @@ import { fetchHistoricalCandles } from '../services/MarketDataService';
 import TradePanel from '../components/TradePanel/TradePanel';
 import NewsPanel from '../components/features/NewsPanel';
 import ObjectTreePanel from '../components/ProChart/ObjectTreePanel';
+import ReplayToolbar from '../components/features/ReplayToolbar';
 import TradingViewWidget from '@/components/ui/TradingViewWidget';
 import { NEWS_WIDGET_CONFIG } from '@/lib/constants';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -63,7 +64,8 @@ const Home = () => {
     currentPrice, selectedSymbol, isPlaying, togglePlay,
     isReplayActive, toggleReplay,
     selectedDate, availableDates, setDate,
-    speed, setSpeed, modifyOrder, setSymbol
+    speed, setSpeed, modifyOrder, setSymbol,
+    currentTime, simulatedIndices, replayTicks
   } = useGame();
   const [showExitAllConfirm, setShowExitAllConfirm] = useState(false);
   const [pendingOrder, setPendingOrder] = useState<any | null>(null);
@@ -126,26 +128,15 @@ const Home = () => {
 
 
   const mappedCandles = useMemo(() => {
-    const data = [...historicalCandles].filter(c => 'open' in c && c.open !== undefined).map(c => ({
-      time: c.time as number,
+    return historicalCandles.filter(c => c && typeof c === 'object' && 'open' in c && c.open !== undefined).map(c => ({
+      time: (c.time as number) || 0,
       open: c.open,
       high: c.high,
       low: c.low,
       close: c.close,
       volume: c.volume
     }));
-    if (currentCandle && 'open' in currentCandle && currentCandle.open !== undefined) {
-      data.push({
-        time: currentCandle.time as number,
-        open: currentCandle.open,
-        high: currentCandle.high,
-        low: currentCandle.low,
-        close: currentCandle.close,
-        volume: currentCandle.volume
-      });
-    }
-    return data;
-  }, [historicalCandles, currentCandle]);
+  }, [historicalCandles]);
 
   // Memoized callbacks for chart props
   const onToggleLibraryCb = useCallback(() => setIsLibraryOpen(false), []);
@@ -167,11 +158,13 @@ const Home = () => {
     togglePlay, isReplayActive, toggleReplay,
     selectedDate, availableDates, setDate,
     speed, setSpeed, trades, modifyOrder,
+    currentTime, simulatedIndices, replayTicks
   } as GameData), [
     currentPrice, currentCandle, isPlaying, selectedSymbol,
     togglePlay, isReplayActive, toggleReplay,
     selectedDate, availableDates, setDate,
     speed, setSpeed, trades, modifyOrder,
+    currentTime, simulatedIndices, replayTicks
   ]);
 
   // Memoized chartProps for MultiChartGrid
@@ -515,6 +508,8 @@ const Home = () => {
           </div>
         </div>
       )}
+
+      <ReplayToolbar />
 
       {/* BOTTOM FOOTER */}
       <div className="h-8 border-t-4 border-tv-border bg-tv-bg-base flex items-center justify-between px-4 text-xs font-semibold text-tv-text-secondary select-none flex-shrink-0">

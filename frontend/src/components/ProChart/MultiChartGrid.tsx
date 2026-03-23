@@ -6,6 +6,7 @@ import type { GameData } from './ProChart';
 import type { DrawingToolId } from '../../hooks/useDrawingTools';
 import type { IndicatorTemplate } from '../../store/useChartObjects';
 import { SymbolSearch } from '../features/SymbolSearch';
+import ErrorBoundary from '../ErrorBoundary';
 import './MultiChartGrid.css';
 
 // ─── Layout Icons ──────────────────────────────────────────────────────────
@@ -225,24 +226,26 @@ export const MultiChartGrid: React.FC<MultiChartGridProps> = ({
             onClose={() => removeChart(chart.id)}
             onSymbolChange={(symbol) => handleSymbolChange(chart.id, symbol)}
           >
-            <ProChartComponent
-              chartId={chart.id}
-              isPrimary={isPrimary}
-              gameData={chartProps.gameData}
-              data={chart.candleData}
-              activeDrawingTool={isPrimary ? chartProps.activeDrawingTool : undefined}
-              onDrawingToolChange={isPrimary ? chartProps.onDrawingToolChange : undefined}
-              isLibraryOpen={isPrimary ? chartProps.isLibraryOpen : false}
-              onToggleLibrary={isPrimary ? chartProps.onToggleLibrary : undefined}
-              onPriceClick={isPrimary ? chartProps.onPriceClick : undefined}
-              onEntryLineClick={isPrimary ? chartProps.onEntryLineClick : undefined}
-              previewPrice={isPrimary ? chartProps.previewPrice : null}
-              isIndicatorsOpen={isPrimary ? chartProps.isIndicatorsOpen : false}
-              onToggleIndicators={isPrimary ? chartProps.onToggleIndicators : undefined}
-              isAlertsOpen={isPrimary ? chartProps.isAlertsOpen : false}
-              onToggleAlerts={isPrimary ? chartProps.onToggleAlerts : undefined}
-              onIndicatorStateChange={isPrimary ? chartProps.onIndicatorStateChange : undefined}
-            />
+            <ErrorBoundary name={`Chart ${i + 1} (${chart.symbol})`}>
+              <ProChartComponent
+                chartId={chart.id}
+                isPrimary={isPrimary}
+                gameData={chartProps.gameData}
+                data={isPrimary ? chartProps.data : (chart.candleData || [])}
+                activeDrawingTool={isPrimary ? chartProps.activeDrawingTool : undefined}
+                onDrawingToolChange={isPrimary ? chartProps.onDrawingToolChange : undefined}
+                isLibraryOpen={isPrimary ? chartProps.isLibraryOpen : false}
+                onToggleLibrary={isPrimary ? chartProps.onToggleLibrary : undefined}
+                onPriceClick={isPrimary ? chartProps.onPriceClick : undefined}
+                onEntryLineClick={isPrimary ? chartProps.onEntryLineClick : undefined}
+                previewPrice={isPrimary ? chartProps.previewPrice : null}
+                isIndicatorsOpen={isPrimary ? chartProps.isIndicatorsOpen : false}
+                onToggleIndicators={isPrimary ? chartProps.onToggleIndicators : undefined}
+                isAlertsOpen={isPrimary ? chartProps.isAlertsOpen : false}
+                onToggleAlerts={isPrimary ? chartProps.onToggleAlerts : undefined}
+                onIndicatorStateChange={isPrimary ? chartProps.onIndicatorStateChange : undefined}
+              />
+            </ErrorBoundary>
           </ChartSlot>
         );
       })}

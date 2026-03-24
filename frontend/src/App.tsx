@@ -12,7 +12,7 @@ import ScreenerPage from './pages/ScreenerPage';
 import MarketPage from './pages/MarketPage';
 import HistoryPage from './pages/HistoryPage';
 import SettingsPage from './pages/SettingsPage';
-import PortfolioPage_old from './pages/PortfolioPage'; // Renamed to avoid clash
+import PortfolioPage from './pages/PortfolioPage'; // Renamed to avoid clash
 import LearnPage from './pages/LearnPage';
 import NewsPage from './pages/NewsPage';
 
@@ -38,7 +38,7 @@ export default function App() {
               <Route path="markets" element={<MarketPage />} />
               <Route path="screener" element={<ScreenerPage />} />
               <Route path="history" element={<HistoryPage />} />
-              <Route path="portfolio-old" element={<PortfolioPage_old />} />
+              <Route path="portfolio" element={<PortfolioPage />} />
               <Route path="learn" element={<LearnPage />} />
               <Route path="news" element={<NewsPage />} />
               <Route path="settings" element={<SettingsPage />} />

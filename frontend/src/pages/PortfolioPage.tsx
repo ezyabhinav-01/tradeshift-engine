@@ -2,11 +2,11 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, 
+  PieChart, Pie, Cell,
 } from 'recharts';
 import {
-  TrendingUp, TrendingDown, RefreshCw, Briefcase,   
-   PieChart as PieIcon, BarChart3, Brain, AlertTriangle,
+  TrendingUp, TrendingDown, RefreshCw, Briefcase,
+  PieChart as PieIcon, BarChart3, Brain, AlertTriangle,
   Shield, Target, Zap, Clock, Award, ArrowUpRight, ArrowDownRight,
 } from 'lucide-react';
 
@@ -63,8 +63,8 @@ export default function PortfolioPage() {
     }
   };
 
-  useEffect(() => { 
-    fetchAll(); 
+  useEffect(() => {
+    fetchAll();
   }, [sessionType]);
 
   if (loading) {
@@ -168,8 +168,8 @@ function HoldingsTab({ data, holdings, isPositive }: any) {
               <AreaChart data={data.equity_curve} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={isPositive ? "#10b981" : "#ef4444"} stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor={isPositive ? "#10b981" : "#ef4444"} stopOpacity={0}/>
+                    <stop offset="5%" stopColor={isPositive ? "#10b981" : "#ef4444"} stopOpacity={0.3} />
+                    <stop offset="95%" stopColor={isPositive ? "#10b981" : "#ef4444"} stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <XAxis dataKey="date" stroke="#525252" fontSize={12} tickLine={false} axisLine={false} />

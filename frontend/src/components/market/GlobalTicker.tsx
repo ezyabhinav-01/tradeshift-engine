@@ -1,6 +1,7 @@
 import { useEffect, useState, Fragment } from 'react';
 import axios from 'axios';
 import { useGame } from '../../hooks/useGame';
+import { useMultiChartStore } from '../../store/useMultiChartStore';
 import { Separator } from '@/components/ui/separator';
 
 export interface IndexData {
@@ -14,6 +15,7 @@ export interface IndexData {
 export const GlobalTicker = () => {
   const [liveIndices, setLiveIndices] = useState<IndexData[]>([]);
   const { isPlaying, simulatedIndices, setSymbol } = useGame();
+  const { activeChartId, updateChart } = useMultiChartStore();
 
   useEffect(() => {
     const fetchIndices = async () => {
@@ -80,7 +82,10 @@ export const GlobalTicker = () => {
           <Fragment key={idx.name + i}>
             <div 
               className="flex items-center gap-2 shrink-0 cursor-pointer hover:bg-slate-100 dark:hover:bg-white/5 px-2 py-1 rounded transition-colors"
-              onClick={() => setSymbol(idx.name, '')}
+              onClick={() => {
+                updateChart(activeChartId, { symbol: idx.name });
+                setSymbol(idx.name, '');
+              }}
             >
               <span className="text-tv-text-primary font-bold uppercase tracking-wide">{idx.name}</span>
               <span className="text-tv-text-primary font-medium">{idx.price.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>

@@ -10,10 +10,6 @@ import TradePanel from '../components/TradePanel/TradePanel';
 import NewsPanel from '../components/features/NewsPanel';
 import ObjectTreePanel from '../components/ProChart/ObjectTreePanel';
 import ReplayToolbar from '../components/features/ReplayToolbar';
-import TradingViewWidget from '@/components/ui/TradingViewWidget';
-import { NEWS_WIDGET_CONFIG } from '@/lib/constants';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Sparkles } from 'lucide-react';
 import { useGame } from '../hooks/useGame';
 import type { DrawingToolId } from '../hooks/useDrawingTools';
 import { toast } from 'sonner';
@@ -285,40 +281,9 @@ const Home = () => {
                 <h3 className="text-xs font-black uppercase">Market News</h3>
                 <button onClick={() => setIsNewsOpen(false)}><X className="w-4 h-4" /></button>
               </div>
-              <Tabs defaultValue="live" className="flex flex-col h-full">
-                {/* ... rest of the tabs ... */}
-                <div className="p-4 border-b border-white/5">
-                  <TabsList className="grid w-full grid-cols-2 bg-black/40">
-                    <TabsTrigger value="live" className="text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-primary data-[state=active]:text-black flex items-center gap-1.5">
-                      <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                      </span>
-                      Live Pulse
-                    </TabsTrigger>
-                    <TabsTrigger value="ai" className="text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-primary data-[state=active]:text-black gap-1.5">
-                      <Sparkles className="w-3 h-3 text-orange-400 animate-pulse" />
-                      FinGPT Explainer
-                      <span className="bg-black/20 text-[7px] px-1 rounded ml-1 animate-bounce">USP</span>
-                    </TabsTrigger>
-                  </TabsList>
-                </div>
-
-                <TabsContent value="live" className="flex-1 overflow-hidden mt-0">
-                  <div className="h-full p-2">
-                    <TradingViewWidget
-                      title=""
-                      scriptUrl="https://s3.tradingview.com/external-embedding/embed-widget-timeline.js"
-                      config={NEWS_WIDGET_CONFIG}
-                      height={800}
-                    />
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="ai" className="flex-1 overflow-hidden mt-0">
-                  <NewsPanel />
-                </TabsContent>
-              </Tabs>
+              <div className="flex-1 overflow-hidden">
+                <NewsPanel />
+              </div>
             </div>
           )}
         </div>

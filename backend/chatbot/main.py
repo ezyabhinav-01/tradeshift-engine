@@ -11,11 +11,11 @@ from slowapi.errors import RateLimitExceeded
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from .model_loader import load_model
-from .bot import get_bot
-from .config import config
-from .database import log_conversation, update_feedback
-from .ingest import ingest_data
+from model_loader import load_model
+from bot import get_bot
+from config import config
+from database import log_conversation, update_feedback
+from ingest import ingest_data
 
 # limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="Local FinChatbot Backend")
@@ -124,6 +124,6 @@ async def get_suggestions(topic: str):
         return {"suggestions": ["What defines a Multibagger stock?", "How do you calculate ROCE?"]}
     return {"suggestions": ["How do I use the drawing tools?", "What is Historical Replay Mode?"]}
 
-@app.get("/health")
+@app.get("/api/chat/health")
 def health_check():
     return {"status": "ok", "service": "chatbot", "model": config.model_name}

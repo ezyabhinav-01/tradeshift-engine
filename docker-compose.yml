@@ -140,6 +140,22 @@ services:
     volumes:
       - ./backend:/app
 
+  # 8. AI ChatBot (FinGPT / RAG)
+  chatbot:
+    build: 
+      context: ./backend/chatbot
+      dockerfile: Dockerfile
+    container_name: tradeshift_chatbot
+    volumes:
+      - ./backend/chatbot:/app
+      - ./backend/chatbot/chroma_db:/app/chroma_db
+    ports:
+      - "8001:8001"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - CHATBOT_API_KEY=tradeshift-local-key
+    restart: always
+
 volumes:
   postgres_data:
   minio_data:

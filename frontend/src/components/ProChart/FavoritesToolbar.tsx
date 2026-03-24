@@ -45,14 +45,24 @@ export const FavoritesToolbar: React.FC<FavoritesToolbarProps> = ({ activeTool, 
     if (!isDragging || !containerRef.current) return;
     
     // Get parent offset to calculate relative positioning correctly
-    const parentRect = (containerRef.current.offsetParent as HTMLElement)?.getBoundingClientRect() || { left: 0, top: 0 };
+    const parentElement = containerRef.current.offsetParent as HTMLElement;
+    const parentRect = parentElement?.getBoundingClientRect() || { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+    const rect = containerRef.current.getBoundingClientRect();
     
     // Calculate new position relative to parent
     const viewportX = e.clientX - dragOffset.current.x;
     const viewportY = e.clientY - dragOffset.current.y;
     
-    const x = viewportX - parentRect.left;
-    const y = viewportY - parentRect.top;
+    let x = viewportX - parentRect.left;
+    let y = viewportY - parentRect.top;
+    
+    // Boundary Constraints
+    const padding = 8;
+    const maxX = parentRect.width - rect.width - padding;
+    const maxY = parentRect.height - rect.height - padding;
+    
+    x = Math.max(padding, Math.min(x, maxX));
+    y = Math.max(padding, Math.min(y, maxY));
     
     // Disable all transition while dragging to ensure it's "live" and follows cursor perfectly
     containerRef.current.style.transition = 'none';
@@ -88,6 +98,37 @@ export const FavoritesToolbar: React.FC<FavoritesToolbarProps> = ({ activeTool, 
       window.removeEventListener('mouseup', handleMouseUp);
     };
   }, [isDragging, handleMouseMove, handleMouseUp]);
+
+  // Ensure favorites stays in bounds on window resize
+  useEffect(() => {
+    if (!isHydrated || !favoritesPosition || !containerRef.current) return;
+
+    const handleResize = () => {
+      if (!containerRef.current) return;
+      const parentElement = containerRef.current.offsetParent as HTMLElement;
+      if (!parentElement) return;
+
+      const parentRect = parentElement.getBoundingClientRect();
+      const rect = containerRef.current.getBoundingClientRect();
+      const padding = 8;
+
+      const maxX = parentRect.width - rect.width - padding;
+      const maxY = parentRect.height - rect.height - padding;
+
+      const newX = Math.max(padding, Math.min(favoritesPosition.x, maxX));
+      const newY = Math.max(padding, Math.min(favoritesPosition.y, maxY));
+
+      if (newX !== favoritesPosition.x || newY !== favoritesPosition.y) {
+        setFavoritesPosition({ x: newX, y: newY });
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    // Initial check
+    handleResize();
+    
+    return () => window.removeEventListener('resize', handleResize);
+  }, [isHydrated, favoritesPosition, setFavoritesPosition]);
 
   // Extreme safety check to prevent crash during hydration or if state is corrupted
   if (!isHydrated || !favorites || !Array.isArray(favorites) || favorites.length === 0) {

@@ -13,6 +13,8 @@ export const ChatBot: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [isOnline, setIsOnline] = useState<boolean>(false);
+  const [isCheckingHealth, setIsCheckingHealth] = useState<boolean>(true);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -35,8 +37,23 @@ export const ChatBot: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, suggestions]);
 
-  // Initial welcome message
+  // Initial welcome message and health check
   useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const { checkBotHealth } = await import('../../services/chatApi');
+        const online = await checkBotHealth();
+        setIsOnline(online);
+      } catch (e) {
+        setIsOnline(false);
+      } finally {
+        setIsCheckingHealth(false);
+      }
+    };
+
+    checkHealth();
+    const interval = setInterval(checkHealth, 30000);
+
     if (isOpen && messages.length === 0) {
       setMessages([
         {
@@ -46,6 +63,8 @@ export const ChatBot: React.FC = () => {
       ]);
       loadInitialSuggestions();
     }
+
+    return () => clearInterval(interval);
   }, [isOpen]);
 
   const loadInitialSuggestions = async () => {
@@ -128,13 +147,15 @@ export const ChatBot: React.FC = () => {
       <div className="flex items-center justify-between p-4 bg-gradient-to-r from-[#141414] to-[#1a1a1a] border-b border-gray-800">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
-            <Bot size={22} className="text-emerald-400" />
+            <Bot size={22} className={isOnline ? "text-emerald-400" : "text-gray-500"} />
           </div>
           <div>
             <h3 className="text-gray-100 font-semibold text-sm">TradeGuide AI</h3>
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span className="text-gray-400 text-xs">Online • Local Node</span>
+              <span className={`w-2 h-2 rounded-full ${isCheckingHealth || isLoading ? 'bg-yellow-500 animate-pulse' : isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`}></span>
+              <span className="text-gray-400 text-xs">
+                {isCheckingHealth ? 'Connecting...' : (isLoading && messages.length > 1 ? 'Generating...' : (isOnline ? 'Online • Local Node' : 'Offline • Service Down'))}
+              </span>
             </div>
           </div>
         </div>

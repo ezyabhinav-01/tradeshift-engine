@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = 'http://localhost:8001/api';
+const API_URL = '/api';
 
 export interface ChatMessage {
     role: 'user' | 'assistant';
@@ -61,5 +61,17 @@ export const fetchSuggestedTopics = async (topic: string): Promise<string[]> => 
     } catch (error) {
         console.error("Could not fetch contextual AI suggestions:", error);
         return [];
+    }
+};
+/**
+ * Verifies if the TradeGuide AI backend is alive and reachable.
+ */
+export const checkBotHealth = async (): Promise<boolean> => {
+    try {
+        // Increase timeout to 15s to allow for AI model cold-starts in Docker
+        const response = await axiosInstance.get('/chat/health', { timeout: 15000 });
+        return response.status === 200;
+    } catch (error) {
+        return false;
     }
 };

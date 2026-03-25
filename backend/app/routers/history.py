@@ -2,11 +2,11 @@
 History API Router — trade history with filtering, pagination, CSV export,
 and monthly summary aggregation.
 """
-from fastapi import APIRouter, Depends, Request, Query
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
-from sqlalchemy import func, extract, desc, asc
-from app.database import get_db, get_db_sync
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func, extract, desc, asc, select, distinct
+from app.database import get_db
 from app.models import TradeLog, User
 from app.config import SECRET_KEY, ALGORITHM
 from app.sector_mapping import get_sector
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/history", tags=["history"])
 
 
-def _get_user_id(request: Request, db: Session) -> int:
+async def _get_user_id(request: Request, db: AsyncSession) -> int:
     token = request.cookies.get("access_token")
     if not token:
         auth_header = request.headers.get("Authorization")
@@ -29,50 +29,50 @@ def _get_user_id(request: Request, db: Session) -> int:
             payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
             email = payload.get("sub")
             if email:
-                user = db.query(User).filter(User.email == email).first()
-                if user:
+                result = await db.execute(select(User).filter(User.email == email))
+                user = result.scalars().first()
+                if user :
                     return user.id
         except Exception:
             pass
     return 1  # fallback for dev
 
 
-def _apply_filters(query, date_from, date_to, symbol, direction, search, session_type):
-    """Apply common filters to a TradeLog query."""
+def _apply_filters(stmt, date_from, date_to, symbol, direction, search, session_type):
+    """Apply common filters to a TradeLog statement."""
     if session_type:
-        query = query.filter(TradeLog.session_type == session_type)
+        stmt = stmt.filter(TradeLog.session_type == session_type)
     if date_from:
         try:
             dt = datetime.strptime(date_from, "%Y-%m-%d")
-            query = query.filter(TradeLog.entry_time >= dt)
+            stmt = stmt.filter(TradeLog.entry_time >= dt)
         except ValueError:
             pass
     if date_to:
         try:
             dt = datetime.strptime(date_to, "%Y-%m-%d")
-            # Include the entire 'to' day
             dt = dt.replace(hour=23, minute=59, second=59)
-            query = query.filter(TradeLog.entry_time <= dt)
+            stmt = stmt.filter(TradeLog.entry_time <= dt)
         except ValueError:
             pass
     if symbol and symbol.strip():
-        query = query.filter(TradeLog.symbol.ilike(f"%{symbol.strip()}%"))
+        stmt = stmt.filter(TradeLog.symbol.ilike(f"%{symbol.strip()}%"))
     if direction and direction.strip().upper() in ("BUY", "SELL"):
-        query = query.filter(TradeLog.direction == direction.strip().upper())
+        stmt = stmt.filter(TradeLog.direction == direction.strip().upper())
     if search and search.strip():
         s = f"%{search.strip()}%"
-        query = query.filter(
+        stmt = stmt.filter(
             (TradeLog.symbol.ilike(s)) |
             (TradeLog.exit_reason.ilike(s)) |
             (TradeLog.direction.ilike(s))
         )
-    return query
+    return stmt
 
 
 @router.get("/trades")
-def get_trade_history(
+async def get_trade_history(
     request: Request,
-    db: Session = Depends(get_db_sync),
+    db: AsyncSession = Depends(get_db),
     date_from: str = Query(None, alias="from"),
     date_to: str = Query(None, alias="to"),
     symbol: str = Query(None),
@@ -86,14 +86,19 @@ def get_trade_history(
 ):
     """Paginated, filterable trade history."""
     try:
-        q = db.query(TradeLog).filter(
+        user_id = await _get_user_id(request, db)
+        
+        stmt = select(TradeLog).filter(
+            TradeLog.user_id == user_id,
             TradeLog.exit_price.isnot(None),
             TradeLog.exit_price != 0,
         )
-        q = _apply_filters(q, date_from, date_to, symbol, direction, search, session_type)
+        stmt = _apply_filters(stmt, date_from, date_to, symbol, direction, search, session_type)
 
-        # Count before pagination
-        total = q.count()
+        # Count
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total_result = await db.execute(count_stmt)
+        total = total_result.scalar_one()
 
         # Sort
         allowed_sorts = {
@@ -105,11 +110,14 @@ def get_trade_history(
             "direction": TradeLog.direction,
         }
         sort_col = allowed_sorts.get(sort_by, TradeLog.entry_time)
-        q = q.order_by(desc(sort_col) if sort_order == "desc" else asc(sort_col))
+        stmt = stmt.order_by(desc(sort_col) if sort_order == "desc" else asc(sort_col))
 
         # Paginate
         offset = (page - 1) * limit
-        trades = q.offset(offset).limit(limit).all()
+        stmt = stmt.offset(offset).limit(limit)
+        
+        result = await db.execute(stmt)
+        trades = result.scalars().all()
 
         rows = []
         for t in trades:
@@ -136,7 +144,7 @@ def get_trade_history(
             "total": total,
             "page": page,
             "limit": limit,
-            "total_pages": max(1, -(-total // limit)),  # ceil division
+            "total_pages": max(1, -(-total // limit)),
         }
     except Exception as e:
         logger.error(f"Error fetching trade history: {e}")
@@ -144,9 +152,9 @@ def get_trade_history(
 
 
 @router.get("/trades/export")
-def export_trades_csv(
+async def export_trades_csv(
     request: Request,
-    db: Session = Depends(get_db_sync),
+    db: AsyncSession = Depends(get_db),
     date_from: str = Query(None, alias="from"),
     date_to: str = Query(None, alias="to"),
     symbol: str = Query(None),
@@ -156,13 +164,17 @@ def export_trades_csv(
 ):
     """Export filtered trades as CSV download."""
     try:
-        q = db.query(TradeLog).filter(
+        user_id = await _get_user_id(request, db)
+        stmt = select(TradeLog).filter(
+            TradeLog.user_id == user_id,
             TradeLog.exit_price.isnot(None),
             TradeLog.exit_price != 0,
         )
-        q = _apply_filters(q, date_from, date_to, symbol, direction, search, session_type)
-        q = q.order_by(desc(TradeLog.entry_time))
-        trades = q.all()
+        stmt = _apply_filters(stmt, date_from, date_to, symbol, direction, search, session_type)
+        stmt = stmt.order_by(desc(TradeLog.entry_time))
+        
+        result = await db.execute(stmt)
+        trades = result.scalars().all()
 
         output = io.StringIO()
         writer = csv.writer(output)
@@ -192,26 +204,30 @@ def export_trades_csv(
 
 
 @router.get("/monthly-summary")
-def get_monthly_summary(
+async def get_monthly_summary(
     request: Request,
     session_type: str = Query('LIVE'),
-    db: Session = Depends(get_db_sync),
+    db: AsyncSession = Depends(get_db),
 ):
     """Monthly aggregated trade stats."""
     try:
-        trades = db.query(TradeLog).filter(
+        user_id = await _get_user_id(request, db)
+        stmt = select(TradeLog).filter(
+            TradeLog.user_id == user_id,
             TradeLog.session_type == session_type,
             TradeLog.exit_price.isnot(None),
             TradeLog.exit_price != 0,
-        ).order_by(TradeLog.entry_time).all()
+        ).order_by(TradeLog.entry_time)
+        
+        result = await db.execute(stmt)
+        trades = result.scalars().all()
 
         if not trades:
             return {"months": []}
 
         months_map = {}
         for t in trades:
-            if not t.entry_time:
-                continue
+            if not t.entry_time: continue
             key = t.entry_time.strftime("%Y-%m")
             if key not in months_map:
                 months_map[key] = {
@@ -225,10 +241,8 @@ def get_monthly_summary(
                 }
             m = months_map[key]
             m["total_trades"] += 1
-            if (t.pnl or 0) > 0:
-                m["wins"] += 1
-            else:
-                m["losses"] += 1
+            if (t.pnl or 0) > 0: m["wins"] += 1
+            else: m["losses"] += 1
             m["total_pnl"] += (t.pnl or 0)
             m["total_holding_time"] += (t.holding_time or 0)
 
@@ -246,11 +260,13 @@ def get_monthly_summary(
 
 
 @router.get("/symbols")
-def get_traded_symbols(session_type: str = Query('LIVE'), db: Session = Depends(get_db_sync)):
+async def get_traded_symbols(session_type: str = Query('LIVE'), db: AsyncSession = Depends(get_db)):
     """Get distinct symbols from trade history for filter dropdown."""
     try:
-        symbols = db.query(TradeLog.symbol).filter(TradeLog.session_type == session_type).distinct().order_by(TradeLog.symbol).all()
-        return {"symbols": [s[0] for s in symbols if s[0]]}
+        stmt = select(distinct(TradeLog.symbol)).filter(TradeLog.session_type == session_type).order_by(TradeLog.symbol)
+        result = await db.execute(stmt)
+        symbols = result.scalars().all()
+        return {"symbols": [s for s in symbols if s]}
     except Exception as e:
         logger.error(f"Error fetching symbols: {e}")
         return {"symbols": []}

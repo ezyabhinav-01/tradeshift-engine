@@ -1,11 +1,12 @@
 from fastapi import Depends, HTTPException, status, Request
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from .database import get_db
 from .models import User
 from .config import SECRET_KEY, ALGORITHM
 import jwt
 
-def get_current_user(request: Request, db: Session = Depends(get_db)):
+async def get_current_user(request: Request, db: AsyncSession = Depends(get_db)):
     token = request.cookies.get("access_token")
     
     # Fallback: Check Authorization Header (for API tools/mobile)
@@ -34,7 +35,9 @@ def get_current_user(request: Request, db: Session = Depends(get_db)):
             detail="Could not validate credentials",
         )
     
-    user = db.query(User).filter(User.email == email).first()
+    result = await db.execute(select(User).filter(User.email == email))
+    user = result.scalars().first()
+    
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

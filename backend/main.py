@@ -25,17 +25,26 @@ from app.database import get_db
 from app.news_service import fetch_news_for_date
 from app.nlp_engine import analyze_news_impact, ask_news_question, generate_news_explainer
 from app.database import Base, connect_to_database, connect_to_database_sync, get_db_sync
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.screener_service import ScreenerService
+from app.fundamental_service import FundamentalService
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # --- DB INITIALIZATION ---
+# Explicitly import models to ensure they are registered with Base.metadata
+import app.models
+
 # Connect and Create Tables using the cached connection pattern
 try:
     engine_sync = connect_to_database_sync()
     Base.metadata.create_all(bind=engine_sync)
     print("✅ Database Tables Created/Verified")
+    
+    # 🔎 Double-check the tables in metadata
+    logger.info(f"Registered Tables: {Base.metadata.tables.keys()}")
 except Exception as e:
     print(f"❌ Database Initialization Failed: {e}")
 
@@ -467,36 +476,36 @@ class StockChatRequest(BaseModel):
     history: list = []
 
 @app.get("/api/screener/multibagger")
-def get_multibagger_screener(db=Depends(get_db_sync)):
+async def get_multibagger_screener(db: AsyncSession = Depends(get_db)):
     """
     Returns a list of potential multi-bagger stocks based on fundamental screeners.
     """
     try:
-        candidates = ScreenerService.get_multibagger_candidates(db)
+        candidates = await ScreenerService.get_multibagger_candidates(db)
         return {"candidates": candidates}
     except Exception as e:
         logger.error(f"❌ Screener Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/stock/{symbol}/profile")
-def get_stock_profile(symbol: str, db=Depends(get_db_sync)):
+async def get_stock_profile(symbol: str, db: AsyncSession = Depends(get_db)):
     """
     Returns fundamental metrics and yearly financials for a stock.
     """
     try:
-        profile = FundamentalService.get_stock_profile(db, symbol.upper())
+        profile = await FundamentalService.get_stock_profile(db, symbol.upper())
         return profile
     except Exception as e:
         logger.error(f"Error fetching profile for {symbol}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/stock/{symbol}/analyze")
-async def get_stock_analysis(symbol: str, db=Depends(get_db_sync)):
+async def get_stock_analysis(symbol: str, db: AsyncSession = Depends(get_db)):
     """
     Triggers FinGPT deep professional analysis.
     """
     try:
-        profile = FundamentalService.get_stock_profile(db, symbol.upper())
+        profile = await FundamentalService.get_stock_profile(db, symbol.upper())
         # We pass the fundamentals part of the profile to the AI
         analysis = await analyze_stock_fundamentals(symbol.upper(), profile["fundamentals"])
         return {"symbol": symbol, "analysis": analysis}
@@ -522,12 +531,12 @@ async def get_layman_explanation(symbol: str, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/stock/{symbol}/chat")
-async def chat_about_stock_endpoint(symbol: str, request: StockChatRequest, db=Depends(get_db_sync)):
+async def chat_about_stock_endpoint(symbol: str, request: StockChatRequest, db: AsyncSession = Depends(get_db)):
     """
     Interactive chat for users to ask questions about a stock's fundamentals.
     """
     try:
-        profile = FundamentalService.get_stock_profile(db, symbol.upper())
+        profile = await FundamentalService.get_stock_profile(db, symbol.upper())
         answer = await chat_about_stock(symbol.upper(), profile["fundamentals"], request.question, request.history)
         return {"symbol": symbol, "answer": answer}
     except Exception as e:

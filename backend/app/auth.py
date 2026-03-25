@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Response, BackgroundTasks
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from .models import User
 from .database import get_db
 from .schemas import UserCreate, UserLogin, Token, User as UserSchema
@@ -37,10 +38,11 @@ async def register(
     user: UserCreate, 
     response: Response, 
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     # 1. Check if user exists
-    db_user = db.query(User).filter(User.email == user.email).first()
+    result = await db.execute(select(User).filter(User.email == user.email))
+    db_user = result.scalars().first()
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
     
@@ -50,14 +52,18 @@ async def register(
         email=user.email, 
         hashed_password=hashed_password, 
         full_name=user.full_name,
-        country=user.country,
+        dob=user.dob,
+        experience_level=user.experience_level,
         investment_goals=user.investment_goals,
+        preferred_instruments=user.preferred_instruments,
         risk_tolerance=user.risk_tolerance,
-        preferred_industries=user.preferred_industries
+        occupation=user.occupation,
+        city=user.city,
+        security_pin=user.security_pin
     )
     db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
+    await db.commit()
+    await db.refresh(new_user)
 
     # 3. Auto-Login (Set Cookie)
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -86,10 +92,13 @@ async def register(
                     "email": new_user.email,
                     "firstName": new_user.full_name.split()[0] if new_user.full_name else "Trader",
                     "fullname": new_user.full_name,
-                    "country": new_user.country,
+                    "dob": new_user.dob,
+                    "experience_level": new_user.experience_level,
                     "investment_goals": new_user.investment_goals,
+                    "preferred_instruments": new_user.preferred_instruments,
                     "risk_tolerance": new_user.risk_tolerance,
-                    "preferred_industries": new_user.preferred_industries
+                    "occupation": new_user.occupation,
+                    "city": new_user.city
                 }
             )
         )
@@ -100,12 +109,13 @@ async def register(
     return new_user
 
 @router.post("/login", response_model=UserSchema) # Return User schema, not just Token
-def login(
+async def login(
     user: UserLogin, 
     response: Response, 
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    db_user = db.query(User).filter(User.email == user.email).first()
+    result = await db.execute(select(User).filter(User.email == user.email))
+    db_user = result.scalars().first()
     if not db_user or not verify_password(user.password, db_user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password")
     
@@ -134,5 +144,5 @@ def logout(response: Response):
 from .dependencies import get_current_user
 
 @router.get("/me", response_model=UserSchema)
-def read_users_me(current_user: User = Depends(get_current_user)):
+async def read_users_me(current_user: User = Depends(get_current_user)):
     return current_user

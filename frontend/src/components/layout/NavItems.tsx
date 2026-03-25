@@ -62,6 +62,24 @@ export const NavItems = () => {
                             <Newspaper size={16} className="text-tv-primary" />
                             News & AI Insights
                         </Link>
+
+                        <Link
+                            to="/community"
+                            onClick={() => setIsMoreOpen(false)}
+                            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg transition-colors outline-none cursor-pointer"
+                        >
+                            <LayoutDashboard size={16} className="text-tv-primary" />
+                            Community
+                        </Link>
+
+                        <Link
+                            to="/help"
+                            onClick={() => setIsMoreOpen(false)}
+                            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg transition-colors outline-none cursor-pointer"
+                        >
+                            <History size={16} className="text-tv-primary" />
+                            Help & Support
+                        </Link>
                         
                         <div className="h-[1px] bg-slate-100 dark:bg-white/5 my-1" />
                         

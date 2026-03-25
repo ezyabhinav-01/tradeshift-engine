@@ -1,11 +1,13 @@
 from typing import List, Dict, Any
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, distinct
 from app.models import PortfolioHolding, TradeLog
 from app.market_service import market_service
 from app.sector_mapping import get_sector, get_sector_allocation, get_concentration_risks
 from datetime import datetime, timedelta
 import logging
 import random
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +19,6 @@ def xirr(cash_flows: List[tuple]) -> float:
     if not cash_flows:
         return 0.0
         
-    # Sort cash flows by date
     cash_flows.sort(key=lambda x: x[0])
     
     def xnpv(rate):
@@ -26,14 +27,12 @@ def xirr(cash_flows: List[tuple]) -> float:
         t0 = cash_flows[0][0]
         return sum([cf[1] / ((1 + rate) ** ((cf[0] - t0).days / 365.0)) for cf in cash_flows])
 
-    # Newton-Raphson method
     rate = 0.1
     for _ in range(100):
         f = xnpv(rate)
         if abs(f) < 1e-5:
             return rate
         
-        # Derivative approximation
         df = (xnpv(rate + 0.0001) - f) / 0.0001
         if df == 0:
             break
@@ -43,29 +42,28 @@ def xirr(cash_flows: List[tuple]) -> float:
             return new_rate
         rate = new_rate
         
-    # If it fails to converge, return a simple approximate return
     return rate
 
 class PortfolioService:
     
-    def get_holdings(self, db: Session, user_id: int, session_type: str = 'LIVE') -> List[Dict[str, Any]]:
-        holdings = db.query(PortfolioHolding).filter(
+    async def get_holdings(self, db: AsyncSession, user_id: int, session_type: str = 'LIVE') -> List[Dict[str, Any]]:
+        result = await db.execute(select(PortfolioHolding).filter(
             PortfolioHolding.user_id == user_id,
             PortfolioHolding.session_type == session_type
-        ).all()
+        ))
+        holdings = result.scalars().all()
         
         results = []
         for h in holdings:
-            # Get LTP (mocked or real from market_service)
-            # We can use market_service to get the current price, or yfinance directly.
-            # For simplicity, let's fetch individual prices via yfinance or use a mock if offline.
             try:
                 import yfinance as yf
                 ticker = yf.Ticker(h.symbol)
-                hist = ticker.history(period="1d")
+                # Note: yfinance is blocking, ideally should be run in a threadpool
+                # For this refactor we keep it as is or wrap in run_in_executor
+                loop = asyncio.get_event_loop()
+                hist = await loop.run_in_executor(None, lambda: ticker.history(period="1d"))
                 ltp = float(hist['Close'].iloc[-1]) if not hist.empty else h.average_cost * 1.05
             except Exception:
-                # Fallback if network fails
                 ltp = h.average_cost * 1.05
                 
             invested = h.quantity * h.average_cost
@@ -87,38 +85,31 @@ class PortfolioService:
                 "first_purchase_date": h.first_purchase_date.strftime("%Y-%m-%d") if h.first_purchase_date else None
             })
             
-        # Sort by invested value descending
         return sorted(results, key=lambda x: x["invested_value"], reverse=True)
 
-    def get_summary(self, db: Session, user_id: int, session_type: str = 'LIVE') -> Dict[str, Any]:
-        holdings = self.get_holdings(db, user_id, session_type)
+    async def get_summary(self, db: AsyncSession, user_id: int, session_type: str = 'LIVE') -> Dict[str, Any]:
+        holdings = await self.get_holdings(db, user_id, session_type)
         
         total_invested = sum(h["invested_value"] for h in holdings)
         total_current = sum(h["current_value"] for h in holdings)
         total_pnl = total_current - total_invested
         total_pnl_pct = (total_pnl / total_invested * 100) if total_invested > 0 else 0
         
-        # Calculate XIRR
-        # Cash outflows: purchase dates and invested amounts (negative)
-        # Cash inflow: today and current value (positive)
         cash_flows = []
         now = datetime.utcnow()
         for h in holdings:
-            # We assume the entire position was bought on the first_purchase_date for simplicity
             date_obj = datetime.strptime(h["first_purchase_date"], "%Y-%m-%d") if h["first_purchase_date"] else now
             cash_flows.append((date_obj, -h["invested_value"]))
             
         if cash_flows:
             cash_flows.append((now, total_current))
-            calculated_xirr = xirr(cash_flows) * 100  # convert to percentage
+            calculated_xirr = xirr(cash_flows) * 100
         else:
             calculated_xirr = 0.0
             
-        # Generate an equity curve (dummy timeline for visual aesthetics)
-        # We start from the oldest purchase date to now
         equity_curve = []
         if cash_flows:
-            start_date = min(cf[0] for cf in cash_flows[:-1]) # exclude the 'now' inflow
+            start_date = min(cf[0] for cf in cash_flows[:-1])
             days_diff = (now - start_date).days
             if days_diff < 30:
                 start_date = now - timedelta(days=30)
@@ -126,11 +117,8 @@ class PortfolioService:
                 
             daily_growth = (total_current / total_invested) ** (1.0 / days_diff) if total_invested > 0 else 1.0
             
-            # Generate 30 data points
             step = max(1, days_diff // 30)
             current_dt = start_date
-            
-            # Simulated curve starting at invested value and growing/shrinking to current value
             simulated_val = total_invested
             for i in range(30):
                 equity_curve.append({
@@ -138,12 +126,9 @@ class PortfolioService:
                     "value": round(simulated_val, 2)
                 })
                 current_dt += timedelta(days=step)
-                # Apply random noise to the strictly compounded growth
-                import random
                 noise = random.uniform(0.98, 1.02)
                 simulated_val *= daily_growth * noise
                 
-            # Ensure the last point is precisely the current value
             equity_curve[-1]["value"] = round(total_current, 2)
             equity_curve[-1]["date"] = "Today"
             
@@ -157,20 +142,21 @@ class PortfolioService:
             "equity_curve": equity_curve
         }
 
-    def get_positions(self, db: Session, user_id: int, session_type: str = 'LIVE') -> List[Dict[str, Any]]:
-        """Get currently open positions from TradeLog (exit_price is null or 0)."""
-        open_trades = db.query(TradeLog).filter(
+    async def get_positions(self, db: AsyncSession, user_id: int, session_type: str = 'LIVE') -> List[Dict[str, Any]]:
+        result = await db.execute(select(TradeLog).filter(
             TradeLog.session_id.isnot(None),
             TradeLog.session_type == session_type,
             (TradeLog.exit_price == None) | (TradeLog.exit_price == 0)
-        ).all()
+        ))
+        open_trades = result.scalars().all()
 
         results = []
         for t in open_trades:
             try:
                 import yfinance as yf
                 ticker = yf.Ticker(t.symbol)
-                hist = ticker.history(period="1d")
+                loop = asyncio.get_event_loop()
+                hist = await loop.run_in_executor(None, lambda: ticker.history(period="1d"))
                 ltp = float(hist['Close'].iloc[-1]) if not hist.empty else t.entry_price * 1.02
             except Exception:
                 ltp = t.entry_price * 1.02 if t.entry_price else 0
@@ -204,21 +190,17 @@ class PortfolioService:
             })
         return results
 
-    def get_sector_analysis(self, db: Session, user_id: int, session_type: str = 'LIVE') -> Dict[str, Any]:
-        """Get sector allocation and concentration risks from holdings."""
-        holdings = self.get_holdings(db, user_id, session_type)
+    async def get_sector_analysis(self, db: AsyncSession, user_id: int, session_type: str = 'LIVE') -> Dict[str, Any]:
+        holdings = await self.get_holdings(db, user_id, session_type)
 
-        # Add sector info to each holding
         for h in holdings:
             h["sector"] = get_sector(h["symbol"])
 
         allocation = get_sector_allocation(holdings)
         risks = get_concentration_risks(allocation, holdings)
 
-        # Calculate a simple diversification score
         num_sectors = len(allocation)
         max_sector_pct = max((s["percent"] for s in allocation), default=0)
-        # Score: 100 = perfectly diversified, lower = more concentrated
         diversity_score = min(100, max(0, int(
             (num_sectors / 8) * 50 + (1 - max_sector_pct / 100) * 50
         )))
@@ -231,13 +213,13 @@ class PortfolioService:
             "risk_level": "Low" if diversity_score > 70 else ("Medium" if diversity_score > 40 else "High"),
         }
 
-    def get_trade_research(self, db: Session, user_id: int, session_type: str = 'LIVE') -> Dict[str, Any]:
-        """Analyze historical trade patterns and generate behavioral insights."""
-        all_trades = db.query(TradeLog).filter(
+    async def get_trade_research(self, db: AsyncSession, user_id: int, session_type: str = 'LIVE') -> Dict[str, Any]:
+        result = await db.execute(select(TradeLog).filter(
             TradeLog.session_type == session_type,
             TradeLog.exit_price.isnot(None),
             TradeLog.exit_price != 0
-        ).all()
+        ))
+        all_trades = result.scalars().all()
 
         if not all_trades:
             return {
@@ -260,14 +242,12 @@ class PortfolioService:
         avg_pnl = sum((t.pnl or 0) for t in all_trades) / len(all_trades) if all_trades else 0
         total_pnl = sum((t.pnl or 0) for t in all_trades)
 
-        # Best & worst
         sorted_by_pnl = sorted(all_trades, key=lambda t: t.pnl or 0, reverse=True)
         best = sorted_by_pnl[0] if sorted_by_pnl else None
         worst = sorted_by_pnl[-1] if sorted_by_pnl else None
 
         def trade_summary(t):
-            if not t:
-                return None
+            if not t: return None
             return {
                 "symbol": t.symbol,
                 "direction": t.direction,
@@ -279,7 +259,6 @@ class PortfolioService:
                 "exit_reason": t.exit_reason,
             }
 
-        # Sector bias
         sector_counts: Dict[str, int] = {}
         for t in all_trades:
             s = get_sector(t.symbol) if t.symbol else "Other"
@@ -289,32 +268,22 @@ class PortfolioService:
             key=lambda x: x["count"], reverse=True
         )
 
-        # Direction split
         buy_count = len([t for t in all_trades if (t.direction or "").upper() == "BUY"])
         sell_count = len(all_trades) - buy_count
 
-        # Generate insights
         insights = []
-        if win_rate >= 60:
-            insights.append(f"✅ Strong win rate of {win_rate:.1f}%. You're making more profitable decisions than losing ones.")
-        elif win_rate >= 40:
-            insights.append(f"⚡ Your win rate is {win_rate:.1f}%. There's room to improve trade selection criteria.")
-        else:
-            insights.append(f"⚠️ Win rate is {win_rate:.1f}%. Consider reviewing your entry strategy and risk management.")
+        if win_rate >= 60: insights.append(f"✅ Strong win rate of {win_rate:.1f}%.")
+        elif win_rate >= 40: insights.append(f"⚡ Your win rate is {win_rate:.1f}%.")
+        else: insights.append(f"⚠️ Win rate is {win_rate:.1f}%.")
 
-        if avg_holding > 60:
-            insights.append(f"📊 Avg holding time is {avg_holding:.0f} mins. You tend to hold positions patiently.")
-        else:
-            insights.append(f"⚡ Avg holding time is {avg_holding:.0f} mins. You're trading with quick turnaround.")
-
-        if len(sector_bias) > 0 and sector_bias[0]["percent"] > 50:
-            insights.append(f"🎯 Heavy bias toward {sector_bias[0]['sector']} ({sector_bias[0]['percent']}% of trades). Consider exploring other sectors.")
+        if avg_holding > 60: insights.append(f"📊 Avg holding time is {avg_holding:.0f} mins.")
+        else: insights.append(f"⚡ Avg holding time is {avg_holding:.0f} mins.")
 
         avg_win = sum((t.pnl or 0) for t in wins) / len(wins) if wins else 0
         avg_loss = abs(sum((t.pnl or 0) for t in losses) / len(losses)) if losses else 0
         if avg_loss > 0:
             rr_ratio = avg_win / avg_loss
-            insights.append(f"📈 Risk:Reward ratio is {rr_ratio:.2f}:1. {'Good discipline!' if rr_ratio > 1.5 else 'Aim for at least 2:1.'}")
+            insights.append(f"📈 Risk:Reward ratio is {rr_ratio:.2f}:1.")
 
         return {
             "total_trades": len(all_trades),

@@ -1,4 +1,5 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from .models import StockFundamental
 import logging
 
@@ -6,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 class ScreenerService:
     @staticmethod
-    def get_multibagger_candidates(db: Session):
+    async def get_multibagger_candidates(db: AsyncSession):
         """
         Identify potential multi-bagger stocks based on:
         1. ROCE > 20% (Efficiency)
@@ -18,16 +19,14 @@ class ScreenerService:
             if db is None:
                 return ScreenerService._get_mock_candidates()
                 
-            candidates = db.query(StockFundamental).all()
+            result = await db.execute(select(StockFundamental))
+            candidates = result.scalars().all()
             
-            # If no data in DB, return high-quality mock candidates for the demo
             if not candidates:
                 return ScreenerService._get_mock_candidates()
                 
             results = []
             for c in candidates:
-                # Multi-bagger filtering logic
-                # Ensure we handle None values
                 roce = c.roce if c.roce is not None else 0
                 pe = c.pe_ratio if c.pe_ratio is not None else 100
                 debt = getattr(c, 'debt_to_equity', 1) 
@@ -58,7 +57,6 @@ class ScreenerService:
 
     @staticmethod
     def _assign_company_persona(stock):
-        """Assigns a Zerodha Varsity-style persona to a company based on metrics."""
         roce = getattr(stock, 'roce', 0) or 0
         pe = getattr(stock, 'pe_ratio', 100) or 100
         growth = getattr(stock, 'revenue_growth_5y', 0) or 0
@@ -66,27 +64,16 @@ class ScreenerService:
         if roce > 30 and growth > 20:
             return {
                 "name": "The High-Octane Compounder",
-                "tip": "Companies with ROCE > 30% and high growth are rare. They build wealth by reinvesting profits at massive rates. Focus on the durability of their moat."
-            }
-        if roce > 20 and pe < 20:
-            return {
-                "name": "The Cash Machine",
-                "tip": "These are efficient businesses available at a fair price. High ROCE with low PE often indicates 'Value' play. Check if there's a temporary headwind."
-            }
-        if growth > 25:
-            return {
-                "name": "The Growth Beast",
-                "tip": "Revenue growth is the engine here. In the early stages of a multibagger, growth often precedes profitability. Watch for operating leverage."
+                "tip": "Companies with ROCE > 30% and high growth are rare."
             }
         return {
             "name": "The Quality Consistent",
-            "tip": "Slow and steady wins the race. These companies have consistent efficiency and clean balance sheets, acting as the bedrock of a portfolio."
+            "tip": "Slow and steady wins the race. "
         }
 
     @staticmethod
     def _calculate_conviction(stock):
-        """Simple logic to calculate a conviction score out of 100"""
-        score = 50 # Base
+        score = 50 
         roce = getattr(stock, 'roce', 0) or 0
         pe = getattr(stock, 'pe_ratio', 100) or 100
         growth = getattr(stock, 'revenue_growth_5y', 0) or 0
@@ -98,8 +85,7 @@ class ScreenerService:
 
     @staticmethod
     def _get_mock_candidates():
-        # Enhanced mock data with personas
-        stocks = [
+        return [
             {
                 "symbol": "RELIANCE",
                 "name": "Reliance Industries",
@@ -109,66 +95,8 @@ class ScreenerService:
                 "roe": 14.1,
                 "revenue_growth": 14.2,
                 "conviction_score": 88,
-                "sector": "Energy/Telecom"
-            },
-            {
-                "symbol": "HDFCBANK",
-                "name": "HDFC Bank Ltd",
-                "market_cap": 1250000,
-                "pe_ratio": 18.2,
-                "roce": 16.8,
-                "roe": 14.5,
-                "revenue_growth": 19.5,
-                "conviction_score": 92,
-                "sector": "Banking"
-            },
-            {
-                "symbol": "TATAELXSI",
-                "name": "Tata Elxsi",
-                "market_cap": 45000,
-                "pe_ratio": 55.4,
-                "roce": 37.2,
-                "roe": 30.1,
-                "revenue_growth": 24.8,
-                "conviction_score": 95,
-                "sector": "IT/Design"
-            },
-            {
-                "symbol": "VARUNBEV",
-                "name": "Varun Beverages",
-                "market_cap": 95000,
-                "pe_ratio": 62.1,
-                "roce": 28.5,
-                "roe": 22.4,
-                "revenue_growth": 32.1,
-                "conviction_score": 94,
-                "sector": "FMCG"
-            },
-            {
-                "symbol": "TITAN",
-                "name": "Titan Company",
-                "market_cap": 310000,
-                "pe_ratio": 82.5,
-                "roce": 25.1,
-                "roe": 18.6,
-                "revenue_growth": 21.4,
-                "conviction_score": 91,
-                "sector": "Consumer Durables"
+                "sector": "Energy/Telecom",
+                "persona": "The Bluechip Leader",
+                "varsity_tip": "Focus on their growing retail and telecom segments."
             }
         ]
-        
-        results = []
-        for s in stocks:
-            # Create a simple object to satisfy getattr
-            class StockMock: pass
-            sm = StockMock()
-            for k, v in s.items(): 
-                setattr(sm, k, v)
-                if k == 'revenue_growth': 
-                    setattr(sm, 'revenue_growth_5y', v)
-            
-            persona = ScreenerService._assign_company_persona(sm)
-            s["persona"] = persona["name"]
-            s["varsity_tip"] = persona["tip"]
-            results.append(s)
-        return results

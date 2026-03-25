@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, Request
-from sqlalchemy.orm import Session
-from app.database import get_db, get_db_sync
+from fastapi import APIRouter, Depends, Request, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from app.database import get_db
 from app.models import User
 from app.portfolio_service import portfolio_service
 from app.config import SECRET_KEY, ALGORITHM
@@ -12,7 +13,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
 
 
-def get_optional_user(request: Request, db: Session = Depends(get_db)):
+async def get_optional_user(request: Request, db: AsyncSession = Depends(get_db)):
     """Try to get current user from cookie/header, return None if unauthenticated."""
     token = request.cookies.get("access_token")
     if not token:
@@ -26,24 +27,25 @@ def get_optional_user(request: Request, db: Session = Depends(get_db)):
         email = payload.get("sub")
         if not email:
             return None
-        user = db.query(User).filter(User.email == email).first()
+        result = await db.execute(select(User).filter(User.email == email))
+        user = result.scalars().first()
         return user
     except Exception:
         return None
 
 
-def _get_user_id(request: Request, db: Session) -> int:
+async def _get_user_id(request: Request, db: AsyncSession) -> int:
     """Helper to extract user_id, fallback to 1 for dev."""
-    user = get_optional_user(request, db)
+    user = await get_optional_user(request, db)
     return user.id if user else 1
 
 
 @router.get("/summary")
-def get_portfolio_summary(request: Request, session_type: str = 'LIVE', db: Session = Depends(get_db_sync)):
+async def get_portfolio_summary(request: Request, session_type: str = 'LIVE', db: AsyncSession = Depends(get_db)):
     """Portfolio summary: XIRR, total invested, P&L, equity curve."""
     try:
-        user_id = _get_user_id(request, db)
-        return portfolio_service.get_summary(db, user_id, session_type)
+        user_id = await _get_user_id(request, db)
+        return await portfolio_service.get_summary(db, user_id, session_type)
     except Exception as e:
         logger.error(f"Error fetching portfolio summary: {e}")
         return {
@@ -53,11 +55,11 @@ def get_portfolio_summary(request: Request, session_type: str = 'LIVE', db: Sess
 
 
 @router.get("/holdings")
-def get_portfolio_holdings(request: Request, session_type: str = 'LIVE', db: Session = Depends(get_db_sync)):
+async def get_portfolio_holdings(request: Request, session_type: str = 'LIVE', db: AsyncSession = Depends(get_db)):
     """All held equity positions with LTP and P&L."""
     try:
-        user_id = _get_user_id(request, db)
-        holdings = portfolio_service.get_holdings(db, user_id, session_type)
+        user_id = await _get_user_id(request, db)
+        holdings = await portfolio_service.get_holdings(db, user_id, session_type)
         return {"holdings": holdings}
     except Exception as e:
         logger.error(f"Error fetching portfolio holdings: {e}")
@@ -65,11 +67,11 @@ def get_portfolio_holdings(request: Request, session_type: str = 'LIVE', db: Ses
 
 
 @router.get("/positions")
-def get_portfolio_positions(request: Request, session_type: str = 'LIVE', db: Session = Depends(get_db_sync)):
+async def get_portfolio_positions(request: Request, session_type: str = 'LIVE', db: AsyncSession = Depends(get_db)):
     """Open trade positions from TradeLog."""
     try:
-        user_id = _get_user_id(request, db)
-        positions = portfolio_service.get_positions(db, user_id, session_type)
+        user_id = await _get_user_id(request, db)
+        positions = await portfolio_service.get_positions(db, user_id, session_type)
         return {"positions": positions}
     except Exception as e:
         logger.error(f"Error fetching positions: {e}")
@@ -77,22 +79,22 @@ def get_portfolio_positions(request: Request, session_type: str = 'LIVE', db: Se
 
 
 @router.get("/sectors")
-def get_sector_analysis(request: Request, session_type: str = 'LIVE', db: Session = Depends(get_db_sync)):
+async def get_sector_analysis(request: Request, session_type: str = 'LIVE', db: AsyncSession = Depends(get_db)):
     """Sector allocation breakdown with concentration risk alerts."""
     try:
-        user_id = _get_user_id(request, db)
-        return portfolio_service.get_sector_analysis(db, user_id, session_type)
+        user_id = await _get_user_id(request, db)
+        return await portfolio_service.get_sector_analysis(db, user_id, session_type)
     except Exception as e:
         logger.error(f"Error fetching sector analysis: {e}")
         return {"allocation": [], "risks": [], "diversity_score": 0, "total_sectors": 0, "risk_level": "Unknown"}
 
 
 @router.get("/research")
-def get_trade_research(request: Request, session_type: str = 'LIVE', db: Session = Depends(get_db_sync)):
+async def get_trade_research(request: Request, session_type: str = 'LIVE', db: AsyncSession = Depends(get_db)):
     """Trade behavior analytics and insights."""
     try:
-        user_id = _get_user_id(request, db)
-        return portfolio_service.get_trade_research(db, user_id, session_type)
+        user_id = await _get_user_id(request, db)
+        return await portfolio_service.get_trade_research(db, user_id, session_type)
     except Exception as e:
         logger.error(f"Error fetching trade research: {e}")
         return {

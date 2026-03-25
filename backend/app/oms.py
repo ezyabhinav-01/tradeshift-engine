@@ -3,7 +3,9 @@
 from datetime import datetime
 from .models import TradeLog
 from .database import get_session
+import logging
 
+logger = logging.getLogger(__name__)
 
 class OrderManager:
     def __init__(self):
@@ -38,7 +40,7 @@ class OrderManager:
     # =========================
     # SELL
     # =========================
-    def sell(self, price: float, qty: int):
+    async def sell(self, price: float, qty: int):
         """
         Executes a SELL.
         - If Long: closes trade and logs to DB
@@ -65,29 +67,34 @@ class OrderManager:
             print(f"🔴 OMS: CLOSED LONG at {price} | Realized PnL: {pnl:.2f}")
 
             # 🔥 SAVE TO DATABASE
-            db = get_session()
+            # get_session is async
+            db = await get_session()
+            try:
+                trade = TradeLog(
+                    symbol="NIFTY",
+                    direction="LONG",
+                    entry_price=self.entry_price,
+                    exit_price=price,
+                    quantity=self.quantity,
+                    pnl=pnl,
+                    entry_time=self.entry_time,
+                    exit_time=exit_time,
+                    session_id=self.session_id,
+                    holding_time=holding_time,
+                    trade_number=self.trade_counter,
+                    stop_loss=None,
+                    take_profit=None,
+                    exit_reason="manual",
+                    time_since_last_trade=time_since_last
+                )
 
-            trade = TradeLog(
-                symbol="NIFTY",
-                direction="LONG",
-                entry_price=self.entry_price,
-                exit_price=price,
-                quantity=self.quantity,
-                pnl=pnl,
-                entry_time=self.entry_time,
-                exit_time=exit_time,
-                session_id=self.session_id,
-                holding_time=holding_time,
-                trade_number=self.trade_counter,
-                stop_loss=None,
-                take_profit=None,
-                exit_reason="manual",
-                time_since_last_trade=time_since_last
-            )
-
-            db.add(trade)
-            db.commit()
-            db.close()
+                db.add(trade)
+                await db.commit()
+            except Exception as e:
+                logger.error(f"Error saving trade in OMS: {e}")
+                await db.rollback()
+            finally:
+                await db.close()
 
             self.last_trade_exit_time = exit_time
 

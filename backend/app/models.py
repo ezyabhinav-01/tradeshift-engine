@@ -69,10 +69,14 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
     full_name = Column(String, nullable=True)
-    country = Column(String, nullable=True)
-    investment_goals = Column(String, nullable=True)  # e.g., "Growth", "Value", "Day Trading"
-    risk_tolerance = Column(String, nullable=True)    # e.g., "Low", "Medium", "High"
-    preferred_industries = Column(String, nullable=True) # e.g., "Technology", "Healthcare"
+    dob = Column(String, nullable=True)
+    experience_level = Column(String, nullable=True) # Beginner, Intermediate, Advance
+    investment_goals = Column(String, nullable=True) # Learn, Growth, etc.
+    preferred_instruments = Column(String, nullable=True) # Equity, Future, Options, Mutual funds
+    risk_tolerance = Column(String, nullable=True) # Low, Moderate, High
+    occupation = Column(String, nullable=True) # Student, Job, Retired
+    city = Column(String, nullable=True)
+    security_pin = Column(String(4), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class UserSettings(Base):

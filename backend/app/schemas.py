@@ -26,15 +26,25 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str
     full_name: Optional[str] = None
-    country: Optional[str] = None
+    dob: Optional[str] = None
+    experience_level: Optional[str] = None
     investment_goals: Optional[str] = None
+    preferred_instruments: Optional[str] = None
     risk_tolerance: Optional[str] = None
-    preferred_industries: Optional[str] = None
+    occupation: Optional[str] = None
+    city: Optional[str] = None
+    security_pin: Optional[str] = None
 
     @field_validator("email")
     def validate_gmail(cls, value):
         if not value.endswith("@gmail.com"):
             raise ValueError("Only @gmail.com email addresses are allowed.")
+        return value
+
+    @field_validator("security_pin")
+    def validate_pin(cls, value):
+        if value and (not value.isdigit() or len(value) != 4):
+            raise ValueError("PIN must be exactly 4 digits.")
         return value
 
 
@@ -45,10 +55,13 @@ class UserLogin(UserBase):
 class User(UserBase):
     id: int
     full_name: Optional[str] = None
-    country: Optional[str] = None
+    dob: Optional[str] = None
+    experience_level: Optional[str] = None
     investment_goals: Optional[str] = None
+    preferred_instruments: Optional[str] = None
     risk_tolerance: Optional[str] = None
-    preferred_industries: Optional[str] = None
+    occupation: Optional[str] = None
+    city: Optional[str] = None
     created_at: datetime
     
     class Config:

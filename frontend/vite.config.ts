@@ -17,15 +17,15 @@ export default defineConfig({
     host: '0.0.0.0',
     proxy: {
       '/auth': {
-        target: 'http://127.0.0.1:8000',
+        target: 'http://backend:8000',
         changeOrigin: true,
       },
       '/api': {
-        target: 'http://127.0.0.1:8000',
+        target: 'http://backend:8000',
         changeOrigin: true,
       },
       '/ws': {
-        target: 'http://127.0.0.1:8000',
+        target: 'http://backend:8000',
         ws: true,
         changeOrigin: true,
       },

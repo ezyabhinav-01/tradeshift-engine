@@ -468,7 +468,7 @@ const ChartArea = ({ onPriceClick, onEntryLineClick, previewPrice, positions: pr
   }, [trades, currentPrice, selectedSymbol]);
 
   return (
-    <div className="relative flex-1 w-full h-full bg-tv-bg-base overflow-hidden font-sans">
+    <div className="relative flex-1 w-full h-full bg-white dark:bg-tv-bg-base overflow-hidden font-sans">
 
       {/* Chart Canvas */}
       <div ref={chartContainerRef} className="absolute inset-0 bottom-0" />

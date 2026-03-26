@@ -75,7 +75,7 @@ const HelpPage = () => {
             <input 
               type="text" 
               placeholder="Search for articles, guides, and more..."
-              className="w-full pl-12 pr-4 py-4 bg-slate-100 dark:bg-[#1a1d21] border border-slate-200 dark:border-white/10 rounded-2xl focus:ring-2 focus:ring-tv-primary/50 focus:border-tv-primary outline-none transition-all shadow-lg text-lg"
+              className="w-full pl-12 pr-4 py-4 bg-slate-100 dark:bg-[#1a1d21] border border-slate-200 dark:border-white/10 rounded-md focus:ring-2 focus:ring-tv-primary/50 focus:border-tv-primary outline-none transition-all shadow-lg text-lg"
             />
           </div>
           <div className="mt-6 flex flex-wrap justify-center gap-2 text-sm text-slate-500">
@@ -93,7 +93,7 @@ const HelpPage = () => {
         {/* Category Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {categories.map((cat, idx) => (
-            <div key={idx} className="bg-white dark:bg-[#1a1d21] p-6 rounded-2xl border border-slate-200 dark:border-white/5 hover:border-tv-primary/50 transition-all shadow-sm hover:shadow-md group">
+            <div key={idx} className="bg-white dark:bg-[#1a1d21] p-6 rounded-md border border-slate-200 dark:border-white/5 hover:border-tv-primary/50 transition-all shadow-sm hover:shadow-md group">
               <div className={`w-12 h-12 ${cat.bg} ${cat.color} rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
                 <cat.icon size={24} />
               </div>
@@ -140,7 +140,7 @@ const HelpPage = () => {
           <h2 className="text-3xl font-black mb-10 text-center">Frequently Asked Questions</h2>
           <div className="space-y-4">
             {faqs.map((faq, idx) => (
-              <div key={idx} className="bg-white dark:bg-[#1a1d21] p-6 rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm">
+              <div key={idx} className="bg-white dark:bg-[#1a1d21] p-6 rounded-md border border-slate-200 dark:border-white/5 shadow-sm">
                 <h4 className="text-lg font-bold mb-2 flex items-center gap-3">
                   <span className="text-tv-primary">Q:</span>
                   {faq.question}

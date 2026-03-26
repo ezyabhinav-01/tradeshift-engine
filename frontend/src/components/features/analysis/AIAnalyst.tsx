@@ -169,7 +169,7 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
                 const isVarsity = section.includes('VARSITY LESSON');
                 
                 return (
-                  <div key={idx} className={`mb-6 p-1 ${isVarsity ? 'bg-amber-500/5 border border-amber-500/20 rounded-2xl p-6 shadow-[0_0_20px_-5px_rgba(245,158,11,0.1)]' : ''}`}>
+                  <div key={idx} className={`mb-6 p-1 ${isVarsity ? 'bg-amber-500/5 border border-amber-500/20 rounded-md p-6 shadow-[0_0_20px_-5px_rgba(245,158,11,0.1)]' : ''}`}>
                     {idx > 0 && <h3 className={`text-xs font-black uppercase tracking-widest mb-3 flex items-center gap-2 ${isVarsity ? 'text-amber-400' : 'text-primary'}`}>
                       {isVarsity ? <Lightbulb className="w-4 h-4" /> : <ChevronRight className="w-3 h-3" />}
                       {section.split('\n')[0].replace('###', '').trim()}
@@ -196,7 +196,7 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
                         <BrainCircuit className="w-3 h-3 text-primary" />
                       </div>
                     )}
-                    <div className={`p-3 rounded-2xl max-w-[85%] text-sm leading-relaxed ${
+                    <div className={`p-3 rounded-md max-w-[85%] text-sm leading-relaxed ${
                       msg.role === 'user' 
                         ? 'bg-white/10 text-white rounded-tr-sm' 
                         : 'bg-primary/5 border border-primary/10 text-gray-300 rounded-tl-sm'
@@ -215,7 +215,7 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
                     <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center shrink-0 mt-1">
                       <BrainCircuit className="w-3 h-3 text-primary animate-pulse" />
                     </div>
-                    <div className="p-3 rounded-2xl bg-primary/5 border border-primary/10 rounded-tl-sm">
+                    <div className="p-3 rounded-md bg-primary/5 border border-primary/10 rounded-tl-sm">
                       <div className="flex gap-1">
                         <div className="w-1.5 h-1.5 rounded-full bg-primary/50 animate-bounce" style={{ animationDelay: '0ms' }}></div>
                         <div className="w-1.5 h-1.5 rounded-full bg-primary/50 animate-bounce" style={{ animationDelay: '150ms' }}></div>

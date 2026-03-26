@@ -369,7 +369,7 @@ const Home = () => {
       {/* EXIT ALL CONFIRMATION DIALOG */}
       {showExitAllConfirm && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-md animate-in fade-in duration-300 p-4">
-          <div className="bg-[#121212] border border-[#f23645]/30 rounded-2xl w-full max-w-sm overflow-hidden shadow-[0_0_50px_rgba(242,54,69,0.2)] animate-in zoom-in-95 duration-200">
+          <div className="bg-[#121212] border border-[#f23645]/30 rounded-md w-full max-w-sm overflow-hidden shadow-[0_0_50px_rgba(242,54,69,0.2)] animate-in zoom-in-95 duration-200">
             <div className="p-8 flex flex-col items-center text-center gap-6">
               <div className="w-16 h-16 bg-[#f23645]/10 rounded-full flex items-center justify-center">
                 <X className="w-8 h-8 text-[#f23645] animate-pulse" />
@@ -404,7 +404,7 @@ const Home = () => {
       {/* ORDER CONFIRMATION DIALOG */}
       {pendingOrder && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 backdrop-blur-md animate-in fade-in duration-300 p-4">
-          <div className="bg-[#121212] border border-tv-primary/30 rounded-2xl w-full max-w-sm overflow-hidden shadow-[0_0_50px_rgba(43,209,255,0.1)] animate-in zoom-in-95 duration-200">
+          <div className="bg-[#121212] border border-tv-primary/30 rounded-md w-full max-w-sm overflow-hidden shadow-[0_0_50px_rgba(43,209,255,0.1)] animate-in zoom-in-95 duration-200">
             <div className="p-8 flex flex-col gap-6">
               <div className="flex flex-col gap-2 text-center">
                 <h3 className="font-black text-xl uppercase tracking-widest text-white">Confirm Order</h3>

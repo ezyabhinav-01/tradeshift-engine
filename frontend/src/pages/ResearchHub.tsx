@@ -84,14 +84,14 @@ const ResearchHub: React.FC = () => {
           </p>
           </div>
 
-        <div className="flex items-center gap-4 p-1.5 bg-black/40 rounded-xl border border-white/10">
-          <span className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-all cursor-pointer ${!isLaymanMode ? 'bg-primary text-black' : 'text-gray-400 hover:text-white'}`} onClick={() => setIsLaymanMode(false)}>
+        <div className="flex bg-slate-100 dark:bg-black/40 p-1 rounded-md border border-slate-200 dark:border-white/10">
+          <button className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-all cursor-pointer ${!isLaymanMode ? 'bg-blue-600 dark:bg-primary text-white shadow-md' : 'text-slate-500 hover:text-slate-800 dark:text-gray-400 dark:hover:text-white'}`} onClick={() => setIsLaymanMode(false)}>
             Professional
-          </span>
-          <span className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${isLaymanMode ? 'bg-green-500 text-black' : 'text-gray-400 hover:text-white'}`} onClick={() => setIsLaymanMode(true)}>
-            <Brain className="w-3.5 h-3.5" />
+          </button>
+          <button className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-semibold transition-all cursor-pointer ${isLaymanMode ? 'bg-green-600 dark:bg-green-500 text-white shadow-md' : 'text-slate-500 hover:text-slate-800 dark:text-gray-400 dark:hover:text-white'}`} onClick={() => setIsLaymanMode(true)}>
+            <Brain className="w-4 h-4" />
             Layman Explain
-          </span>
+          </button>
         </div>
       </div>
 
@@ -235,7 +235,7 @@ const ResearchHub: React.FC = () => {
                 <CalendarDays className="w-5 h-5 text-primary" />
                 <h2 className="text-xl font-semibold">Quarterly Performance</h2>
               </div>
-              <div className="bg-[#0a0a0a] rounded-2xl border border-white/5 overflow-hidden">
+              <div className="bg-[#0a0a0a] rounded-md border border-white/5 overflow-hidden">
                 <div className="overflow-x-auto custom-scrollbar">
                   <table className="w-full text-left border-collapse">
                     <thead>
@@ -272,7 +272,7 @@ const ResearchHub: React.FC = () => {
               <BarChart3 className="w-5 h-5 text-primary" />
               <h2 className="text-xl font-semibold">Yearly Financial Growth</h2>
             </div>
-            <div className="bg-[#0a0a0a] p-6 rounded-2xl border border-white/5 h-[400px]">
+            <div className="bg-[#0a0a0a] p-6 rounded-md border border-white/5 h-[400px]">
               <FinancialCharts data={profile?.financials} />
             </div>
           </section>
@@ -306,7 +306,7 @@ const ResearchHub: React.FC = () => {
                     href={item.url} 
                     target="_blank" 
                     rel="noopener noreferrer"
-                    className="block group bg-[#0a0a0a] p-5 rounded-2xl border border-white/5 hover:border-primary/30 transition-all hover:-translate-y-1 hover:shadow-lg"
+                    className="block group bg-[#0a0a0a] p-5 rounded-md border border-white/5 hover:border-primary/30 transition-all hover:-translate-y-1 hover:shadow-lg"
                   >
                     <div className="flex justify-between items-start gap-4 mb-2">
                       <h4 className="font-bold text-sm text-white group-hover:text-primary transition-colors line-clamp-2 leading-relaxed">
@@ -333,7 +333,7 @@ const ResearchHub: React.FC = () => {
                   </a>
                 ))
               ) : (
-                <div className="text-center py-8 bg-[#0a0a0a] rounded-2xl border border-white/5 text-sm text-gray-500">
+                <div className="text-center py-8 bg-[#0a0a0a] rounded-md border border-white/5 text-sm text-gray-500">
                   No recent insights available for this symbol.
                 </div>
               )}

@@ -17,7 +17,7 @@ const RatioCard: React.FC<{ label: string; value: string | number; icon: any; la
   label, value, icon: Icon, laymanLabel, laymanExplainer, isLaymanMode 
 }) => {
   return (
-    <div className="bg-[#0a0a0a] p-5 rounded-2xl border border-white/5 hover:border-primary/20 transition-all group relative overflow-hidden">
+    <div className="bg-[#0a0a0a] p-5 rounded-md border border-white/5 hover:border-primary/20 transition-all group relative overflow-hidden">
       <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full -mr-12 -mt-12 group-hover:bg-primary/10 transition-colors"></div>
       
       <div className="flex justify-between items-start mb-3">

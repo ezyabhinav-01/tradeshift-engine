@@ -32,7 +32,7 @@ interface CommandDialogProps extends DialogProps {
 const CommandDialog = ({ children, shouldFilter, filter, ...props }: CommandDialogProps) => {
     return (
         <Dialog {...props}>
-            <DialogContent className="overflow-hidden p-0 shadow-2xl bg-black/40 backdrop-blur-2xl border border-white/10 sm:rounded-2xl">
+            <DialogContent className="overflow-hidden p-0 shadow-2xl bg-white dark:bg-[#0b0e11] backdrop-blur-2xl border border-gray-200 dark:border-white/10 sm:rounded-md">
                 <DialogTitle className="sr-only">Command Search</DialogTitle>
                 <DialogDescription className="sr-only">Search for commands and instruments</DialogDescription>
                 <Command 

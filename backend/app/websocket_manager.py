@@ -78,6 +78,30 @@ class ConnectionManager:
         """Return list of rooms with active connections."""
         return list(self.active_connections.keys())
 
+    async def emit_to_channel(self, channel_id: int, event_type: str, payload: dict):
+        """
+        Send an event to all users who might be interested in a channel.
+        For now, since we don't have a 'joined_channels' table, 
+        we broadcast to ALL active connections. In a real app, 
+        you'd filter by users who are members of the channel.
+        """
+        message = {"type": event_type, "data": payload}
+        
+        for room, connections in self.active_connections.items():
+            disconnected = []
+            for ws in connections:
+                try:
+                    await ws.send_json(message)
+                except Exception as e:
+                    logger.warning(f"Failed to send to {room} in channel {channel_id}: {e}")
+                    disconnected.append(ws)
+            
+            # Clean up broken connections for this room
+            if disconnected:
+                self.active_connections[room] = [
+                    conn for conn in self.active_connections.get(room, []) if conn not in disconnected
+                ]
+
 
 # Singleton instance used across the application
 order_manager = ConnectionManager()

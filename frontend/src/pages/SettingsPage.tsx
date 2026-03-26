@@ -1,47 +1,14 @@
-import { Activity, AlertCircle, Moon, Sun, Monitor } from 'lucide-react';
+import { Activity, AlertCircle } from 'lucide-react';
 import { useGame } from '../hooks/useGame';
-import { useTheme } from '../context/ThemeContext';
-import { Button } from '@/components/ui/button';
+
 
 const SettingsPage = () => {
   const { speed, setSpeed, resetSimulation, userSettings, updateUserSettings } = useGame();
-  const { theme, setTheme } = useTheme();
-
   return (
     <div className="p-8 w-full max-w-2xl mx-auto font-sans">
       <h2 className="text-2xl font-bold text-tv-text-primary mb-6">Settings</h2>
 
       <div className="space-y-6">
-        {/* Theme Settings */}
-        <div className="bg-tv-bg-pane p-6 rounded-lg border border-tv-border">
-          <div className="flex items-center gap-3 mb-4 text-tv-text-primary">
-            <Sun className="text-tv-primary" />
-            <h3 className="font-semibold">Appearance</h3>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant={theme === 'light' ? 'default' : 'outline'}
-              onClick={() => setTheme('light')}
-              className="flex-1 gap-2"
-            >
-              <Sun size={16} /> Light
-            </Button>
-            <Button
-              variant={theme === 'dark' ? 'default' : 'outline'}
-              onClick={() => setTheme('dark')}
-              className="flex-1 gap-2"
-            >
-              <Moon size={16} /> Dark
-            </Button>
-            <Button
-              variant={theme === 'system' ? 'default' : 'outline'}
-              onClick={() => setTheme('system')}
-              className="flex-1 gap-2"
-            >
-              <Monitor size={16} /> System
-            </Button>
-          </div>
-        </div>
 
         {/* Simulation Speed Control */}
         <div className="bg-tv-bg-pane p-6 rounded-lg border border-tv-border">

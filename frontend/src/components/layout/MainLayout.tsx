@@ -32,7 +32,7 @@ const MainLayout = () => {
 
       <div className="flex-1 flex flex-col min-w-0">
         <Topbar />
-        <div className="w-full bg-tv-bg-base border-b border-tv-border py-1">
+        <div className="w-full bg-transparent border-b border-tv-border py-1">
           <GlobalTicker />
         </div>
 

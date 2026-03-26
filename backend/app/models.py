@@ -192,3 +192,22 @@ class InstrumentMaster(Base):
     instrument_type = Column(String, index=True) # EQUITY, INDEX, OPTIDX
     exchange = Column(String, default="NSE")
     last_updated = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class CommunityChannel(Base):
+    __tablename__ = "community_channels"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)
+    description = Column(String, nullable=True)
+    type = Column(String, default="public") # public, private
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class CommunityMessage(Base):
+    __tablename__ = "community_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    channel_id = Column(Integer, nullable=True, index=True) # Null for DMs
+    sender_id = Column(Integer, index=True)
+    recipient_id = Column(Integer, nullable=True, index=True) # Null for channel messages
+    content = Column(String)
+    timestamp = Column(DateTime, default=datetime.utcnow)

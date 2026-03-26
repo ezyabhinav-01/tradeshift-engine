@@ -43,7 +43,7 @@ export const TemplateLibrary: React.FC<TemplateLibraryProps> = ({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-[#131722] w-full max-w-4xl max-h-[80vh] rounded-2xl border border-[#2a2e39] shadow-2xl flex flex-col overflow-hidden">
+      <div className="bg-[#131722] w-full max-w-4xl max-h-[80vh] rounded-md border border-[#2a2e39] shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#2a2e39]">
           <div className="flex items-center gap-3">
@@ -114,7 +114,7 @@ export const TemplateLibrary: React.FC<TemplateLibraryProps> = ({
               {filteredTemplates.map((template) => (
                 <div
                   key={template.id}
-                  className="group relative bg-[#1c212b] rounded-2xl border border-[#2a2e39] overflow-hidden hover:border-blue-500/50 transition-all hover:shadow-2xl hover:shadow-blue-500/5"
+                  className="group relative bg-[#1c212b] rounded-md border border-[#2a2e39] overflow-hidden hover:border-blue-500/50 transition-all hover:shadow-2xl hover:shadow-blue-500/5"
                 >
                   {/* Thumbnail */}
                   <div className="aspect-video bg-black/40 relative overflow-hidden">

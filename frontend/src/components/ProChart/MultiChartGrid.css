@@ -1,5 +1,6 @@
-/* ─── Multi-Chart Grid Layout ─────────────────────────────────────────────── */
+@reference "../../index.css";
 
+/* ─── Multi-Chart Grid Layout ─────────────────────────────────────────────── */
 .multi-chart-grid {
   display: grid;
   width: 100%;
@@ -54,7 +55,7 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  background: #0a0a0a;
+  @apply bg-white dark:bg-[#0a0a0a];
   overflow: hidden;
   min-height: 0;
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
@@ -79,8 +80,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 4px 8px;
-  background: rgba(255, 255, 255, 0.02);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  @apply bg-slate-50 border-b border-slate-200 dark:bg-white/5 dark:border-white/5;
   height: 28px;
   flex-shrink: 0;
   user-select: none;
@@ -103,10 +103,9 @@
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: rgba(255, 255, 255, 0.2);
+  @apply text-slate-400 bg-slate-200 dark:text-white/20 dark:bg-white/5;
   padding: 2px 6px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.04);
 }
 
 .chart-slot-search-btn {
@@ -117,8 +116,7 @@
   justify-content: center;
   border-radius: 4px;
   border: none;
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.3);
+  @apply bg-slate-200 text-slate-400 dark:bg-white/5 dark:text-white/30;
   cursor: pointer;
   transition: all 0.15s;
   padding: 0;
@@ -132,12 +130,12 @@
 .chart-slot-symbol {
   font-size: 11px;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.7);
+  @apply text-slate-700 dark:text-white/70;
 }
 
 .chart-slot-timeframe {
   font-size: 10px;
-  color: rgba(255, 255, 255, 0.3);
+  @apply text-slate-400 dark:text-white/30;
   font-weight: 600;
 }
 
@@ -172,7 +170,7 @@
   border-radius: 4px;
   border: none;
   background: transparent;
-  color: rgba(255, 255, 255, 0.2);
+  @apply text-slate-400 dark:text-white/20;
   cursor: pointer;
   transition: all 0.15s;
   padding: 0;

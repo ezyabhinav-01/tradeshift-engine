@@ -18,7 +18,7 @@ from redis import Redis
 from prometheus_fastapi_instrumentator import Instrumentator
 from app.oms import OrderManager
 from app import auth
-from app.routers import inngest, portfolio, history, trading, news
+from app.routers import inngest, portfolio, history, trading, news, community
 from app.websocket_manager import order_manager
 from app.models import User
 from app.database import get_db
@@ -97,6 +97,29 @@ scheduler.start()
 async def startup_event():
     # Attempt to connect to Shoonya Live WS in the background
     asyncio.create_task(shoonya_live.connect())
+    
+    # Seed community channels
+    await seed_community_channels()
+
+async def seed_community_channels():
+    """Create default community channels if they don't exist."""
+    from app.database import get_session
+    from app.models import CommunityChannel
+    from sqlalchemy import select
+    
+    async with await get_session() as db:
+        result = await db.execute(select(CommunityChannel))
+        if not result.scalars().first():
+            logger.info("🌱 Seeding default community channels...")
+            channels = [
+                {"name": "general", "description": "General discussion for everyone."},
+                {"name": "trading-signals", "description": "Share and discuss trading signals."},
+                {"name": "announcements", "description": "Important updates and announcements."}
+            ]
+            for ch_data in channels:
+                db.add(CommunityChannel(**ch_data))
+            await db.commit()
+            logger.info("✅ Default channels seeded.")
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -131,6 +154,7 @@ from app.routers import inngest, portfolio, history, trading, user
 app.include_router(trading.router)
 app.include_router(user.router)
 app.include_router(news.router)
+app.include_router(community.router)
 
 # --- 3. INFRASTRUCTURE CONNECTIONS ---
 

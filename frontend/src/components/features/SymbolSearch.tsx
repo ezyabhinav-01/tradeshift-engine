@@ -157,7 +157,7 @@ export const SymbolSearch: React.FC<SymbolSearchProps> = ({ open, onOpenChange, 
                             >
                                 <button 
                                     type="button"
-                                    className="flex flex-1 items-center justify-between py-3 px-4 cursor-pointer hover:bg-accent group transition-colors border-b border-white/5 w-full aria-selected:bg-accent focus:outline-none pointer-events-auto"
+                                    className="flex flex-1 items-center justify-between py-3 px-4 cursor-pointer hover:bg-gray-400 w-full pointer-events-auto"
                                     onPointerDown={(e) => {
                                         e.preventDefault();
                                         e.stopPropagation();

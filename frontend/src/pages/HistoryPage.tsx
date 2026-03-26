@@ -109,7 +109,7 @@ export default function HistoryPage() {
       {/* ─── HEADER & QUICK LINKS ─── */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-white flex items-center gap-3">
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-3">
             <Clock className="text-sidebar-primary" /> Trade History
           </h1>
           <p className="text-muted-foreground mt-1 text-sm">Review past trades, filter performance, and export tax reports.</p>
@@ -162,7 +162,7 @@ export default function HistoryPage() {
       )}
 
       {/* ─── FILTER BAR ─── */}
-      <div className="bg-sidebar border border-sidebar-border rounded-2xl p-4 flex flex-col lg:flex-row gap-4 items-end">
+      <div className="bg-sidebar border border-sidebar-border rounded-md p-4 flex flex-col lg:flex-row gap-4 items-end">
         
         <div className="flex-1 w-full flex flex-col md:flex-row gap-4">
           <div className="flex-1 space-y-1.5">
@@ -172,7 +172,7 @@ export default function HistoryPage() {
               <input 
                 type="text" 
                 placeholder="Symbol or exit reason..."
-                className="w-full bg-[#1e1e1e] border border-[#2e2e2e] rounded-lg pl-9 pr-4 py-2 text-sm text-white focus:outline-none focus:border-sidebar-primary transition-colors"
+                className="w-full theme-input rounded-lg pl-9 pr-4 py-2 text-sm focus:outline-none"
                 value={filters.search}
                 onChange={e => { setFilters(f => ({...f, search: e.target.value})); setPage(1); }}
               />
@@ -182,7 +182,7 @@ export default function HistoryPage() {
           <div className="w-full md:w-48 space-y-1.5">
             <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Symbol</label>
             <select 
-              className="w-full bg-[#1e1e1e] border border-[#2e2e2e] rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-sidebar-primary appearance-none"
+              className="w-full theme-input rounded-lg px-4 py-2 text-sm focus:outline-none appearance-none"
               value={filters.symbol}
               onChange={e => { setFilters(f => ({...f, symbol: e.target.value})); setPage(1); }}
             >
@@ -194,7 +194,7 @@ export default function HistoryPage() {
           <div className="w-full md:w-36 space-y-1.5">
             <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Direction</label>
             <select 
-              className="w-full bg-[#1e1e1e] border border-[#2e2e2e] rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-sidebar-primary appearance-none"
+              className="w-full theme-input rounded-lg px-4 py-2 text-sm focus:outline-none appearance-none"
               value={filters.direction}
               onChange={e => { setFilters(f => ({...f, direction: e.target.value})); setPage(1); }}
             >
@@ -209,7 +209,7 @@ export default function HistoryPage() {
               <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">From Date</label>
               <input 
                 type="date" 
-                className="w-full bg-[#1e1e1e] border border-[#2e2e2e] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sidebar-primary color-scheme-dark"
+                className="w-full theme-input rounded-lg px-3 py-2 text-sm focus:outline-none"
                 value={filters.dateFrom}
                 onChange={e => { setFilters(f => ({...f, dateFrom: e.target.value})); setPage(1); }}
               />
@@ -219,7 +219,7 @@ export default function HistoryPage() {
               <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">To Date</label>
               <input 
                 type="date" 
-                className="w-full bg-[#1e1e1e] border border-[#2e2e2e] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sidebar-primary color-scheme-dark"
+                className="w-full theme-input rounded-lg px-3 py-2 text-sm focus:outline-none"
                 value={filters.dateTo}
                 onChange={e => { setFilters(f => ({...f, dateTo: e.target.value})); setPage(1); }}
               />
@@ -232,14 +232,14 @@ export default function HistoryPage() {
             setFilters({dateFrom: '', dateTo: '', symbol: '', direction: '', search: ''});
             setPage(1);
           }}
-          className="px-4 py-2 border border-sidebar-border bg-[#1e1e1e] hover:bg-[#2e2e2e] text-white rounded-lg text-sm transition-colors whitespace-nowrap"
+          className="px-4 py-2 border border-sidebar-border bg-slate-100 dark:bg-[#1e1e1e] hover:bg-slate-200 dark:hover:bg-[#2e2e2e] text-slate-700 dark:text-white rounded-lg text-sm transition-colors whitespace-nowrap"
         >
           Clear Filters
         </button>
       </div>
 
       {/* ─── TRADE TABLE ─── */}
-      <div className="border border-sidebar-border bg-sidebar rounded-2xl flex flex-col flex-1 min-h-[400px]">
+      <div className="border border-sidebar-border bg-sidebar rounded-md flex flex-col flex-1 min-h-[400px]">
         {loading && trades.length === 0 ? (
           <div className="p-20 flex flex-col items-center justify-center flex-1">
             <RefreshCw className="w-8 h-8 text-sidebar-primary animate-spin opacity-50 mb-4" />
@@ -250,7 +250,7 @@ export default function HistoryPage() {
             <div className="w-16 h-16 rounded-full bg-sidebar-accent/10 flex items-center justify-center mb-4">
               <AlertCircle className="w-8 h-8 text-muted-foreground" />
             </div>
-            <h3 className="text-lg font-bold text-white mb-1">No Trades Found</h3>
+            <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-1">No Trades Found</h3>
             <p className="text-muted-foreground text-sm max-w-sm text-center">Try adjusting your filters or date range to view historical trades.</p>
           </div>
         ) : (
@@ -274,7 +274,7 @@ export default function HistoryPage() {
                   <tr key={t.id} className="hover:bg-sidebar-accent/5 transition-colors group">
                     <td className="px-4 py-2.5">
                       <div className="flex flex-col">
-                        <span className="text-sm font-medium text-white">{t.entry_time?.split(' ')[0]}</span>
+                        <span className="text-sm font-medium text-slate-800 dark:text-white">{t.entry_time?.split(' ')[0]}</span>
                         <span className="text-xs text-muted-foreground">{t.entry_time?.split(' ')[1]}</span>
                       </div>
                     </td>
@@ -284,7 +284,7 @@ export default function HistoryPage() {
                           {t.symbol.substring(0, 2)}
                         </div>
                         <div>
-                          <p className="font-bold text-white text-sm">{t.symbol}</p>
+                          <p className="font-bold text-slate-800 dark:text-white text-sm">{t.symbol}</p>
                           <p className="text-[10px] text-muted-foreground uppercase">{t.sector}</p>
                         </div>
                       </div>
@@ -295,8 +295,8 @@ export default function HistoryPage() {
                       </span>
                     </td>
                     <td className="px-4 py-2.5 font-mono text-sm text-muted-foreground">{t.quantity}</td>
-                    <td className="px-4 py-2.5 font-mono text-sm text-white">₹{t.entry_price}</td>
-                    <td className="px-4 py-2.5 font-mono text-sm text-white">₹{t.exit_price}</td>
+                    <td className="px-4 py-2.5 font-mono text-sm text-slate-800 dark:text-white">₹{t.entry_price}</td>
+                    <td className="px-4 py-2.5 font-mono text-sm text-slate-800 dark:text-white">₹{t.exit_price}</td>
                     <td className="px-4 py-2.5">
                       <div className="flex items-center gap-1.5">
                         {t.is_win ? <TrendingUp size={14} className="text-green-500" /> : <TrendingDown size={14} className="text-red-500" />}
@@ -311,7 +311,7 @@ export default function HistoryPage() {
                       </div>
                     </td>
                     <td className="px-4 py-2.5 text-[10px] text-muted-foreground">
-                       <span className="bg-white/5 border border-white/10 px-2 py-1 rounded uppercase font-black tracking-widest">{t.exit_reason || 'Manual'}</span>
+                       <span className="bg-slate-100 dark:bg-white/5 border border-slate-300 dark:border-white/10 px-2 py-1 rounded uppercase font-black tracking-widest text-slate-600 dark:text-muted-foreground">{t.exit_reason || 'Manual'}</span>
                     </td>
                   </tr>
                 ))}
@@ -324,14 +324,14 @@ export default function HistoryPage() {
         {!loading && total > 0 && (
           <div className="p-4 border-t border-sidebar-border/50 flex items-center justify-between text-sm">
             <div className="text-muted-foreground">
-              Showing <span className="text-white font-medium">{(page - 1) * limit + 1}</span> to <span className="text-white font-medium">{Math.min(page * limit, total)}</span> of <span className="text-white font-medium">{total}</span> trades
+              Showing <span className="text-slate-800 dark:text-white font-medium">{(page - 1) * limit + 1}</span> to <span className="text-slate-800 dark:text-white font-medium">{Math.min(page * limit, total)}</span> of <span className="text-slate-800 dark:text-white font-medium">{total}</span> trades
             </div>
             
             <div className="flex items-center gap-2">
               <button 
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="p-1.5 rounded-md hover:bg-sidebar-accent/20 text-white disabled:opacity-30 transition-colors"
+                className="p-1.5 rounded-md hover:bg-sidebar-accent/20 text-slate-700 dark:text-white disabled:opacity-30 transition-colors"
               >
                 <ChevronLeft size={18} />
               </button>
@@ -346,7 +346,7 @@ export default function HistoryPage() {
                     <button 
                       key={pNum}
                       onClick={() => setPage(pNum)}
-                      className={`w-8 h-8 rounded-md flex items-center justify-center font-medium transition-colors ${page === pNum ? 'bg-sidebar-primary text-black' : 'hover:bg-sidebar-accent/20 text-muted-foreground'}`}
+                      className={`w-8 h-8 rounded-md flex items-center justify-center font-medium transition-colors ${page === pNum ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200 dark:bg-white/10 dark:text-white dark:ring-white/10 dark:shadow-none' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/5'}`}
                     >
                       {pNum}
                     </button>
@@ -356,7 +356,7 @@ export default function HistoryPage() {
               <button 
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
-                className="p-1.5 rounded-md hover:bg-sidebar-accent/20 text-white disabled:opacity-30 transition-colors"
+                className="p-1.5 rounded-md hover:bg-sidebar-accent/20 text-slate-700 dark:text-white disabled:opacity-30 transition-colors"
               >
                 <ChevronRight size={18} />
               </button>
@@ -401,7 +401,7 @@ function Th({ label, sortKey, currentSort, onSort }: { label: string, sortKey?: 
 
 function SummaryCard({ icon, label, value, subtitle, color = "text-white", isCurrency, isPositive }: any) {
   return (
-    <div className="border border-sidebar-border bg-sidebar rounded-2xl p-5 relative overflow-hidden group">
+    <div className="border border-sidebar-border bg-sidebar rounded-md p-5 relative overflow-hidden group">
       <div className="absolute -right-4 -top-4 w-16 h-16 bg-sidebar-primary/5 rounded-full blur-2xl group-hover:bg-sidebar-primary/10 transition-colors" />
       <div className={`w-8 h-8 rounded-xl bg-sidebar-accent/20 flex items-center justify-center mb-4 ${color}`}>
         {icon}

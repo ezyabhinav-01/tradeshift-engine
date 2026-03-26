@@ -64,7 +64,7 @@ const NewsPanel = () => {
                 {newsItems.map((item, i) => {
                     const isNew = i === 0;
                     return (
-                        <div key={item.id} className={`group relative p-4 rounded-2xl border transition-all duration-300 ${
+                        <div key={item.id} className={`group relative p-4 rounded-md border transition-all duration-300 ${
                             isNew 
                             ? 'bg-gradient-to-br from-white/[0.05] to-transparent border-white/10 shadow-xl shadow-black/50' 
                             : 'bg-white/[0.02] border-white/5 hover:border-white/10'

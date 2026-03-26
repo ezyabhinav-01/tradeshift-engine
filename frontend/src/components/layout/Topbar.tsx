@@ -10,8 +10,8 @@ const Topbar = () => {
   return (
     <header className={`h-14 border-b flex items-center justify-between px-4 transition-colors duration-300
       ${theme === 'dark'
-        ? 'bg-gray-900/40 border-gray-800 backdrop-blur-md'
-        : 'bg-white/40 border-gray-200 backdrop-blur-md'
+        ? 'bg-transparent border-gray-800 backdrop-blur-sm'
+        : 'bg-transparent border-gray-200 backdrop-blur-sm'
       }`}>
 
       <div className="flex items-center gap-4">

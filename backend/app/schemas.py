@@ -230,3 +230,47 @@ class DrawingTemplateCreate(BaseModel):
 class DrawingTemplateResponse(DrawingTemplateBase):
     class Config:
         from_attributes = True
+
+
+# ─── Community Schemas ──────────────────────────────────────────
+
+class ChannelBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+    type: str = "public"
+
+class ChannelCreate(ChannelBase):
+    pass
+
+class Channel(ChannelBase):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class MessageBase(BaseModel):
+    content: str
+    channel_id: Optional[int] = None
+    recipient_id: Optional[int] = None
+
+class MessageCreate(MessageBase):
+    pass
+
+class Message(MessageBase):
+    id: int
+    sender_id: int
+    timestamp: datetime
+    sender_name: Optional[str] = None # Added for convenience in UI
+
+    class Config:
+        from_attributes = True
+
+class CommunityUser(BaseModel):
+    id: int
+    full_name: Optional[str] = None
+    email: str
+    is_online: bool = False
+
+    class Config:
+        from_attributes = True

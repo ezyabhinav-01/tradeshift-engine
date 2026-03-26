@@ -139,7 +139,7 @@ export const ChatBot: React.FC = () => {
 
   return (
     <div 
-      className={`fixed bottom-6 right-6 flex flex-col bg-[#0f0f0f] border border-gray-800 rounded-2xl shadow-2xl z-50 transition-all duration-300 overflow-hidden
+      className={`fixed bottom-6 right-6 flex flex-col bg-[#0f0f0f] border border-gray-800 rounded-md shadow-2xl z-50 transition-all duration-300 overflow-hidden
         ${isExpanded ? 'w-[800px] h-[80vh] right-1/2 translate-x-1/2 bottom-[10vh]' : 'w-[400px] h-[600px]'}
       `}
     >
@@ -184,7 +184,7 @@ export const ChatBot: React.FC = () => {
             </div>
             <div className={`flex flex-col gap-1 max-w-[80%]`}>
               <div 
-                className={`p-3 rounded-2xl text-sm leading-relaxed ${
+                className={`p-3 rounded-md text-sm leading-relaxed ${
                   msg.role === 'user' 
                     ? 'bg-blue-600 text-white rounded-tr-sm' 
                     : 'bg-[#1a1a1a] border border-gray-800 text-gray-200 rounded-tl-sm'
@@ -228,7 +228,7 @@ export const ChatBot: React.FC = () => {
              <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center shrink-0">
                <Bot size={16} className="text-gray-400" />
              </div>
-             <div className="bg-[#1a1a1a] border border-gray-800 p-4 rounded-2xl rounded-tl-sm flex gap-1 items-center">
+             <div className="bg-[#1a1a1a] border border-gray-800 p-4 rounded-md rounded-tl-sm flex gap-1 items-center">
                <span className="w-2 h-2 rounded-full bg-gray-500 animate-bounce delay-75"></span>
                <span className="w-2 h-2 rounded-full bg-gray-500 animate-bounce delay-150"></span>
                <span className="w-2 h-2 rounded-full bg-gray-500 animate-bounce delay-300"></span>

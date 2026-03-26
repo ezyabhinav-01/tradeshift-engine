@@ -7,20 +7,20 @@ const Layout = () => {
     const isChartRoute = location.pathname === '/' || location.pathname === '/terminal';
 
     return (
-        /* 1. Main Container: Set the base dark color */
+        /* 1. Main Container */
         <main className={`relative h-screen w-screen flex flex-col overflow-hidden text-tv-text-primary bg-background transition-colors duration-300`}>
             
-            {/* Conditional Fancy Background layers */}
+            {/* Conditional Fancy Background layers — dark mode only */}
             {!isChartRoute && (
                 <>
-                    {/* 2. The Blue Flash/Glow Effect (Top Left) */}
-                    <div className="absolute -top-[10%] -left-[10%] h-[500px] w-[500px] rounded-full bg-blue-600/20 blur-[120px] pointer-events-none"></div>
+                    {/* 2. Blue Glow (dark mode only) */}
+                    <div className="absolute -top-[10%] -left-[10%] h-[500px] w-[500px] rounded-full bg-blue-600/20 blur-[120px] pointer-events-none hidden dark:block"></div>
                     
-                    {/* 3. The Subtle Gradient Overlay */}
-                    <div className="absolute inset-0 bg-gradient-to-br from-transparent via-transparent to-black/50 pointer-events-none"></div>
+                    {/* 3. Dark gradient overlay (dark mode only) */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-transparent via-transparent to-black/50 pointer-events-none hidden dark:block"></div>
 
-                    {/* 4. The Dot Grid Layer */}
-                    <div className="absolute inset-0 h-full w-full bg-[radial-gradient(#ffffff10_1px,transparent_1px)] [background-size:20px_20px] pointer-events-none"></div>
+                    {/* 4. Dot Grid (dark mode only) */}
+                    <div className="absolute inset-0 h-full w-full bg-[radial-gradient(#ffffff10_1px,transparent_1px)] [background-size:20px_20px] pointer-events-none hidden dark:block"></div>
                 </>
             )}
 

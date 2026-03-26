@@ -6,6 +6,7 @@ import { useDrawingTools } from '../../hooks/useDrawingTools';
 import type { DrawingToolId } from '../../hooks/useDrawingTools';
 import { useIndicatorSettings } from '../../store/useIndicatorSettings';
 import { useMultiChartStore } from '../../store/useMultiChartStore';
+import { useThemeStore } from '../../store/themeStore';
 import type { ChartInstance } from '../../store/useMultiChartStore';
 import { useDrawingSettings } from '../../store/useDrawingSettings';
 import IndicatorLegend from './IndicatorLegend';
@@ -82,12 +83,14 @@ interface ProChartProps {
 }
 
 export const ProChart: React.FC<ProChartProps> = ({ 
-  data, width, height, theme = 'dark', activeDrawingTool, onDrawingToolChange,
+  data, width, height, theme: propTheme, activeDrawingTool, onDrawingToolChange,
   isLibraryOpen, onToggleLibrary,
   onPriceClick, onEntryLineClick, previewPrice, isIndicatorsOpen, onToggleIndicators,
   isAlertsOpen: externalAlertsOpen, onToggleAlerts, onIndicatorStateChange,
   chartId = 'chart-0', isPrimary = true, gameData,
 }) => {
+  const { theme: globalTheme } = useThemeStore();
+  const theme = propTheme || globalTheme;
   const { magnetMode } = useDrawingSettings();
   const internalGame = useGame();
   const {
@@ -385,8 +388,8 @@ export const ProChart: React.FC<ProChartProps> = ({
         fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
       },
       grid: { 
-        vertLines: { color: isDark ? 'rgba(42, 46, 57, 0.3)' : 'rgba(240, 243, 250, 0.5)', style: 1 }, 
-        horzLines: { color: isDark ? 'rgba(42, 46, 57, 0.3)' : 'rgba(240, 243, 250, 0.5)', style: 1 } 
+        vertLines: { color: isDark ? 'rgba(42, 46, 57, 0.3)' : 'rgba(0, 0, 0, 0.08)', style: 1 }, 
+        horzLines: { color: isDark ? 'rgba(42, 46, 57, 0.3)' : 'rgba(0, 0, 0, 0.08)', style: 1 } 
       },
       width: width || chartContainerRef.current.clientWidth,
       height: height || chartContainerRef.current.clientHeight,
@@ -752,28 +755,28 @@ export const ProChart: React.FC<ProChartProps> = ({
         {/* Symbol and OHLC Row */}
         <div className="flex items-center gap-2 px-1 py-0.5 rounded-sm">
           <div className="flex items-center gap-1.5">
-            <span className="font-bold text-[#d1d4dc] text-[13px] hover:text-white cursor-pointer pointer-events-auto">
+            <span className="font-bold text-slate-900 dark:text-[#d1d4dc] text-[13px] hover:text-slate-700 dark:hover:text-white cursor-pointer pointer-events-auto">
               {mySymbol || 'Indian Rupee'}
             </span>
-            <span className="text-[#d1d4dc]/40 text-[11px]">1m · NSE</span>
+            <span className="text-slate-500 dark:text-[#d1d4dc]/40 text-[11px]">1m · NSE</span>
             <div className={`w-1.5 h-1.5 rounded-full ${isPlaying ? 'bg-[#089981] animate-pulse' : 'bg-[#5d606b]'}`} />
           </div>
           
           <div className="flex items-center gap-2.5 text-[11px] font-medium ml-2">
             <div className="flex gap-0.5">
-              <span className="text-[#d1d4dc]/40">O</span>
+              <span className="text-slate-500 dark:text-[#d1d4dc]/40">O</span>
               <span className={(displayCandle?.open ?? 0) >= (displayCandle?.close ?? 0) ? 'text-[#089981]' : 'text-[#f23645]'}>{displayCandle?.open?.toFixed(2) || '0.00'}</span>
             </div>
             <div className="flex gap-0.5">
-              <span className="text-[#d1d4dc]/40">H</span>
+              <span className="text-slate-500 dark:text-[#d1d4dc]/40">H</span>
               <span className={(displayCandle?.high ?? 0) >= (displayCandle?.close ?? 0) ? 'text-[#089981]' : 'text-[#f23645]'}>{displayCandle?.high?.toFixed(2) || '0.00'}</span>
             </div>
             <div className="flex gap-0.5">
-              <span className="text-[#d1d4dc]/40">L</span>
+              <span className="text-slate-500 dark:text-[#d1d4dc]/40">L</span>
               <span className={(displayCandle?.low ?? 0) >= (displayCandle?.close ?? 0) ? 'text-[#089981]' : 'text-[#f23645]'}>{displayCandle?.low?.toFixed(2) || '0.00'}</span>
             </div>
             <div className="flex gap-0.5">
-              <span className="text-[#d1d4dc]/40">C</span>
+              <span className="text-slate-500 dark:text-[#d1d4dc]/40">C</span>
               <span className={(displayCandle?.close ?? 0) >= (displayCandle?.open ?? 0) ? 'text-[#089981]' : 'text-[#f23645]'}>{displayCandle?.close?.toFixed(2) || '0.00'}</span>
             </div>
             {displayCandle && (
@@ -795,7 +798,7 @@ export const ProChart: React.FC<ProChartProps> = ({
             <span className="text-[#f23645] font-bold text-[11px] leading-tight">{currentPrice.toFixed(1)}</span>
             <span className="text-[#f23645]/60 text-[8px] font-bold uppercase leading-none mt-0.5">Sell</span>
           </div>
-          <div className="text-[9px] font-medium text-[#d1d4dc]/20 px-0.5">0.1</div>
+          <div className="text-[9px] font-medium text-slate-400 dark:text-[#d1d4dc]/20 px-0.5">0.1</div>
           <div 
             className="flex flex-col items-center justify-center border border-[#2962FF] bg-[#2962FF]/5 rounded-[3px] px-2.5 py-0.5 cursor-pointer hover:bg-[#2962FF]/15 group transition-colors min-w-[65px]" 
             onClick={() => onPriceClick?.(currentPrice + 0.1)}

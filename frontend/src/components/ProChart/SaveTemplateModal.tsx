@@ -48,7 +48,7 @@ export const SaveTemplateModal: React.FC<SaveTemplateModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-[#131722] w-full max-w-md rounded-2xl border border-[#2a2e39] shadow-2xl overflow-hidden">
+      <div className="bg-[#131722] w-full max-w-md rounded-md border border-[#2a2e39] shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#2a2e39]">
           <div className="flex items-center gap-3">

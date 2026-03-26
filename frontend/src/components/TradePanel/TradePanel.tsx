@@ -168,7 +168,7 @@ const TradePanel = ({ price, onExecute, onClose }: TradePanelProps) => {
               <div className="space-y-6">
                 
                 {/* Direction Switcher */}
-                <div className="p-1 bg-white/5 rounded-2xl flex gap-1">
+                <div className="p-1 bg-white/5 rounded-md flex gap-1">
                   <button 
                     onClick={() => setDirection('BUY')}
                     className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-xl font-black transition-all duration-300 ${isBuy ? 'bg-[#089981] text-white shadow-lg shadow-[#089981]/20' : 'text-white/30 hover:text-white/50'}`}
@@ -272,7 +272,7 @@ const TradePanel = ({ price, onExecute, onClose }: TradePanelProps) => {
                 </div>
 
                 {/* Additional Info / Alert */}
-                <div className="p-5 bg-white/5 border border-white/10 rounded-2xl space-y-4">
+                <div className="p-5 bg-white/5 border border-white/10 rounded-md space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className={`p-2 rounded-lg ${alertEnabled ? 'bg-amber-500/20 text-amber-500' : 'bg-white/5 text-white/20'}`}>
@@ -306,7 +306,7 @@ const TradePanel = ({ price, onExecute, onClose }: TradePanelProps) => {
                 <button 
                   disabled={!isPlaying}
                   onClick={handleExecute}
-                  className={`w-full py-5 rounded-2xl font-black text-lg transition-all transform active:scale-[0.98] disabled:opacity-30 disabled:grayscale ${isBuy ? 'bg-[#089981] hover:bg-[#067a65] shadow-xl shadow-[#089981]/20' : 'bg-[#f23645] hover:bg-[#d12435] shadow-xl shadow-[#f23645]/20'} text-white`}
+                  className={`w-full py-5 rounded-md font-black text-lg transition-all transform active:scale-[0.98] disabled:opacity-30 disabled:grayscale ${isBuy ? 'bg-[#089981] hover:bg-[#067a65] shadow-xl shadow-[#089981]/20' : 'bg-[#f23645] hover:bg-[#d12435] shadow-xl shadow-[#f23645]/20'} text-white`}
                 >
                   PLACE {direction} {orderType} ORDER
                 </button>

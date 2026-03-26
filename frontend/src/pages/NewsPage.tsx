@@ -54,7 +54,7 @@ const NewsPage: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 py-8 lg:px-8">
         
         {/* Header Section */}
-        <div className="mb-8 p-6 rounded-2xl bg-white dark:bg-[#1e222d] border border-slate-200 dark:border-[#2a2e39] overflow-hidden relative">
+        <div className="mb-8 p-6 rounded-md bg-white dark:bg-[#1e222d] border border-slate-200 dark:border-[#2a2e39] overflow-hidden relative">
             <div className="relative z-10">
                 <div className="flex items-center gap-2 text-tv-primary mb-2">
                     <BrainCircuit size={20} />
@@ -109,7 +109,7 @@ const NewsPage: React.FC = () => {
       {/* AI Explanation Modal */}
       {explanation && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-[#1e222d] w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-200 dark:border-[#363a45] overflow-hidden flex flex-col max-h-[90vh]">
+          <div className="bg-white dark:bg-[#1e222d] w-full max-w-2xl rounded-md shadow-2xl border border-slate-200 dark:border-[#363a45] overflow-hidden flex flex-col max-h-[90vh]">
             
             <div className="p-4 border-b border-slate-100 dark:border-[#2a2e39] flex justify-between items-center bg-slate-50 dark:bg-[#1e222d]">
               <div className="flex items-center gap-2 text-tv-primary">

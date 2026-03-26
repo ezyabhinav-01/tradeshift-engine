@@ -84,15 +84,15 @@ export default function LearnPage() {
   }, [location.search]);
 
   return (
-    <div className="flex flex-col flex-1 h-screen overflow-y-auto bg-[#0a0a0a] text-gray-200">
+    <div className="flex flex-col flex-1 h-screen overflow-y-auto bg-slate-50 dark:bg-[#0a0a0a] text-slate-800 dark:text-slate-200">
       <div className="max-w-4xl min-w-4xl mx-auto px-8 py-12">
         <div className="flex items-center gap-4 mb-12">
-          <div className="w-16 h-16 rounded-2xl bg-emerald-500/20 flex items-center justify-center border border-emerald-500/30">
-            <BookOpen size={32} className="text-emerald-400" />
+          <div className="w-16 h-16 rounded-md bg-emerald-500/20 flex items-center justify-center border border-emerald-500/30">
+            <BookOpen size={32} className="text-emerald-500 dark:text-emerald-400" />
           </div>
           <div>
-            <h1 className="text-4xl font-bold text-white tracking-tight">Trading Mastery</h1>
-            <p className="text-gray-400 mt-2 text-lg">Your premier dictionary for indicators, metrics, and platform navigation.</p>
+            <h1 className="text-4xl font-bold text-slate-900 dark:text-white tracking-tight">Trading Mastery</h1>
+            <p className="text-slate-500 dark:text-slate-400 mt-2 text-lg">Your premier dictionary for indicators, metrics, and platform navigation.</p>
           </div>
         </div>
 
@@ -101,20 +101,19 @@ export default function LearnPage() {
             <section
               key={section.id}
               id={section.id}
-              // Register explicit DOM refs to jump to
               ref={(el) => { sectionsRef.current[section.id] = el; }}
-              className="bg-[#141414] border border-gray-800 rounded-2xl p-8 hover:border-emerald-500/30 transition-colors shadow-xl"
+              className="bg-white dark:bg-[#141414] border border-slate-200 dark:border-slate-800 rounded-md p-8 hover:border-emerald-500/30 transition-colors shadow-sm dark:shadow-xl"
             >
               <div className="flex items-center gap-4 mb-6">
-                <div className="p-3 bg-gray-900 rounded-xl border border-gray-700 shadow-inner">
+                <div className="p-3 bg-slate-100 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-inner">
                   {section.icon}
                 </div>
-                <h2 className="text-2xl font-bold text-gray-100">{section.title}</h2>
+                <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">{section.title}</h2>
               </div>
               
               <div className="space-y-4">
                 {section.content.map((paragraph, index) => (
-                  <p key={index} className="text-gray-400 leading-relaxed text-lg">
+                  <p key={index} className="text-slate-600 dark:text-slate-400 leading-relaxed text-lg">
                     {paragraph}
                   </p>
                 ))}

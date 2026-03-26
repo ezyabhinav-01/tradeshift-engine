@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 
 import { useGame } from '../context/GameContext';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const api = axios.create({ baseURL: '', withCredentials: true });
 
@@ -97,18 +98,22 @@ export default function PortfolioPage() {
       </div>
 
       {/* ─── TABS ─── */}
-      <div className="flex gap-1 p-1 bg-sidebar border border-sidebar-border rounded-xl">
-        {TABS.map(tab => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-sm font-medium transition-all duration-200 ${isActive ? 'bg-sidebar-primary text-black shadow-lg shadow-sidebar-primary/20' : 'text-muted-foreground hover:text-white hover:bg-sidebar-accent/10'}`}>
-              <Icon className="w-4 h-4" />{tab.label}
-            </button>
-          );
-        })}
-      </div>
+      <Tabs value={activeTab} onValueChange={(val: any) => setActiveTab(val)} className="w-full">
+        <TabsList className="bg-slate-100 dark:bg-black/40 border border-slate-200 dark:border-white/10 p-1 mb-1 shadow-sm dark:shadow-none w-full flex">
+          {TABS.map(tab => {
+            const Icon = tab.icon;
+            return (
+              <TabsTrigger
+                key={tab.id}
+                value={tab.id}
+                className="flex-1 flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-semibold transition-all data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:border-b-2 data-[state=active]:border-blue-600 dark:data-[state=active]:bg-white/10 dark:data-[state=active]:text-white dark:data-[state=active]:border-primary text-slate-500 hover:text-slate-900 dark:text-gray-500 dark:hover:text-white shadow-none data-[state=active]:shadow-sm dark:data-[state=active]:shadow-none"
+              >
+                <Icon className="w-4 h-4" />{tab.label}
+              </TabsTrigger>
+            );
+          })}
+        </TabsList>
+      </Tabs>
 
       {/* ─── TAB CONTENT ─── */}
       {activeTab === 'holdings' && <HoldingsTab data={data} holdings={holdings} isPositive={isPositive} fetchData={fetchAll} />}
@@ -128,7 +133,7 @@ function HoldingsTab({ data, holdings, isPositive }: any) {
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* Health Cards + Equity Curve */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-1 border border-sidebar-border bg-sidebar rounded-2xl p-6 relative overflow-hidden flex flex-col justify-between">
+        <div className="lg:col-span-1 border border-gray-200 dark:border-white/10 bg-white dark:bg-[#121212] rounded-sm p-6 relative overflow-hidden flex flex-col justify-between">
           <div className="absolute top-0 right-0 w-32 h-32 bg-sidebar-primary/5 rounded-full blur-3xl" />
           <div className="space-y-5 z-10">
             <div>
@@ -161,8 +166,8 @@ function HoldingsTab({ data, holdings, isPositive }: any) {
           </div>
         </div>
 
-        <div className="lg:col-span-2 border border-sidebar-border bg-sidebar rounded-2xl p-6">
-          <h3 className="text-lg font-semibold text-white mb-4">Portfolio Growth</h3>
+        <div className="lg:col-span-2 border border-gray-200 dark:border-white/10 bg-white dark:bg-[#121212] rounded-md p-6">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Portfolio Growth</h3>
           <div className="h-[250px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={data.equity_curve} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
@@ -183,15 +188,15 @@ function HoldingsTab({ data, holdings, isPositive }: any) {
       </div>
 
       {/* Holdings Table */}
-      <div className="border border-sidebar-border bg-sidebar rounded-2xl overflow-hidden">
-        <div className="p-5 border-b border-sidebar-border/50 flex justify-between items-center">
-          <h3 className="text-lg font-bold text-white">Your Holdings</h3>
-          <span className="text-xs text-muted-foreground bg-sidebar-accent/10 px-3 py-1 rounded-full">{holdings.length} stocks</span>
+      <div className="border border-gray-200 dark:border-white/10 bg-white dark:bg-[#121212] rounded-md overflow-hidden">
+        <div className="p-5 border-b border-gray-200 dark:border-white/10 flex justify-between items-center">
+          <h3 className="text-lg font-bold text-slate-900 dark:text-white">Your Holdings</h3>
+          <span className="text-xs text-muted-foreground bg-slate-100 dark:bg-sidebar-accent/10 px-3 py-1 rounded-full">{holdings.length} stocks</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="bg-sidebar-accent/10 border-b border-sidebar-border/50 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <tr className="bg-slate-50 dark:bg-sidebar-accent/10 border-b border-gray-200 dark:border-white/10 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 <th className="px-4 py-2.5">Symbol</th><th className="px-4 py-2.5">Qty</th>
                 <th className="px-4 py-2.5">Avg Cost</th><th className="px-4 py-2.5">LTP</th>
                 <th className="px-4 py-2.5">P&L</th><th className="px-4 py-2.5">Day Change</th>
@@ -206,7 +211,7 @@ function HoldingsTab({ data, holdings, isPositive }: any) {
                 return (
                   <tr key={h.id} className="hover:bg-sidebar-accent/5 transition-colors group text-sm">
                     <td className="px-4 py-2.5"><div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-sm bg-sidebar-primary/10 flex items-center justify-center text-[10px] font-bold text-sidebar-primary border border-sidebar-primary/20">{h.symbol.substring(0, 2)}</div>
+                      <div className="w-7 h-7 rounded-md bg-sidebar-primary/10 flex items-center justify-center text-[10px] font-bold text-sidebar-primary border border-sidebar-primary/20">{h.symbol.substring(0, 2)}</div>
                       <span className="font-bold text-white">{h.symbol}</span>
                     </div></td>
                     <td className="px-4 py-2.5 font-mono text-muted-foreground">{h.quantity}</td>
@@ -246,9 +251,9 @@ function HoldingsTab({ data, holdings, isPositive }: any) {
 function PositionsTab({ positions }: { positions: any[] }) {
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      <div className="border border-sidebar-border bg-sidebar rounded-2xl overflow-hidden">
-        <div className="p-5 border-b border-sidebar-border/50 flex justify-between items-center">
-          <h3 className="text-lg font-bold text-white flex items-center gap-2">
+      <div className="border border-gray-200 dark:border-white/10 bg-white dark:bg-[#121212] rounded-md overflow-hidden">
+        <div className="p-5 border-b border-gray-200 dark:border-white/10 flex justify-between items-center">
+          <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <Target className="w-5 h-5 text-sidebar-primary" /> Open Positions
           </h3>
           <span className="text-xs bg-sidebar-accent/10 text-muted-foreground px-3 py-1 rounded-full">{positions.length} active</span>
@@ -313,17 +318,17 @@ function SectorsTab({ sectors }: { sectors: any }) {
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* Top metrics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="border border-sidebar-border bg-sidebar rounded-2xl p-5 text-center">
+        <div className="border border-gray-200 dark:border-white/10 bg-white dark:bg-[#121212] rounded-md p-5 text-center">
           <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Diversification Score</p>
           <p className={`text-5xl font-black font-mono ${diversity_score > 70 ? 'text-green-500' : diversity_score > 40 ? 'text-yellow-500' : 'text-red-500'}`}>{diversity_score}</p>
           <p className="text-xs text-muted-foreground mt-1">out of 100</p>
         </div>
-        <div className="border border-sidebar-border bg-sidebar rounded-2xl p-5 text-center">
+        <div className="border border-gray-200 dark:border-white/10 bg-white dark:bg-[#121212] rounded-md p-5 text-center">
           <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Sectors Covered</p>
           <p className="text-5xl font-black font-mono text-sidebar-primary">{total_sectors}</p>
           <p className="text-xs text-muted-foreground mt-1">unique sectors</p>
         </div>
-        <div className="border border-sidebar-border bg-sidebar rounded-2xl p-5 text-center">
+        <div className="border border-gray-200 dark:border-white/10 bg-white dark:bg-[#121212] rounded-md p-5 text-center">
           <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Risk Level</p>
           <div className="flex items-center justify-center gap-2 mt-2">
             <Shield className={`w-8 h-8 ${risk_level === 'Low' ? 'text-green-500' : risk_level === 'Medium' ? 'text-yellow-500' : 'text-red-500'}`} />
@@ -335,8 +340,8 @@ function SectorsTab({ sectors }: { sectors: any }) {
       {/* Chart + Table */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Donut chart */}
-        <div className="border border-sidebar-border bg-sidebar rounded-2xl p-6">
-          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2"><PieIcon className="w-5 h-5 text-sidebar-primary" /> Sector Allocation</h3>
+        <div className="border border-gray-200 dark:border-white/10 bg-white dark:bg-[#121212] rounded-md p-6">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2"><PieIcon className="w-5 h-5 text-sidebar-primary" /> Sector Allocation</h3>
           <div className="h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -352,8 +357,8 @@ function SectorsTab({ sectors }: { sectors: any }) {
         </div>
 
         {/* Sector breakdown table */}
-        <div className="border border-sidebar-border bg-sidebar rounded-2xl p-6">
-          <h3 className="text-lg font-semibold text-white mb-4">Sector Breakdown</h3>
+        <div className="border border-gray-200 dark:border-white/10 bg-white dark:bg-[#121212] rounded-md p-6">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Sector Breakdown</h3>
           <div className="space-y-3">
             {allocation.map((s: any) => (
               <div key={s.sector} className="flex items-center gap-3">
@@ -417,9 +422,9 @@ function ResearchTab({ research }: { research: any }) {
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {!hasData ? (
-        <div className="border border-sidebar-border bg-sidebar rounded-2xl p-12 text-center">
+        <div className="border border-gray-200 dark:border-white/10 bg-white dark:bg-[#121212] rounded-md p-12 text-center">
           <Brain className="w-16 h-16 text-muted-foreground/20 mx-auto mb-4" />
-          <h3 className="text-xl font-bold text-white mb-2">No Trade History Yet</h3>
+          <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">No Trade History Yet</h3>
           <p className="text-muted-foreground text-sm max-w-md mx-auto">Start trading in the simulator to unlock AI-powered behavioral analysis, win rate tracking, and personalized insights.</p>
         </div>
       ) : (
@@ -435,8 +440,8 @@ function ResearchTab({ research }: { research: any }) {
           {/* Win/Loss + Best/Worst */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Win/Loss bar */}
-            <div className="border border-sidebar-border bg-sidebar rounded-2xl p-6">
-              <h4 className="text-sm font-bold text-white mb-4 uppercase tracking-wider">Win / Loss Distribution</h4>
+            <div className="border border-gray-200 dark:border-white/10 bg-white dark:bg-[#121212] rounded-md p-6">
+              <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-4 uppercase tracking-wider">Win / Loss Distribution</h4>
               <div className="flex gap-1 h-6 rounded-full overflow-hidden mb-3">
                 <div className="bg-green-500 transition-all duration-700 flex items-center justify-center" style={{ width: `${research.win_rate}%` }}>
                   {research.win_rate > 15 && <span className="text-[10px] font-bold text-black">{research.wins}W</span>}
@@ -479,8 +484,8 @@ function ResearchTab({ research }: { research: any }) {
           {/* Sector Bias + Insights */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Sector bias */}
-            <div className="border border-sidebar-border bg-sidebar rounded-2xl p-6">
-              <h4 className="text-sm font-bold text-white mb-4 uppercase tracking-wider flex items-center gap-2"><Target className="w-4 h-4 text-sidebar-primary" /> Trading Sector Bias</h4>
+            <div className="border border-gray-200 dark:border-white/10 bg-white dark:bg-[#121212] rounded-md p-6">
+              <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-4 uppercase tracking-wider flex items-center gap-2"><Target className="w-4 h-4 text-sidebar-primary" /> Trading Sector Bias</h4>
               {research.sector_bias.length > 0 ? (
                 <div className="space-y-3">
                   {research.sector_bias.map((s: any) => (
@@ -499,8 +504,8 @@ function ResearchTab({ research }: { research: any }) {
             </div>
 
             {/* AI Insights */}
-            <div className="border border-sidebar-border bg-sidebar rounded-2xl p-6">
-              <h4 className="text-sm font-bold text-white mb-4 uppercase tracking-wider flex items-center gap-2"><Brain className="w-4 h-4 text-purple-400" /> AI Insights</h4>
+            <div className="border border-gray-200 dark:border-white/10 bg-white dark:bg-[#121212] rounded-md p-6">
+              <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-4 uppercase tracking-wider flex items-center gap-2"><Brain className="w-4 h-4 text-purple-400" /> AI Insights</h4>
               <div className="space-y-3">
                 {research.insights.map((insight: string, i: number) => (
                   <div key={i} className="p-3 bg-white/[0.02] border border-white/5 rounded-xl">
@@ -520,7 +525,7 @@ function ResearchTab({ research }: { research: any }) {
 // ─── Reusable Stat Card ────────────────────────────────────────
 function StatCard({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: any; color: string }) {
   return (
-    <div className="border border-sidebar-border bg-sidebar rounded-2xl p-5 text-center">
+    <div className="border border-gray-200 dark:border-white/10 bg-white dark:bg-[#121212] rounded-md p-5 text-center">
       <div className={`${color} mx-auto mb-2 opacity-60`}>{icon}</div>
       <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{label}</p>
       <p className={`text-2xl font-black font-mono ${color}`}>{value}</p>

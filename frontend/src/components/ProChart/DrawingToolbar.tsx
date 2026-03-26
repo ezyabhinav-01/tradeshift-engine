@@ -56,7 +56,7 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = (props) => {
   };
 
   return (
-    <div ref={containerRef} className="absolute top-0 bottom-0 left-0 z-50 flex flex-col items-center bg-[#121212]/90 backdrop-blur-md border-r border-[#2a2e39] w-12 py-1 select-none overflow-visible">
+    <div ref={containerRef} className="absolute top-0 bottom-0 left-0 z-50 flex flex-col items-center bg-white/90 dark:bg-[#121212]/90 backdrop-blur-md border-r border-gray-200 dark:border-[#2a2e39] w-12 py-1 select-none overflow-visible">
       {/* Scrollable Tool List */}
       <div className="flex-1 w-full flex flex-col items-center overflow-y-auto [&::-webkit-scrollbar]:hidden scroll-smooth py-1">
         <div className="flex flex-col gap-1 w-full items-center">
@@ -74,13 +74,13 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = (props) => {
                 <button
                   className={`p-1.5 rounded-md transition-all group/item flex items-center justify-center w-8 h-8 relative ${
                     isActive
-                      ? 'bg-[#2a2e39] text-[#2962FF]'
-                      : 'text-[#d1d4dc] hover:bg-[#2a2e39] hover:text-white'
+                      ? 'bg-blue-50 dark:bg-[#2a2e39] text-blue-600 dark:text-[#2962FF]'
+                      : 'text-slate-600 dark:text-[#d1d4dc] hover:bg-slate-100 dark:hover:bg-[#2a2e39] hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
                   <Icon size={18} />
                   <div className="absolute bottom-1 right-0.5">
-                    <ChevronRight size={5} className="text-[#5d606b] group-hover/item:text-white rotate-45" />
+                    <ChevronRight size={5} className="text-slate-400 dark:text-[#5d606b] group-hover/item:text-slate-800 dark:group-hover/item:text-white rotate-45" />
                   </div>
                 </button>
               </div>
@@ -88,23 +88,23 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = (props) => {
           })}
         </div>
 
-        <div className="w-8 h-px bg-[#2a2e39] my-2" />
+        <div className="w-8 h-px bg-slate-200 dark:bg-[#2a2e39] my-2" />
 
         <div className="flex flex-col gap-1 w-full items-center">
           <button 
             onClick={onOpenAlerts}
-            className="p-1.5 w-8 h-8 rounded-md transition-all text-[#d1d4dc] hover:bg-blue-600/10 hover:text-blue-500 flex items-center justify-center"
+            className="p-1.5 w-8 h-8 rounded-md transition-all text-slate-600 dark:text-[#d1d4dc] hover:bg-blue-50 dark:hover:bg-blue-600/10 hover:text-blue-600 dark:hover:text-blue-500 flex items-center justify-center"
             title="Create Alert"
           >
             <Bell size={18} />
           </button>
 
-          <div className="w-8 h-px bg-[#2a2e39] my-2" />
+          <div className="w-8 h-px bg-slate-200 dark:bg-[#2a2e39] my-2" />
 
           <button 
             onClick={() => onSelectTool(activeTool === 'ruler' ? null : 'ruler')}
             className={`p-1.5 w-8 h-8 rounded-md transition-all flex items-center justify-center ${
-              activeTool === 'ruler' ? 'text-[#2962FF] bg-[#2a2e39]' : 'text-[#d1d4dc] hover:bg-[#2a2e39] hover:text-white'
+              activeTool === 'ruler' ? 'text-blue-600 dark:text-[#2962FF] bg-blue-50 dark:bg-[#2a2e39]' : 'text-slate-600 dark:text-[#d1d4dc] hover:bg-slate-100 dark:hover:bg-[#2a2e39] hover:text-slate-900 dark:hover:text-white'
             }`}
             title="Measure"
           >
@@ -113,7 +113,7 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = (props) => {
 
           <button 
             onClick={() => onZoomIn?.()}
-            className="p-1.5 w-8 h-8 rounded-md transition-all text-[#d1d4dc] hover:bg-[#2a2e39] hover:text-white active:scale-95 active:bg-[#2962FF]/20 flex items-center justify-center"
+            className="p-1.5 w-8 h-8 rounded-md transition-all text-slate-600 dark:text-[#d1d4dc] hover:bg-slate-100 dark:hover:bg-[#2a2e39] hover:text-slate-900 dark:hover:text-white active:scale-95 active:bg-blue-50 dark:active:bg-[#2962FF]/20 flex items-center justify-center"
             title="Zoom In"
           >
             <ZoomIn size={18} />
@@ -121,13 +121,13 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = (props) => {
 
           <button 
             onClick={() => onZoomOut?.()}
-            className="p-1.5 w-8 h-8 rounded-md transition-all text-[#d1d4dc] hover:bg-[#2a2e39] hover:text-white active:scale-95 active:bg-[#2962FF]/20 flex items-center justify-center"
+            className="p-1.5 w-8 h-8 rounded-md transition-all text-slate-600 dark:text-[#d1d4dc] hover:bg-slate-100 dark:hover:bg-[#2a2e39] hover:text-slate-900 dark:hover:text-white active:scale-95 active:bg-blue-50 dark:active:bg-[#2962FF]/20 flex items-center justify-center"
             title="Zoom Out"
           >
             <ZoomOut size={18} />
           </button>
 
-          <div className="w-8 h-px bg-[#2a2e39] my-2" />
+          <div className="w-8 h-px bg-slate-200 dark:bg-[#2a2e39] my-2" />
 
           <div 
             className="relative w-full flex justify-center"
@@ -137,13 +137,13 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = (props) => {
             <button 
               onClick={() => setMagnetMode(!magnetMode)}
               className={`p-1.5 w-8 h-8 rounded-md transition-all group/item flex items-center justify-center relative ${
-                magnetMode ? 'text-[#2962FF] bg-[#2a2e39]' : 'text-[#d1d4dc] hover:bg-[#2a2e39] hover:text-white'
+                magnetMode ? 'text-blue-600 dark:text-[#2962FF] bg-blue-50 dark:bg-[#2a2e39]' : 'text-slate-600 dark:text-[#d1d4dc] hover:bg-slate-100 dark:hover:bg-[#2a2e39] hover:text-slate-900 dark:hover:text-white'
               }`}
               title="Magnet Mode"
             >
               <Magnet size={18} className={magnetStrength === 'weak' ? 'opacity-70' : ''} />
               <div className="absolute bottom-1 right-0.5">
-                <ChevronRight size={5} className="text-[#5d606b] group-hover/item:text-white rotate-45" />
+                <ChevronRight size={5} className="text-slate-400 dark:text-[#5d606b] group-hover/item:text-slate-800 dark:group-hover/item:text-white rotate-45" />
               </div>
             </button>
           </div>
@@ -151,7 +151,7 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = (props) => {
           <button 
             onClick={() => setLockMode(!lockMode)}
             className={`p-1.5 w-8 h-8 rounded-md transition-all flex items-center justify-center ${
-              lockMode ? 'text-[#2962FF] bg-[#2a2e39]' : 'text-[#d1d4dc] hover:bg-[#2a2e39] hover:text-white'
+              lockMode ? 'text-blue-600 dark:text-[#2962FF] bg-blue-50 dark:bg-[#2a2e39]' : 'text-slate-600 dark:text-[#d1d4dc] hover:bg-slate-100 dark:hover:bg-[#2a2e39] hover:text-slate-900 dark:hover:text-white'
             }`}
             title="Lock All Drawing Tools"
           >
@@ -175,22 +175,22 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = (props) => {
                 }
               }}
               className={`p-1.5 w-8 h-8 rounded-md transition-all group/item flex items-center justify-center relative ${
-                (hiddenLayers.drawings || hiddenLayers.indicators || hiddenLayers.positions) ? 'text-[#2962FF] bg-[#2a2e39]' : 'text-[#d1d4dc] hover:bg-[#2a2e39] hover:text-white'
+                (hiddenLayers.drawings || hiddenLayers.indicators || hiddenLayers.positions) ? 'text-blue-600 dark:text-[#2962FF] bg-blue-50 dark:bg-[#2a2e39]' : 'text-slate-600 dark:text-[#d1d4dc] hover:bg-slate-100 dark:hover:bg-[#2a2e39] hover:text-slate-900 dark:hover:text-white'
               }`}
               title="Hide all"
             >
               <EyeOff size={18} />
               <div className="absolute bottom-1 right-0.5">
-                <ChevronRight size={5} className="text-[#5d606b] group-hover/item:text-white rotate-45" />
+                <ChevronRight size={5} className="text-slate-400 dark:text-[#5d606b] group-hover/item:text-slate-800 dark:group-hover/item:text-white rotate-45" />
               </div>
             </button>
           </div>
 
-          <div className="w-8 h-px bg-[#2a2e39] my-2" />
+          <div className="w-8 h-px bg-slate-200 dark:bg-[#2a2e39] my-2" />
 
           <button 
             onClick={onToggleLibrary}
-            className="p-1.5 w-8 h-8 rounded-md text-[#d1d4dc] hover:bg-[#2a2e39] hover:text-white relative flex items-center justify-center"
+            className="p-1.5 w-8 h-8 rounded-md text-slate-600 dark:text-[#d1d4dc] hover:bg-slate-100 dark:hover:bg-[#2a2e39] hover:text-slate-900 dark:hover:text-white relative flex items-center justify-center"
             title="Template Library"
           >
             <Library size={18} />

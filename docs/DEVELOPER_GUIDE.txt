@@ -1,0 +1,70 @@
+TradeShift Engine: Comprehensive Developer Guide
+
+1. Project Vision & Mission
+TradeShift is a high-fidelity market replay and paper trading platform designed to bridge the gap between retail theoretical knowledge and institutional execution reality. It serves as a "Flight Simulator" for traders, providing a risk-free environment to master market dynamics using historical data and realistic micro-movements.
+
+The Problem:
+Retail traders often fail due to:
+- Poor Practice Tools: Most paper trading tools use linear interpolation, hiding the "noise" and volatility of real markets.
+- Limited Practice Time: Traditional tools require live market hours.
+- Lack of Narrative Context: Charts alone don't explain why the market moved.
+
+The Solution:
+TradeShift provides:
+1. Realistic Simulation: Brownian Bridge algorithms to synthesize tick-by-tick action.
+2. Infinite Replay: Practice any day from the past decade, anytime.
+3. Narrative Layer: AI-synced news and sentiment analysis integrated into the chart.
+
+2. Technology Stack & Rationale
+- Frontend: React 18 + Vite (Modular, Fast HMR)
+- State: Zustand + Context (High-frequency updates + Global simulation)
+- Charts: Lightweight Charts (Institutional performance)
+- Backend: FastAPI (Python) (Async, high-performance)
+- Persistence: PostgreSQL (Relational data)
+- Caching: Redis (Low-latency risk engine)
+- AI/ML: Google Gemini (Advanced NLP)
+- Search: ChromaDB (Vector search for RAG)
+- DevOps: Docker (Consistent environments)
+
+3. System Architecture
+TradeShift follows a microservices-ready modular monolith pattern.
+Frontend (React) <-> API Gateway (FastAPI) <-> Core Engines (Simulation, Trade, Risk, RAG)
+Data Layers: PostgreSQL, Redis, ChromaDB.
+
+4. Backend: The Core Engines
+4.1 Simulation Engine: The heart of the flight simulator. Uses Brownian Bridge logic to generate 60 ticks per minute that start at Open and end at Close, respecting High/Low with natural pivots and momentum clustering.
+4.2 Trade & Risk Engine: Enforces institutional-grade risk limits (daily loss, max quantity). Automatically linked orders for Stop-Loss and Take-Profit.
+
+5. Frontend Deep Dive
+5.1 Multi-Chart Grid: useMultiChartStore manages multiple chart configurations. Home.tsx orchestrates state sync.
+5.2 Drawing Framework: hooks/useDrawingTools.ts handles serialization and persistence of chart analysis.
+
+6. AI Integration
+6.1 FinGPT Narrative: Sentiment scoring and market impact predictions for historical news.
+6.2 TradeGuide (ChatBot): RAG-based educational assistant using local market knowledge.
+
+7. Database & Data Design
+Relational storage in PostgreSQL (trades, profiles). Large historical OHLC data stored as compressed Parquet in MinIO (S3-compatible).
+
+8. Decision Making
+- Decoupled AI: ChatBot separated into a microservice to prevent heavy model loading from blocking the main API.
+- State Partitioning: Context for simulation events; Zustand for UI/Drawing efficiency.
+
+9. Errors Resolved
+- Instrument Sync: Fixed disconnect between Global Ticker and Active Chart Slot.
+- Toolbar Clipping: Moved menus outside scroll containers with dynamic positioning.
+- ChatBot Connectivity: Corrected Docker-specific import paths and health check logic.
+- Favorites Clamping: Constrained UI elements to viewport boundaries.
+
+10. Core File Map
+- backend/app/main.py: App Entry
+- backend/app/simulation.py: Ticker Logic
+- backend/app/trade_engine.py: Order Logic
+- frontend/src/context/GameContext.tsx: Global Engine
+- frontend/src/store/useMultiChartStore.ts: Chart Manager
+- backend/chatbot/main.py: AI Entry
+
+11. Status & Roadmap
+Phase 1 (Core Simulator) is complete. Future roadmap includes leaderboards, real broker integration (Shoonya), and Options Strategy Builders.
+
+Guide for Professional Developers | TradeShift Engine Team | 2026

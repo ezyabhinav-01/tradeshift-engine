@@ -24,6 +24,7 @@ export interface NewsItem {
     analogy: string;
     golden_rule: string;
   };
+  is_simulated?: boolean;
 }
 
 export interface IndexData {
@@ -281,9 +282,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
 
       // --- NEWS EVENTS ---
       if (payload.type === 'NEWS_FLASH') {
-        toast.info(payload.data.title, {
+        const titlePrefix = payload.data.is_simulated ? "⚡ Simulation Sync: " : "📰 News Flash: ";
+        toast.info(titlePrefix + payload.data.title, {
           description: payload.data.description,
-          duration: 10000,
+          duration: 12000,
           position: 'top-right',
           action: {
             label: 'Explain ✨',

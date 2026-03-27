@@ -65,6 +65,11 @@ export const useDrawingTools = (
 ) => {
   const [activeTool, setActiveTool] = useState<DrawingToolId>(null);
   const [selectedToolId, setSelectedToolId] = useState<string | null>(null);
+  // Persistent ref that remembers the last selected tool ID even after
+  // the library deselects it. This prevents the "double-click to delete" bug
+  // caused by the 50ms polling interval clearing the React state before the
+  // click event fires.
+  const lastSelectedIdRef = useRef<string | null>(null);
   const colorIndexRef = useRef(0);
 
   const getNextColor = useCallback(() => {
@@ -95,7 +100,7 @@ export const useDrawingTools = (
 
     try {
       managerRef.current = new DrawingToolsManager(chart, series, {
-        enableKeyboardShortcuts: true,
+        enableKeyboardShortcuts: false,
         selectionColor: '#2962FF',
         selectionLineWidth: 2,
       });
@@ -287,26 +292,43 @@ export const useDrawingTools = (
     managerRef.current?.clearAll();
     setActiveTool(null);
     setSelectedToolId(null);
+    lastSelectedIdRef.current = null;
   }, []);
 
   const deleteSelected = useCallback(() => {
     if (!managerRef.current) return false;
     
-    // Explicitly remove by ID if we have it (more robust than library reliance)
-    if (selectedToolId) {
-      managerRef.current.removeTool(selectedToolId);
-      setSelectedToolId(null);
-      snapshotCurrentState();
-      return true;
+    // Use ALL available sources to find the tool to delete.
+    // Priority: library real-time > React state > persistent ref
+    const currentManagerId = managerRef.current.getSelectedToolId();
+    const idToDelete = currentManagerId || selectedToolId || lastSelectedIdRef.current;
+    
+    if (!idToDelete) {
+      // Absolute last resort — ask the library to delete whatever it thinks is selected
+      try { return managerRef.current.deleteSelected() ?? false; } catch (_) { return false; }
     }
     
-    // Fallback to library selection
-    const deleted = managerRef.current.deleteSelected() ?? false;
-    if (deleted) {
-      setSelectedToolId(null);
-      snapshotCurrentState();
+    // 1. Force manual removal of the primitive from the canvas first.
+    // This is the key to preventing the "turns green but stays on screen" bug.
+    try {
+      const allTools = managerRef.current.getAllTools();
+      const tool = allTools instanceof Map ? allTools.get(idToDelete) : null;
+      if (tool && typeof (tool as any).remove === 'function') {
+        (tool as any).remove();
+        console.log(`[DrawingTools] Force-removed tool: ${idToDelete}`);
+      }
+    } catch (e) {
+      console.warn(`[DrawingTools] Manual removal failed for ${idToDelete}:`, e);
     }
-    return deleted;
+    
+    // 2. Now call the manager's removeTool to clean up the internal map.
+    managerRef.current.removeTool(idToDelete);
+    
+    // Clear all selection state
+    setSelectedToolId(null);
+    lastSelectedIdRef.current = null;
+    snapshotCurrentState();
+    return true;
   }, [selectedToolId, snapshotCurrentState]);
 
   const handleUndo = useCallback(() => {
@@ -669,8 +691,15 @@ export const useDrawingTools = (
   useEffect(() => {
     if (!managerRef.current) return;
     const interval = setInterval(() => {
-      const id = managerRef.current?.getSelectedToolId() ?? null;
+	    if (!managerRef.current) return;
+      const id = managerRef.current.getSelectedToolId() ?? null;
       setSelectedToolId(id);
+      
+      // Persist the last non-null selected ID in a ref so deletion
+      // still works even if the library deselects before the click fires
+      if (id) {
+        lastSelectedIdRef.current = id;
+      }
 
       // Patch tools to be resilient against @pipsend/charts internal bugs
       const tools = managerRef.current?.getAllTools();
@@ -1071,7 +1100,7 @@ export const useDrawingTools = (
           }
         });
       }
-    }, 50);
+    }, 200);
     return () => clearInterval(interval);
   }, [chart, series]);
 

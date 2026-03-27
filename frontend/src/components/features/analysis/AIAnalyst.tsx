@@ -100,12 +100,12 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
 
   if (!analysis && !isAnalyzing) {
     return (
-      <div className="flex flex-col items-center justify-center p-12 bg-[#0a0a0a] border border-white/5 border-dashed rounded-3xl space-y-4 text-center">
+      <div className="flex flex-col items-center justify-center p-12 bg-white dark:bg-[#0a0a0a] border border-gray-200 dark:border-white/5 border-dashed rounded-3xl space-y-4 text-center h-[600px] shadow-sm dark:shadow-none">
         <div className="p-4 bg-primary/10 rounded-full">
           <BrainCircuit className="w-10 h-10 text-primary" />
         </div>
         <div className="space-y-1">
-          <h3 className="text-lg font-medium">Deep AI Thesis Pending</h3>
+          <h3 className="text-lg font-medium text-gray-900 dark:text-white">Deep AI Thesis Pending</h3>
           <p className="text-gray-500 text-sm max-w-xs">
             Ask FinGPT to scan all fundamentals to generate a high-conviction investment thesis.
           </p>
@@ -125,21 +125,21 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
   const isLoading = isAnalyzing || (isLaymanMode && isSimplifying);
 
   return (
-    <div className="bg-[#0a0a0a] border border-white/5 rounded-3xl overflow-hidden flex flex-col h-full">
-      <div className="p-5 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
+    <div className="bg-white dark:bg-[#0a0a0a] border border-gray-200 dark:border-white/5 shadow-sm dark:shadow-none rounded-3xl overflow-hidden flex flex-col h-[600px]">
+      <div className="p-5 border-b border-gray-200 dark:border-white/5 flex justify-between items-center bg-gray-50 dark:bg-white/[0.02]">
         <div className="flex items-center gap-2">
           {isLaymanMode ? (
-            <BrainCircuit className="w-5 h-5 text-green-500" />
+            <BrainCircuit className="w-5 h-5 text-green-600 dark:text-green-500" />
           ) : (
             <ShieldCheck className="w-5 h-5 text-primary" />
           )}
-          <span className="text-sm font-bold tracking-tight">
+          <span className="text-sm font-bold tracking-tight text-gray-900 dark:text-white">
             {isLaymanMode ? "AI ANALYST (LAYMAN)" : "INSTITUTIONAL GRADE THESIS"}
           </span>
         </div>
         <button 
           onClick={performAnalysis}
-          className="p-2 hover:bg-white/5 rounded-lg text-gray-500 hover:text-white transition-colors"
+          className="p-2 hover:bg-gray-200 dark:hover:bg-white/5 rounded-lg text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors"
           title="Regenerate Analysis"
         >
           <RotateCcw className="w-4 h-4" />
@@ -155,8 +155,8 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
             <div className="h-4 bg-white/5 rounded-full w-2/3 animate-pulse"></div>
           </div>
         ) : (
-          <div className="prose prose-invert max-w-none prose-sm">
-            <div className="text-gray-300 leading-relaxed whitespace-pre-wrap">
+          <div className="prose prose-sm max-w-none dark:prose-invert">
+            <div className="text-black dark:text-gray-300 leading-relaxed whitespace-pre-wrap">
               {currentContent?.includes('<!DOCTYPE html>') || currentContent?.includes('<html') || currentContent?.includes('401') ? (
                 <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm flex flex-col gap-2">
                   <span className="font-bold flex items-center gap-2">
@@ -174,7 +174,7 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
                       {isVarsity ? <Lightbulb className="w-4 h-4" /> : <ChevronRight className="w-3 h-3" />}
                       {section.split('\n')[0].replace('###', '').trim()}
                     </h3>}
-                    <div className={`${isVarsity ? 'text-gray-200 italic' : 'text-gray-400'}`}>
+                    <div className={`${isVarsity ? 'text-gray-200 italic dark:text-gray-300' : 'text-black dark:text-gray-300'}`}>
                       {section.split('\n').slice(1).join('\n').trim()}
                     </div>
                   </div>
@@ -184,7 +184,7 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
             
             {/* Chat History */}
             {chatHistory.length > 0 && (
-              <div className="mt-8 space-y-4 border-t border-white/5 pt-6">
+              <div className="mt-8 space-y-4 border-t border-gray-200 dark:border-white/5 pt-6">
                 <h4 className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-4 flex items-center gap-2">
                   <MessageSquareQuote className="w-3.5 h-3.5" />
                   Q&A Sessions
@@ -192,20 +192,20 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
                 {chatHistory.map((msg, i) => (
                   <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     {msg.role === 'assistant' && (
-                      <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center shrink-0 mt-1">
+                      <div className="w-6 h-6 rounded-full bg-primary/10 dark:bg-primary/20 flex items-center justify-center shrink-0 mt-1">
                         <BrainCircuit className="w-3 h-3 text-primary" />
                       </div>
                     )}
                     <div className={`p-3 rounded-md max-w-[85%] text-sm leading-relaxed ${
                       msg.role === 'user' 
-                        ? 'bg-white/10 text-white rounded-tr-sm' 
-                        : 'bg-primary/5 border border-primary/10 text-gray-300 rounded-tl-sm'
+                        ? 'bg-gray-900 text-white dark:bg-white/10 dark:text-white rounded-tr-sm' 
+                        : 'bg-primary/5 border border-primary/20 dark:border-primary/10 text-black dark:text-gray-300 rounded-tl-sm'
                     }`}>
                       {msg.content}
                     </div>
                     {msg.role === 'user' && (
-                      <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center shrink-0 mt-1">
-                        <User className="w-3 h-3 text-gray-400" />
+                      <div className="w-6 h-6 rounded-full bg-gray-200 dark:bg-white/10 flex items-center justify-center shrink-0 mt-1">
+                        <User className="w-3 h-3 text-gray-500 dark:text-gray-400" />
                       </div>
                     )}
                   </div>
@@ -231,7 +231,7 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
         )}
       </div>
 
-      <div className="p-3 bg-white/[0.02] border-t border-white/5 backdrop-blur-md">
+      <div className="p-3 bg-gray-50 dark:bg-white/[0.02] border-t border-gray-200 dark:border-white/5 backdrop-blur-md">
         <form onSubmit={handleSendMessage} className="relative flex items-center">
           <input
             type="text"
@@ -239,7 +239,7 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
             onChange={(e) => setChatInput(e.target.value)}
             disabled={isSending || isLoading || !analysis}
             placeholder="Ask a question about this analysis..."
-            className="w-full bg-black/40 border border-white/10 rounded-xl py-3 pl-4 pr-12 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-primary/50 transition-colors disabled:opacity-50"
+            className="w-full bg-white dark:bg-black/40 border border-gray-300 dark:border-white/10 rounded-xl py-3 pl-4 pr-12 text-sm text-gray-900 dark:text-white placeholder:text-gray-500 dark:placeholder:text-gray-600 focus:outline-none focus:border-primary/50 transition-colors disabled:opacity-50 shadow-inner dark:shadow-none"
           />
           <button
             type="submit"
@@ -251,7 +251,7 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
         </form>
       </div>
 
-      <div className="px-4 pb-3 pt-1 bg-white/[0.02] flex items-center justify-between">
+      <div className="px-4 pb-3 pt-1 bg-gray-50 dark:bg-white/[0.02] flex items-center justify-between">
         <div className="flex items-center gap-2 text-[10px] text-gray-500 font-medium">
           <MessageSquareQuote className="w-3.5 h-3.5" />
           Powered by FinGPT Engine v2.0

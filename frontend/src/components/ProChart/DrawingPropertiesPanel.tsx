@@ -491,7 +491,7 @@ export const DrawingPropertiesPanel: React.FC<DrawingPropertiesPanelProps> = ({
       {/* Delete */}
       <Tooltip text="Remove">
         <button 
-          onClick={(e) => {
+          onMouseDown={(e) => {
             e.stopPropagation();
             e.preventDefault();
             onDeleteSelected();

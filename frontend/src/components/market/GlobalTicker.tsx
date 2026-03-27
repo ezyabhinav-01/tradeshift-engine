@@ -1,4 +1,5 @@
 import { useEffect, useState, Fragment } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useGame } from '../../hooks/useGame';
 import { useMultiChartStore } from '../../store/useMultiChartStore';
@@ -13,6 +14,7 @@ export interface IndexData {
 }
 
 export const GlobalTicker = () => {
+  const navigate = useNavigate();
   const [liveIndices, setLiveIndices] = useState<IndexData[]>([]);
   const { isPlaying, simulatedIndices, setSymbol } = useGame();
   const { activeChartId, updateChart } = useMultiChartStore();
@@ -85,6 +87,7 @@ export const GlobalTicker = () => {
               onClick={() => {
                 updateChart(activeChartId, { symbol: idx.name });
                 setSymbol(idx.name, '');
+                navigate('/trade');
               }}
             >
               <span className="text-tv-text-primary font-bold uppercase tracking-wide">{idx.name}</span>

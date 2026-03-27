@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { MessageCircle, X, Send, Maximize2, Minimize2, ExternalLink, Bot, User } from 'lucide-react';
 import { sendChatQuery, fetchSuggestedTopics } from '../../services/chatApi';
 import type { ChatMessage } from '../../services/chatApi';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
 
 export const ChatBot: React.FC = () => {
@@ -125,6 +125,13 @@ export const ChatBot: React.FC = () => {
       setIsOpen(false);
     }
   };
+  
+  const location = useLocation();
+
+  // Hide on community page
+  if (location.pathname === '/community') {
+    return null;
+  }
 
   if (!isOpen) {
     return (

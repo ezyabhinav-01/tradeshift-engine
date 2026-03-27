@@ -12,7 +12,7 @@ const ReplayToolbar = () => {
     if (!isReplayActive) return null;
 
     return (
-        <div className="fixed bottom-12 left-1/2 -translate-x-1/2 z-[100] flex items-center bg-[#1e222d] border border-[#2a2e39] rounded-lg shadow-2xl p-1.5 gap-2 select-none animate-in fade-in slide-in-from-bottom-4 duration-300">
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 z-[100] flex items-center bg-[#1e222d] border border-[#2a2e39] rounded-lg shadow-2xl p-1.5 gap-2 select-none animate-in fade-in slide-in-from-bottom-4 duration-300">
             {/* Playback Controls */}
             <div className="flex items-center gap-1 border-r border-[#2a2e39] pr-2">
                 <Button 

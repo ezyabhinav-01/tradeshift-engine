@@ -17,7 +17,7 @@ export default defineConfig({
     host: '0.0.0.0',
     proxy: {
       '/auth': {
-        target: 'http://backend:8000',
+        target: 'http://localhost:8000',
         changeOrigin: true,
       },
       '/api/chat': {
@@ -28,11 +28,11 @@ export default defineConfig({
         proxyTimeout: 30000,
       },
       '/api': {
-        target: 'http://backend:8000',
+        target: 'http://localhost:8000',
         changeOrigin: true,
       },
       '/ws': {
-        target: 'http://backend:8000',
+        target: 'http://localhost:8000',
         ws: true,
         changeOrigin: true,
       },

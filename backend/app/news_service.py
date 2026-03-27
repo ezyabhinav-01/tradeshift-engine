@@ -182,10 +182,81 @@ async def explain_news(news_id: str, user_level: str = "Beginner") -> str:
             print(f"⚠️ FinGPT Error: {e}")
             return "Failed to connect to AI Explanation service."
 
-# Compatibility helper for existing simulation pipeline
+# Enhanced simulation helper with Timestamp Shifting
 async def fetch_news_for_date(symbol: str, target_date: str) -> list[dict]:
-    """Legacy/Simulation helper to maintain backwards compatibility."""
-    # Implementation can remain similar to the previous one or use NewsAPI with 'from' param if available
-    # For now, let's keep it simple or call the new get_news if date matches today.
-    # (Simplified for now to avoid breaking the simulation)
-    return await get_news("all", 10)
+    """
+    Fetches news and aligns it with the simulation date.
+    Shifts 'Live' news into the past or future to match target_date trading hours.
+    """
+    try:
+        # 1. Fetch live news (all categories)
+        live_news = await get_news("all", 15)
+        
+        # 2. Extract base symbol
+        base_sym = symbol.split('-')[0].upper()
+        
+        # 3. Create a target base time (9:15 AM on target date)
+        target_dt = datetime.strptime(target_date, "%Y-%m-%d")
+        market_open = target_dt.replace(hour=9, minute=15, second=0)
+        
+        shifted_news = []
+        
+        # Predefined "Trigger slots" to ensure news is spread throughout the day
+        slots = [
+            market_open + timedelta(minutes=45),   # 10:00 AM
+            market_open + timedelta(hours=2),      # 11:15 AM
+            market_open + timedelta(hours=3, minutes=15), # 12:30 PM
+            market_open + timedelta(hours=4, minutes=45), # 2:00 PM
+            market_open + timedelta(hours=5, minutes=45), # 3:00 PM
+        ]
+        
+        # 4. Process real news items and shift them into slots
+        for i, item in enumerate(live_news):
+            if i >= len(slots): break
+            
+            # Map item to slot
+            trigger_time = slots[i]
+            
+            shifted_news.append({
+                **item,
+                "timestamp": trigger_time,
+                "time_str": trigger_time.strftime("%H:%M:%S"),
+                "is_simulated": True,
+                "original_date": item.get("publishedAt", "Real-time")
+            })
+
+        # 5. Add "Synthetic/Classic" news events if we don't have enough
+        if len(shifted_news) < 3:
+            synthetic = [
+                {
+                    "id": f"syn_{target_date}_1",
+                    "title": f"Institutional Buying Spree spotted in {base_sym}",
+                    "description": f"Large block trades detected in {base_sym} as domestic funds increase allocation.",
+                    "source": "REUTERS",
+                    "url": "#",
+                    "timestamp": market_open + timedelta(minutes=15),
+                    "time_str": "09:30:00",
+                    "is_simulated": True,
+                    "category": "indian"
+                },
+                {
+                    "id": f"syn_{target_date}_2",
+                    "title": "Global Markets Rally on Fed Optimism",
+                    "description": "US Futures suggest a strong session ahead as inflation fears cool globally.",
+                    "source": "BLOOMBERG",
+                    "url": "#",
+                    "timestamp": market_open + timedelta(hours=4),
+                    "time_str": "13:15:00",
+                    "is_simulated": True,
+                    "category": "global"
+                }
+            ]
+            shifted_news.extend(synthetic)
+
+        # Sort by timestamp to ensure chronological triggering in simulation loop
+        shifted_news.sort(key=lambda x: x["timestamp"])
+        return shifted_news
+
+    except Exception as e:
+        print(f"⚠️ Error in fetch_news_for_date: {e}")
+        return []

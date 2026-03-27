@@ -54,7 +54,7 @@ const TopToolbar = ({
                     {selectedSymbol || 'USDJPY'}
                 </Button>
 
-                <Separator orientation="vertical" className="h-6 bg-tv-border" />
+                <Separator orientation="vertical" className="h-6 bg-tv-border dark:bg-white/10" />
 
                 {/* Compare */}
                 <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-tv-bg-pane/50 hover:text-blue-500" title="Compare" onClick={() => toast.info('Compare tool opening...')}>
@@ -117,8 +117,8 @@ const TopToolbar = ({
 
                     <div className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border ${
                         isReplayActive 
-                        ? 'bg-blue-500/10 border-blue-500/30 text-blue-500' 
-                        : 'bg-green-500/10 border-green-500/30 text-green-500'
+                        ? 'bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400' 
+                        : 'bg-green-500/10 border-green-500/30 text-green-600 dark:text-green-400'
                     }`}>
                         {isReplayActive ? 'Simulation' : 'Live Mode'}
                     </div>

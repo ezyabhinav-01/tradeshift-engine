@@ -38,46 +38,93 @@ class FundamentalService:
         """
         Generate premium-quality mock data for major stocks to demonstrate the Research Hub.
         """
-        is_reliance = "RELIANCE" in symbol.upper()
+        symbol_up = symbol.upper()
         
+        # High quality data for major large caps
+        stock_db = {
+            "RELIANCE": {
+                "name": "Reliance Industries Limited",
+                "price": 2854.50, "high": 3024.90, "low": 2220.30, "mcap": 1925000.0,
+                "pe": 26.5, "book": 1150.25, "roe": 14.1, "roce": 12.5, "dy": 0.8,
+                "about": "Reliance Industries is India's largest private sector corporation with interests in petrochemicals, refining, oil & gas, retail, and digital services."
+            },
+            "HDFCBANK": {
+                "name": "HDFC Bank Limited",
+                "price": 1450.75, "high": 1757.50, "low": 1363.50, "mcap": 1100000.0,
+                "pe": 18.2, "book": 512.20, "roe": 17.8, "roce": 16.5, "dy": 1.4,
+                "about": "HDFC Bank is India's largest private sector bank by assets and has a consistent track record of superior asset quality and growth."
+            },
+            "TCS": {
+                "name": "Tata Consultancy Services Ltd",
+                "price": 4120.30, "high": 4254.75, "low": 3070.30, "mcap": 1485000.0,
+                "pe": 28.4, "book": 285.50, "roe": 39.1, "roce": 45.2, "dy": 1.25,
+                "about": "TCS is a global leader in IT services, consulting, and business solutions with a large network of innovation and delivery centers."
+            },
+            "ICICIBANK": {
+                "name": "ICICI Bank Limited",
+                "price": 1085.20, "high": 1120.00, "low": 840.50, "mcap": 760000.0,
+                "pe": 16.8, "book": 320.15, "roe": 16.5, "roce": 15.2, "dy": 0.85,
+                "about": "ICICI Bank is a leading private sector bank in India offering a wide range of banking products and financial services to corporate and retail customers."
+            },
+            "INFY": {
+                "name": "Infosys Limited",
+                "price": 1612.45, "high": 1733.00, "low": 1215.10, "mcap": 668000.0,
+                "pe": 22.5, "book": 185.20, "roe": 28.4, "roce": 32.1, "dy": 2.1,
+                "about": "Infosys is a global leader in next-generation digital services and consulting, enabling clients across more than 50 countries."
+            }
+        }
+        
+        selected_data = stock_db.get(symbol_up, {
+            "name": f"{symbol} Limited",
+            "price": 100.0, "high": 120.0, "low": 80.0, "mcap": 10000.0,
+            "pe": 15.0, "book": 40.0, "roe": 10.0, "roce": 12.0, "dy": 1.0,
+            "about": f"{symbol} is a listed company on the NSE/BSE involved in multiple business verticals."
+        })
+
+        # Ensure numeric values for calculations
+        price = float(selected_data["price"])
+        book = float(selected_data["book"])
+        mcap = float(selected_data["mcap"])
+
         mock_fundamentals = {
-            "symbol": symbol,
-            "current_price": 2854.50 if is_reliance else 1450.75,
-            "high_52w": 3024.90 if is_reliance else 1650.00,
-            "low_52w": 2220.30 if is_reliance else 980.50,
-            "market_cap": 1900000.0 if is_reliance else 500000.0,
-            "pe_ratio": 28.5 if is_reliance else 22.0,
-            "book_value": 1150.25 if is_reliance else 364.00,
-            "pb_ratio": 2.4,
-            "dividend_yield": 0.8 if is_reliance else 1.41,
-            "roe": 12.5 if is_reliance else 14.4,
-            "roce": 14.2 if is_reliance else 7.51,
-            "face_value": 10.0 if is_reliance else 1.0,
-            "debt_to_equity": 0.35,
-            "revenue_growth_5y": 15.2,
-            "profit_growth_5y": 18.5,
-            "ebitda_margin": 18.0,
-            "current_ratio": 1.2,
-            "free_cash_flow": 25000.0,
-            "promoter_holding": 50.6,
-            "about": f"{symbol} Limited is a leading Indian conglomerate headquartered in Mumbai...",
+            "symbol": symbol_up,
+            "current_price": price,
+            "high_52w": float(selected_data["high"]),
+            "low_52w": float(selected_data["low"]),
+            "market_cap": mcap,
+            "pe_ratio": float(selected_data["pe"]),
+            "book_value": book,
+            "pb_ratio": round(price / (book if book != 0 else 1.0), 2),
+            "dividend_yield": float(selected_data["dy"]),
+            "roe": float(selected_data["roe"]),
+            "roce": float(selected_data["roce"]),
+            "face_value": 1.0 if "BANK" in symbol_up or "INFY" in symbol_up or "TCS" in symbol_up else 10.0,
+            "debt_to_equity": 0.05 if "BANK" in symbol_up else 0.45,
+            "revenue_growth_5y": 18.2 if "INFY" in symbol_up or "TCS" in symbol_up else 14.5,
+            "profit_growth_5y": 21.4,
+            "ebitda_margin": 24.5 if "INFY" in symbol_up or "TCS" in symbol_up else 16.0,
+            "current_ratio": 1.1 if "BANK" in symbol_up else 2.5,
+            "free_cash_flow": mcap * 0.05,
+            "promoter_holding": 0.0 if "BANK" in symbol_up or "ICICI" in symbol_up else 45.2,
+            "about": selected_data["about"],
             "key_points": {
-                "Market Position": f"The company is highly systemically important...",
-                "Revenue Mix Q3 FY26": "Core Operations: 55%\nDigital Services: 25%\nRetail/Consumer: 15%\nOthers: 5%"
+                "Market Position": f"{selected_data['name']} is a systemically important leader in its sector.",
+                "Strategic Focus": "The management is focusing on margin expansion and return of capital through dividends/buybacks."
             }
         }
 
         current_year = datetime.now().year
         mock_financials = []
+        base_revenue = mcap * 0.2
         for i in range(5):
             year = current_year - i
-            growth_factor = (1.1 ** (4-i)) 
+            growth_factor = float(0.9 ** i) # Reverse growth to go back in time
             mock_financials.append({
                 "year": year,
-                "revenue": round(100000 * growth_factor, 2),
-                "net_profit": round(15000 * growth_factor, 2),
-                "operating_profit": round(20000 * growth_factor, 2),
-                "eps": round(45.5 * growth_factor, 2)
+                "revenue": round(base_revenue * growth_factor, 2),
+                "net_profit": round(base_revenue * 0.15 * growth_factor, 2),
+                "operating_profit": round(base_revenue * 0.2 * growth_factor, 2),
+                "eps": round((base_revenue * 0.15 * growth_factor) / 1000.0, 2)
             })
             
         return {

@@ -72,11 +72,17 @@ const NewsPanel = () => {
                             {/* News Source & Meta */}
                             <div className="flex justify-between items-center mb-3">
                                 <div className="flex items-center gap-2">
-                                    <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-primary text-black">
+                                    <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${item.is_simulated ? 'bg-indigo-600 text-white' : 'bg-primary text-black'}`}>
                                         {item.source || 'REUTERS'}
                                     </span>
                                     {isNew && (
                                         <span className="text-[8px] font-black text-primary animate-pulse uppercase tracking-wider">Just In</span>
+                                    )}
+                                    {item.is_simulated && (
+                                        <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/5 border border-white/10">
+                                            <Zap size={8} className="text-indigo-400" />
+                                            <span className="text-[7px] font-bold text-indigo-400 uppercase tracking-tighter">Exact Sync</span>
+                                        </div>
                                     )}
                                 </div>
                                 <div className="flex items-center gap-1.5 text-gray-500">

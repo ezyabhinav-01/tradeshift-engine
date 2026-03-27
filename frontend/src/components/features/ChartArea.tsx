@@ -544,7 +544,7 @@ const ChartArea = ({ onPriceClick, onEntryLineClick, previewPrice, positions: pr
 
       {/* BOTTOM CENTER OVERLAY - Replay Toolbar */}
       {isReplayActive && (
-        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-20 flex items-center bg-tv-bg-pane border border-tv-border rounded shadow-lg p-1.5 gap-2 select-none">
+        <div className="absolute bottom-28 left-1/2 -translate-x-1/2 z-20 flex items-center bg-tv-bg-pane border border-tv-border rounded shadow-lg p-1.5 gap-2 select-none">
 
           <div className="relative">
             <Button

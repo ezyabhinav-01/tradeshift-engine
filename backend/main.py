@@ -1,4 +1,5 @@
 # File: backend/main.py
+# Trigger reload: 2026-03-27 15:22
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -1170,8 +1171,11 @@ async def websocket_endpoint(websocket: WebSocket):
                         
                         if not n_item.get("triggered") and tick_time >= n_timestamp:
                             active_news[idx]["triggered"] = True
-                            print(f"📰 FLASHING NEWS: {n_item['title']} at simulated time {tick_time}", flush=True)
+                            print(f"📰 FLASHING NEWS: {n_item['title']} at simulated time {tick_time.strftime('%H:%M:%S')}", flush=True)
                             
+                            # Ensure time_str matches the EXACT trigger time for visual sync
+                            display_time = tick_time.strftime("%H:%M:%S")
+
                             asyncio.create_task(websocket.send_json({
                                 "type": "NEWS_FLASH",
                                 "data": {
@@ -1179,9 +1183,10 @@ async def websocket_endpoint(websocket: WebSocket):
                                     "symbol": primary_symbol,
                                     "title": n_item["title"],
                                     "description": n_item["description"],
-                                    "time_str": n_item["time_str"],
+                                    "time_str": display_time,
                                     "source": n_item["source"],
-                                    "url": n_item["url"]
+                                    "url": n_item["url"],
+                                    "is_simulated": n_item.get("is_simulated", False)
                                 }
                             }))
                             

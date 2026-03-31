@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
-import { Sun, Moon, Search, Bell, User as UserIcon, LogOut, ChevronDown, UserCircle, Menu, X } from 'lucide-react';
-import { useThemeStore } from '../../store/themeStore';
+import { Sun, Moon, Search, Bell, LogOut, ChevronDown, UserCircle, Menu, X } from 'lucide-react';
+import { useTheme } from '../../context/ThemeContext';
 import { NavItems } from './NavItems';
 import { SymbolSearch } from '../features/SymbolSearch';
 import { useGame } from '../../context/GameContext';
@@ -9,7 +9,8 @@ import { useMultiChartStore } from '../../store/useMultiChartStore';
 import { useAuth } from '../../context/AuthContext';
 
 const Topbar = () => {
-  const { theme, toggleTheme } = useThemeStore();
+  const { theme, setTheme } = useTheme();
+  const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark');
   const { setSymbol } = useGame();
   const { activeChartId } = useMultiChartStore();
   const [isSearchOpen, setIsSearchOpen] = useState(false);

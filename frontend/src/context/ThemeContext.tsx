@@ -48,7 +48,15 @@ export function ThemeProvider({
     }, [theme]);
 
     return (
-        <ThemeProviderContext.Provider value={{ theme, setTheme }}>
+        <ThemeProviderContext.Provider 
+            value={{ 
+                theme, 
+                setTheme: (newTheme: Theme) => {
+                    localStorage.setItem(storageKey, newTheme);
+                    setTheme(newTheme);
+                } 
+            }}
+        >
             {children}
         </ThemeProviderContext.Provider>
     );

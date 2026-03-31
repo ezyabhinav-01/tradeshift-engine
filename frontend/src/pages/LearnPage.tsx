@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   TrendingUp, BarChart3, Calculator, Layers, PieChart, Brain,
-  GraduationCap, Flame, Trophy, Star, ChevronRight, ChevronDown,
-  Clock, BookOpen, Play, CheckCircle2, Lock, Zap, Target,
-  FileText, Video, HelpCircle, Gamepad2, ArrowRight, Sparkles
+  GraduationCap, Flame, Trophy, Star, ChevronRight,
+  Clock, BookOpen, Play, Lock, Target,
+  ArrowRight, Sparkles
 } from 'lucide-react';
 import { useLearnStore, getXPForLevel } from '../store/useLearnStore';
 import type { Track, Badge } from '../store/useLearnStore';
@@ -21,34 +22,13 @@ const TRACK_ICONS: Record<string, React.ReactNode> = {
   Brain: <Brain size={28} />,
 };
 
-const TRACK_CSS_MAP: Record<string, string> = {
-  'stock-basics': 'track-emerald',
-  'technical-analysis': 'track-indigo',
-  'fundamental-analysis': 'track-amber',
-  'options-derivatives': 'track-rose',
-  'portfolio-management': 'track-cyan',
-  'risk-psychology': 'track-purple',
-};
-
 const DIFFICULTY_COLORS: Record<string, string> = {
   Beginner: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
   Intermediate: 'bg-amber-500/10 text-amber-500 border-amber-500/20',
   Advanced: 'bg-rose-500/10 text-rose-500 border-rose-500/20',
 };
 
-const LESSON_TYPE_ICONS: Record<string, React.ReactNode> = {
-  article: <FileText size={14} />,
-  video: <Video size={14} />,
-  quiz: <HelpCircle size={14} />,
-  interactive: <Gamepad2 size={14} />,
-};
-
-const LESSON_TYPE_COLORS: Record<string, string> = {
-  article: 'text-blue-400 bg-blue-500/10',
-  video: 'text-purple-400 bg-purple-500/10',
-  quiz: 'text-amber-400 bg-amber-500/10',
-  interactive: 'text-emerald-400 bg-emerald-500/10',
-};
+// Constants removed as they are now used in TrackDetailPage.tsx
 
 // ═══════════════════════════════════════════
 // XP RING COMPONENT
@@ -151,7 +131,7 @@ const TrackCard: React.FC<{
   isActive: boolean;
   onClick: () => void;
   index: number;
-}> = ({ track, progress, isActive, onClick, index }) => {
+}> = ({ track, progress, onClick, index }) => {
   const completedLessons = useLearnStore(s => {
     const allLessons = track.modules.flatMap(m => m.subModules.flatMap(sub => sub.lessons.map(l => l.id)));
     return allLessons.filter(lid => s.completedLessons.includes(lid)).length;
@@ -160,11 +140,8 @@ const TrackCard: React.FC<{
   return (
     <div
       onClick={onClick}
-      className={`track-card ${TRACK_CSS_MAP[track.id]} learn-stagger-enter cursor-pointer relative overflow-hidden rounded-2xl border p-6 group ${
-        isActive
-          ? 'bg-white dark:bg-white/[0.06] border-slate-300 dark:border-white/15 shadow-lg dark:shadow-2xl'
-          : 'bg-white dark:bg-[#0a0a0a] border-slate-200 dark:border-white/5 shadow-sm hover:shadow-lg dark:hover:shadow-2xl'
-      }`}
+      className={`track-card learn-stagger-enter cursor-pointer relative overflow-hidden rounded-2xl border p-6 group 
+        bg-white dark:bg-[#0a0a0a] border-slate-200 dark:border-white/5 shadow-sm hover:shadow-lg dark:hover:shadow-2xl hover:border-slate-300 dark:hover:border-white/10 transition-all`}
       style={{ animationDelay: `${index * 0.05}s` }}
     >
       {/* Gradient accent line on top */}
@@ -182,7 +159,7 @@ const TrackCard: React.FC<{
           <span className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg border ${DIFFICULTY_COLORS[track.difficulty]}`}>
             {track.difficulty}
           </span>
-          <ChevronRight size={16} className={`text-slate-400 transition-transform ${isActive ? 'rotate-90' : 'group-hover:translate-x-1'}`} />
+          <ChevronRight size={16} className="text-slate-400 group-hover:translate-x-1 transition-transform" />
         </div>
       </div>
 
@@ -202,7 +179,7 @@ const TrackCard: React.FC<{
         </span>
         <span className="flex items-center gap-1">
           <Clock size={12} />
-          {track.modules.reduce((sum, m) => sum + m.estimatedMinutes, 0)} min
+          {track.totalLessons * 5} min
         </span>
       </div>
 
@@ -228,181 +205,34 @@ const TrackCard: React.FC<{
 };
 
 // ═══════════════════════════════════════════
-// MODULE DETAIL PANEL
-// ═══════════════════════════════════════════
-const ModulePanel: React.FC<{
-  track: Track;
-  isOpen: boolean;
-}> = ({ track, isOpen }) => {
-  const {
-    activeModuleId, setActiveModule, completedLessons,
-    completeLesson, getModuleProgress
-  } = useLearnStore();
-
-  return (
-    <div className={`module-panel ${isOpen ? 'open' : ''} col-span-full`}>
-      <div className="rounded-2xl border border-slate-200 dark:border-white/5 bg-slate-50 dark:bg-white/[0.01] p-6 space-y-4">
-        {/* Track Header */}
-        <div className="flex items-center gap-3 mb-2">
-          <div className={`p-2 rounded-lg bg-gradient-to-br ${track.color} text-white`}>
-            {TRACK_ICONS[track.icon]}
-          </div>
-          <div>
-            <h3 className="text-lg font-bold text-slate-900 dark:text-white">{track.title}</h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">{track.description}</p>
-          </div>
-        </div>
-
-        {/* Modules List */}
-        <div className="space-y-3">
-          {track.modules.map((mod, idx) => {
-            const modProgress = getModuleProgress(mod.id);
-            const isExpanded = activeModuleId === mod.id;
-            const allModLessons = mod.subModules.flatMap(s => s.lessons.map(l => l.id));
-            const completedCount = allModLessons.filter(lid => completedLessons.includes(lid)).length;
-            const isComplete = completedCount === allModLessons.length;
-
-            return (
-              <div key={mod.id} className="rounded-xl border border-slate-200 dark:border-white/5 bg-white dark:bg-[#0a0a0a] overflow-hidden">
-                {/* Module Header */}
-                <button
-                  onClick={() => setActiveModule(isExpanded ? null : mod.id)}
-                  className="w-full flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors text-left"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold ${
-                      isComplete
-                        ? 'bg-emerald-500/10 text-emerald-500'
-                        : 'bg-slate-100 dark:bg-white/5 text-slate-400 dark:text-slate-500'
-                    }`}>
-                      {isComplete ? <CheckCircle2 size={18} /> : idx + 1}
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-slate-800 dark:text-white">{mod.title}</h4>
-                      <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{mod.description}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2 text-[11px] text-slate-400 dark:text-slate-500 font-medium">
-                      <Clock size={12} />
-                      {mod.estimatedMinutes}m
-                    </div>
-                    <div className="text-[11px] font-bold" style={{ color: track.accentColor }}>
-                      {modProgress}%
-                    </div>
-                    <ChevronDown size={16} className={`text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                  </div>
-                </button>
-
-                {/* Module Progress Bar */}
-                <div className="px-4 pb-1">
-                  <div className="w-full h-1 rounded-full bg-slate-100 dark:bg-white/5 overflow-hidden">
-                    <div
-                      className={`progress-fill h-full rounded-full bg-gradient-to-r ${track.color}`}
-                      style={{ width: `${modProgress}%` }}
-                    />
-                  </div>
-                </div>
-
-                {/* Expanded: Sub-modules & Lessons */}
-                {isExpanded && (
-                  <div className="px-4 pb-4 pt-2 space-y-4 border-t border-slate-100 dark:border-white/5 mt-2">
-                    {mod.subModules.map((sub) => (
-                      <div key={sub.id} className="space-y-2">
-                        <h5 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider pl-1">
-                          {sub.title}
-                        </h5>
-                        <div className="space-y-1">
-                          {sub.lessons.map((lesson) => {
-                            const isCompleted = completedLessons.includes(lesson.id);
-                            return (
-                              <div
-                                key={lesson.id}
-                                className={`flex items-center justify-between p-3 rounded-lg transition-all ${
-                                  isCompleted
-                                    ? 'bg-emerald-50 dark:bg-emerald-500/5 border border-emerald-200 dark:border-emerald-500/10'
-                                    : 'bg-slate-50 dark:bg-white/[0.02] border border-slate-100 dark:border-white/5 hover:border-slate-300 dark:hover:border-white/10'
-                                }`}
-                              >
-                                <div className="flex items-center gap-3">
-                                  {isCompleted ? (
-                                    <div className="lesson-check">
-                                      <CheckCircle2 size={18} className="text-emerald-500" />
-                                    </div>
-                                  ) : (
-                                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center lesson-type-badge ${LESSON_TYPE_COLORS[lesson.type]}`}>
-                                      {LESSON_TYPE_ICONS[lesson.type]}
-                                    </div>
-                                  )}
-                                  <div>
-                                    <span className={`text-sm font-medium ${
-                                      isCompleted
-                                        ? 'text-emerald-700 dark:text-emerald-400 line-through opacity-70'
-                                        : 'text-slate-700 dark:text-slate-200'
-                                    }`}>{lesson.title}</span>
-                                    <div className="flex items-center gap-2 mt-0.5">
-                                      <span className="text-[10px] text-slate-400 dark:text-slate-500 flex items-center gap-1">
-                                        <Clock size={10} /> {lesson.duration} min
-                                      </span>
-                                      <span className={`text-[10px] font-bold uppercase ${LESSON_TYPE_COLORS[lesson.type].split(' ')[0]}`}>
-                                        {lesson.type}
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-                                {!isCompleted && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      completeLesson(lesson.id, track.id);
-                                    }}
-                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-gradient-to-r ${track.color} hover:opacity-90 transition-opacity flex items-center gap-1.5 shadow-sm`}
-                                  >
-                                    <Play size={12} />
-                                    Start
-                                  </button>
-                                )}
-                                {isCompleted && (
-                                  <span className="text-[10px] font-bold text-emerald-500 flex items-center gap-1">
-                                    <Zap size={12} /> +15 XP
-                                  </span>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ═══════════════════════════════════════════
 // MAIN LEARN PAGE
 // ═══════════════════════════════════════════
 export default function LearnPage() {
   const {
     tracks, badges, completedLessons, totalXP, level,
-    currentStreak, longestStreak, lastActiveDate,
-    activeTrackId, setActiveTrack, getTrackProgress,
-    checkAndUpdateStreak
+    currentStreak, longestStreak, lastActiveDate, learningMinutes,
+    getTrackProgress,
+    fetchUserStats, fetchTracks
   } = useLearnStore();
 
-  // Check streak on mount
+  const navigate = useNavigate();
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Check streak and fetch tracks on mount
   useEffect(() => {
-    checkAndUpdateStreak();
+    Promise.all([fetchUserStats(), fetchTracks()]).finally(() => setIsLoading(false));
   }, []);
 
   const unlockedBadges = badges.filter(b => b.unlocked);
   const totalLessons = useMemo(() => tracks.reduce((s, t) => s + t.totalLessons, 0), [tracks]);
   const nextLevelXP = getXPForLevel(level);
+
+  const formatMinutes = (minutes: number) => {
+    if (minutes < 60) return `${minutes}m`;
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  };
 
   // Find continue learning suggestion
   const continueSuggestion = useMemo(() => {
@@ -418,6 +248,17 @@ export default function LearnPage() {
     }
     return null;
   }, [tracks, completedLessons]);
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-1 items-center justify-center min-h-[600px]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
+          <p className="text-sm text-slate-400 font-medium">Syncing with TradeShift Academy CMS...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-y-auto pb-20">
@@ -497,6 +338,17 @@ export default function LearnPage() {
                 </div>
                 <div className="text-[9px] text-slate-400 dark:text-slate-600 mt-1">Completed</div>
               </div>
+
+              {/* Time Spent */}
+              <div className="p-5 bg-white/80 dark:bg-black/40 border border-slate-200 dark:border-white/10 rounded-2xl backdrop-blur-xl group hover:border-emerald-400/30 transition-all">
+                <div className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase mb-2 flex items-center gap-1.5">
+                  <Clock size={12} className="text-emerald-500" /> Time Spent
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-3xl font-black text-slate-800 dark:text-white group-hover:text-emerald-500 transition-colors uppercase tracking-tight">{formatMinutes(learningMinutes)}</span>
+                </div>
+                <div className="text-[9px] text-slate-400 dark:text-slate-600 mt-1">Active Learning</div>
+              </div>
             </div>
           </div>
         </div>
@@ -559,8 +411,7 @@ export default function LearnPage() {
               </div>
               <button
                 onClick={() => {
-                  setActiveTrack(continueSuggestion.track.id);
-                  useLearnStore.getState().setActiveModule(continueSuggestion.module.id);
+                  navigate(`/learn/track/${continueSuggestion.track.id}`);
                 }}
                 className="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-indigo-500 to-purple-600 hover:opacity-90 transition-opacity flex items-center gap-2 shadow-lg shadow-indigo-500/20"
               >
@@ -587,23 +438,15 @@ export default function LearnPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {tracks.map((track, idx) => {
               const progress = getTrackProgress(track.id);
-              const isActive = activeTrackId === track.id;
               return (
-                <React.Fragment key={track.id}>
-                  <TrackCard
-                    track={track}
-                    progress={progress}
-                    isActive={isActive}
-                    onClick={() => setActiveTrack(isActive ? null : track.id)}
-                    index={idx}
-                  />
-                  {/* Show module panel below the row that contains the active track */}
-                  {isActive && (
-                    <div className="col-span-full">
-                      <ModulePanel track={track} isOpen={isActive} />
-                    </div>
-                  )}
-                </React.Fragment>
+                <TrackCard
+                  key={track.id}
+                  track={track}
+                  progress={progress}
+                  isActive={false}
+                  onClick={() => navigate(`/learn/track/${track.id}`)}
+                  index={idx}
+                />
               );
             })}
           </div>

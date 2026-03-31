@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, Text, JSON
+from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.database import Base  # Import Base from database.py
 
@@ -214,8 +215,20 @@ class CommunityMessage(Base):
 
 
 # ═══════════════════════════════════════════
+# ═══════════════════════════════════════════
 # LEARNING / ACADEMY MODELS
 # ═══════════════════════════════════════════
+
+class ReplayScene(Base):
+    """
+    Saved market replay scenarios that users can practice on in the simulator.
+    """
+    __tablename__ = "replay_scenes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(255), nullable=False)
+    description = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 class LearningProgress(Base):
     """
@@ -242,6 +255,7 @@ class UserStreak(Base):
     current_streak = Column(Integer, default=0)
     longest_streak = Column(Integer, default=0)
     last_active_date = Column(DateTime, nullable=True)
+    learning_minutes = Column(Integer, default=0)
 
 
 class UserBadge(Base):
@@ -256,3 +270,82 @@ class UserBadge(Base):
     badge_title = Column(String)
     earned_at = Column(DateTime, default=datetime.utcnow)
 
+class Track(Base):
+    """
+    Learning Track model mapped to admin CMS.
+    """
+    __tablename__ = "tracks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(255), nullable=False)
+    description = Column(Text)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    modules = relationship("Module", back_populates="track", cascade="all, delete-orphan")
+
+
+class Module(Base):
+    """
+    Learning Module model mapped to admin CMS.
+    """
+    __tablename__ = "modules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    track_id = Column(Integer, ForeignKey("tracks.id", ondelete="CASCADE"))
+    title = Column(String(255), nullable=False)
+    description = Column(Text)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    module_number = Column(String(50))
+
+    track = relationship("Track", back_populates="modules")
+    sub_modules = relationship("SubModule", back_populates="module", cascade="all, delete-orphan")
+    lessons = relationship("Lesson", back_populates="module", cascade="all, delete-orphan")
+
+
+class SubModule(Base):
+    """
+    Learning Sub-Module model mapped to admin CMS.
+    """
+    __tablename__ = "sub_modules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    module_id = Column(Integer, ForeignKey("modules.id", ondelete="CASCADE"))
+    title = Column(String(255), nullable=False)
+    sub_module_number = Column(String(50))
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    module = relationship("Module", back_populates="sub_modules")
+    lessons = relationship("Lesson", back_populates="sub_module")
+
+
+class Lesson(Base):
+    """
+    Learning Lesson model mapped to admin CMS.
+    """
+    __tablename__ = "lessons"
+
+    id = Column(Integer, primary_key=True, index=True)
+    module_id = Column(Integer, ForeignKey("modules.id", ondelete="CASCADE"))
+    title = Column(String(255), nullable=False)
+    opening_hook = Column(Text)
+    core_explanation = Column(Text)
+    socratic_questions = Column(JSON, default=list)
+    real_life_application = Column(Text)
+    key_takeaways = Column(JSON, default=list)
+    quiz_questions = Column(JSON, default=list)
+    practice_scene_id = Column(String(255))
+    xp_reward = Column(Integer, default=0)
+    is_published = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    content = Column(JSON)  # TipTap/ProseMirror JSON doc from CMS editor
+    sort_order = Column(Integer, default=0)
+    
+    sub_module_id = Column(Integer, ForeignKey("sub_modules.id", ondelete="SET NULL"))
+    lesson_number = Column(String(50))
+
+    sub_module = relationship("SubModule", back_populates="lessons")
+    module = relationship("Module", back_populates="lessons")

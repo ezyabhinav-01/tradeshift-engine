@@ -17,6 +17,9 @@ import HistoryPage from './pages/HistoryPage';
 import SettingsPage from './pages/SettingsPage';
 import PortfolioPage from './pages/PortfolioPage'; // Renamed to avoid clash
 import LearnPage from './pages/LearnPage';
+import LessonViewerPage from './pages/LessonViewerPage';
+import ModuleDetailPage from './pages/ModuleDetailPage';
+import TrackDetailPage from './pages/TrackDetailPage';
 import NewsPage from './pages/NewsPage';
 import CommunityPage from './pages/CommunityPage';
 import HelpPage from './pages/HelpPage';
@@ -30,12 +33,11 @@ function ChartPersistenceManager() {
 
 export default function App() {
   return (
-    <>
+    <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
       <ChartPersistenceManager />
       <GameProvider>
         <AuthProvider>
-          <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-            <Routes>
+          <Routes>
               <Route path="/" element={<Navigate to="/home1" replace />} />
               <Route path="/login" element={<Login />} />
               <Route path="/signup" element={<Signup />} />
@@ -48,6 +50,9 @@ export default function App() {
               <Route path="history" element={<HistoryPage />} />
               <Route path="portfolio" element={<PortfolioPage />} />
               <Route path="learn" element={<LearnPage />} />
+              <Route path="learn/track/:trackId" element={<TrackDetailPage />} />
+              <Route path="learn/module/:moduleId" element={<ModuleDetailPage />} />
+              <Route path="learn/:trackId/:lessonId" element={<LessonViewerPage />} />
               <Route path="news" element={<NewsPage />} />
               <Route path="community" element={<CommunityPage />} />
               <Route path="help" element={<HelpPage />} />
@@ -57,9 +62,8 @@ export default function App() {
           </Routes>
           <Toaster />
           <ChatBot />
-        </ThemeProvider>
-      </AuthProvider>
-    </GameProvider>
-    </>
+        </AuthProvider>
+      </GameProvider>
+    </ThemeProvider>
   );
 }

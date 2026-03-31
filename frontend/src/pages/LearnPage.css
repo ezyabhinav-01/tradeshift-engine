@@ -82,7 +82,9 @@
 
 .track-card:hover {
   transform: translateY(-4px) scale(1.01);
-  animation: glow-pulse 2s ease-in-out infinite;
+  /* Use stacked animations to keep the base opacity if needed, or don't overwrite animation */
+  /* We will just use box-shadow transition instead of an animation to avoid overwriting the stagger */
+  box-shadow: 0 0 30px -5px var(--track-glow-color, rgba(99, 102, 241, 0.2));
 }
 
 .track-card.track-emerald { --track-glow-color: rgba(16, 185, 129, 0.25); }
@@ -110,7 +112,6 @@
 }
 
 .learn-stagger-enter {
-  opacity: 0;
   animation: slide-up-fade 0.6s ease forwards;
 }
 
@@ -195,4 +196,119 @@
 .glass-card {
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
+}
+
+/* ═══════════════════════════════════════════
+   CMS CONTENT STYLES (NO TAILWIND TYPOGRAPHY REQUIRED)
+   ═══════════════════════════════════════════ */
+.cms-content {
+  color: #cbd5e1; /* text-slate-300 */
+  line-height: 1.8;
+  font-size: 1.125rem;
+}
+
+.cms-content p {
+  margin-bottom: 1.5rem;
+}
+
+.cms-content p:last-child {
+  margin-bottom: 0;
+}
+
+.cms-content h1, .cms-content h2, .cms-content h3, .cms-content h4 {
+  color: white;
+  font-weight: 900;
+  margin-top: 2.5rem;
+  margin-bottom: 1rem;
+  line-height: 1.2;
+}
+
+.cms-content h1 { font-size: 2.25rem; }
+.cms-content h2 { font-size: 1.875rem; }
+.cms-content h3 { font-size: 1.5rem; }
+
+.cms-content strong, .cms-content b {
+  color: white;
+  font-weight: 700;
+}
+
+.cms-content em, .cms-content i {
+  font-style: italic;
+  color: #e2e8f0;
+}
+
+.cms-content ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.cms-content ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.cms-content li {
+  margin-bottom: 0.5rem;
+}
+
+.cms-content a {
+  color: #34d399; /* text-emerald-400 */
+  text-decoration: none;
+  border-bottom: 1px solid rgba(52, 211, 153, 0.3);
+  transition: border-color 0.2s;
+}
+
+.cms-content a:hover {
+  border-bottom-color: #34d399;
+}
+
+.cms-content blockquote {
+  border-left: 4px solid #6366f1;
+  padding: 1rem 1.5rem;
+  margin: 1.5rem 0;
+  background: rgba(99, 102, 241, 0.05);
+  border-radius: 0 0.75rem 0.75rem 0;
+  color: #a5b4fc;
+  font-style: italic;
+}
+
+.cms-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 1rem;
+  margin: 2rem auto;
+  display: block;
+}
+
+.cms-content pre {
+  background: #111;
+  padding: 1.25rem;
+  border-radius: 0.75rem;
+  overflow-x: auto;
+  margin: 1.5rem 0;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.cms-content code {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.9em;
+  color: #34d399;
+}
+
+.cms-content pre code {
+  color: #e2e8f0;
+}
+
+.cms-content hr {
+  border: none;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.05);
+  margin: 2.5rem 0;
+}
+
+.cms-content u {
+  text-underline-offset: 3px;
+  text-decoration-color: rgba(255, 255, 255, 0.3);
 }

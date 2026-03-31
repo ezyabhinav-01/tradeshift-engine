@@ -1,5 +1,5 @@
 import { LayoutDashboard, History, Settings, TrendingUp, Activity, Briefcase } from 'lucide-react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 
 const Sidebar = () => {
   const navigate = useNavigate();
@@ -48,9 +48,9 @@ const Sidebar = () => {
 
       {/* Logo Area */}
       <div className="h-16 flex items-center justify-center border-b border-sidebar-border mb-4">
-        <div className="bg-sidebar-primary/10 p-2 rounded-xl transition-transform hover:rotate-12 border border-sidebar-primary/20">
+        <Link to="/landing" className="bg-sidebar-primary/10 p-2 rounded-xl transition-transform hover:rotate-12 border border-sidebar-primary/20">
           <TrendingUp className="text-sidebar-primary" size={24} />
-        </div>
+        </Link>
       </div>
 
       <NavItem p="terminal" icon={LayoutDashboard} label="Trade" path="/" />

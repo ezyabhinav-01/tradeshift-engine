@@ -40,7 +40,7 @@ const Topbar = () => {
 
       {/* Left Section - Logo */}
       <div className="flex items-center gap-4 w-[250px] shrink-0">
-        <Link to="/home1" className="flex items-center gap-3">
+        <Link to="/landing" className="flex items-center gap-3">
           <h1 className="hidden sm:block text-xl font-bold tracking-wide text-tv-text-primary">
             TRADE<span className="text-tv-primary">SHIFT</span>
           </h1>

@@ -1,13 +1,17 @@
 import json
-from fastapi import APIRouter, Depends, HTTPException, Request
+import logging
+from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List
 from app.database import get_db
-from app.models import UserSettings as UserSettingsModel, UserChartSettings as ChartSettingsModel, DrawingTemplate as TemplateModel
-from app.schemas import UserSettings, UserSettingsUpdate, ChartSettings, ChartSettingsUpdate, DrawingTemplateCreate, DrawingTemplateResponse
+from app.models import UserSettings as UserSettingsModel, UserChartSettings as ChartSettingsModel, DrawingTemplate as TemplateModel, HelpRequest as HelpRequestModel
+from app.schemas import UserSettings, UserSettingsUpdate, ChartSettings, ChartSettingsUpdate, DrawingTemplateCreate, DrawingTemplateResponse, HelpRequestCreate, HelpRequestResponse
 from app.routers.trading import _get_user_id
 from app.services.risk_engine import risk_engine
+from app.config import conf, MAIL_USERNAME, MAIL_PASSWORD, MAIL_SERVER
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/user", tags=["user"])
 
@@ -186,3 +190,66 @@ async def delete_template(
     await db.commit()
     
     return {"message": "Template deleted"}
+
+# ─── Help Requests ──────────────────────────────────────────────
+
+def send_help_email(user_id: str, message: str):
+    import smtplib
+    from email.mime.text import MIMEText
+    
+    # Use pre-loaded credentials from app.config
+    sender = MAIL_USERNAME
+    password = MAIL_PASSWORD
+    smtp_server = MAIL_SERVER
+    # SSL Port 465 was verified as working on current network
+    port = 465
+    
+    if not sender or not password or "your-email" in sender:
+        logger.error(f"Email credentials not configured correctly in .env. Current sender: {sender}")
+        return
+        
+    html = f"""
+    <p><strong>New Support Request</strong></p>
+    <p><strong>User ID:</strong> {user_id}</p>
+    <p><strong>Message:</strong></p>
+    <p>{message}</p>
+    """
+    
+    msg = MIMEText(html, "html")
+    msg["Subject"] = f"New User Help Request - {user_id}"
+    msg["From"] = sender
+    msg["To"] = "stabilityincrease1@gmail.com"
+    
+    try:
+        logger.info(f"Attempting to send email via {smtp_server}:{port} for user {user_id}...")
+        server = smtplib.SMTP_SSL(smtp_server, port, timeout=15)
+        server.login(sender, password)
+        server.send_message(msg)
+        server.quit()
+        logger.info(f"Successfully sent help email for user {user_id} via SMTP_SSL (Port 465)")
+        print(f"✅ EMAIL SENT: Support request from {user_id} forwarded to stabilityincrease1@gmail.com")
+    except Exception as e:
+        logger.error(f"Failed to send help email for user {user_id}: {str(e)}")
+        print(f"❌ EMAIL FAILED: {str(e)}")
+
+@router.post("/help", response_model=HelpRequestResponse)
+async def submit_help_request(
+    help_request: HelpRequestCreate,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db)
+):
+    """Submit a concern or help request."""
+    user_id = await _get_user_id(request, db)
+    
+    db_request = HelpRequestModel(
+        user_id=user_id,
+        message=help_request.message
+    )
+    db.add(db_request)
+    await db.commit()
+    await db.refresh(db_request)
+    
+    background_tasks.add_task(send_help_email, user_id, help_request.message)
+    
+    return db_request

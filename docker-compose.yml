@@ -47,6 +47,8 @@ services:
   backend:
     build: ./backend
     container_name: tradeshift_backend
+    env_file:
+      - ./backend/.env
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
       - ./backend:/app
@@ -82,12 +84,7 @@ services:
       - SHOONYA_API_SECRET=${SHOONYA_API_SECRET}
       - SHOONYA_TOTP_SECRET=${SHOONYA_TOTP_SECRET}
       - SHOONYA_IMEI=${SHOONYA_IMEI}
-      # Email
-      - MAIL_USERNAME=${MAIL_USERNAME}
-      - MAIL_PASSWORD=${MAIL_PASSWORD}
-      - MAIL_FROM=${MAIL_FROM}
-      - MAIL_PORT=${MAIL_PORT}
-      - MAIL_SERVER=${MAIL_SERVER}
+      - SHOONYA_IMEI=${SHOONYA_IMEI}
       # Inngest
       - INNGEST_SIGNING_KEY=mock_key
       - INNGEST_DEV=1

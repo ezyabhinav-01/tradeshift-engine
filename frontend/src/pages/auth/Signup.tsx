@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { 
-  Mail, Lock, User, Globe, Target, Shield, Briefcase, 
+  Mail, Lock, User, Target, Shield, Briefcase, 
   UserPlus, AlertCircle, ArrowLeft, Calendar, 
   BarChart3, Layers, MapPin, KeyRound
 } from 'lucide-react';
@@ -25,6 +25,7 @@ const Signup: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const { register } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -61,7 +62,8 @@ const Signup: React.FC = () => {
         preferred_instruments: formData.preferred_instruments.join(', ')
       };
       await register(submissionData);
-      navigate('/trade');
+      const from = location.state?.from || '/trade';
+      navigate(from, { replace: true });
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to create account. Please try again.');
     } finally {
@@ -333,7 +335,7 @@ const Signup: React.FC = () => {
           <div className="mt-8 pt-6 border-t border-slate-200 dark:border-white/10 text-center">
             <p className="text-sm text-slate-500 dark:text-gray-400 flex items-center justify-center gap-2">
               Already have an account?{' '}
-              <Link to="/login" className="text-tv-primary font-bold hover:text-tv-primary-hover transition-colors inline-flex items-center gap-1 group">
+              <Link to="/login" state={{ from: location.state?.from }} className="text-tv-primary font-bold hover:text-tv-primary-hover transition-colors inline-flex items-center gap-1 group">
                 Login here
                 <ArrowLeft size={14} className="group-hover:-translate-x-1 transition-transform rotate-180" />
               </Link>

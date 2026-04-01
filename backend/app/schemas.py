@@ -275,6 +275,18 @@ class CommunityUser(BaseModel):
     class Config:
         from_attributes = True
 
+class HelpRequestBase(BaseModel):
+    message: str
+
+class HelpRequestCreate(HelpRequestBase):
+    pass
+
+class HelpRequestResponse(HelpRequestBase):
+    id: int
+    user_id: int
+    status: str
+    created_at: datetime
+
 # ─── Notification Schemas ──────────────────────────────────────
 
 class NotificationBase(BaseModel):

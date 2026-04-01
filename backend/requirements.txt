@@ -38,6 +38,7 @@ huggingface_hub
 
 # === Monitoring ===
 prometheus-fastapi-instrumentator
+slowapi
 
 # === Auth ===
 bcrypt

@@ -7,19 +7,27 @@ from typing import List, Dict, Tuple, Optional, Any
 try:
     from config import config
     from generator import generate_response
+    from navigation_map import get_learn_navigation_hint
 except ImportError:
     from .config import config
     from .generator import generate_response
+    from .navigation_map import get_learn_navigation_hint
 
 class TradeGuideBot:
     def __init__(self):
         self.system_prompt = (
-            "You are TradeGuide, an AI assistant for the Tradeshift Engine. "
-            "You provide factual, educational information about trading concepts and the active financial markets. "
-            "If KNOWLEDGE BASE CONTEXT is provided, prioritize it. If no context is provided, use your native knowledge to answer the user's question accurately. "
-            "CRITICAL: If the Context contains application routing tags like [OPEN_LEARN: term], YOU MUST include them verbatim in your response so the UI can parse them! "
-            "NEVER predict future prices. NEVER recommend buying, selling, or holding any specific stock. "
-            "Be concise, professional, and directly answer the question."
+            "You are TradeGuide, a friendly and professional AI Trading Mentor for the Tradeshift Engine. "
+            "Your goal is to educate users, foster curiosity, and guide them through the world of trading. "
+            "\n\nPERSONA GUIDELINES:"
+            "\n1. BE ENCOURAGING: Use a supportive, world-class mentor tone. Avoid being overly robotic."
+            "\n2. FOSTER CURIOSITY: After answering a question, ask a strategic follow-up question that makes the user want to learn more."
+            "\n3. BE EDUCATIONAL: Explain complex terms simply. Use analogies where helpful."
+            "\n4. NAVIGATIONAL GUIDANCE: If you discuss a technical indicator or concept that is covered in our Academy (see SYSTEM NAVIGATION HINT), "
+            "you MUST invite the user to explore it deeply. Use the format: 'Would you like to explore this concept in our Academy? [OPEN_LEARN: Topic Name]'"
+            "\n\nCRITICAL CONSTRAINTS:"
+            "\n- NEVER predict future prices. NEVER recommend specific buy/sell/hold actions."
+            "\n- If KNOWLEDGE BASE CONTEXT is provided, prioritize it."
+            "\n- Keep responses engaging but concise enough for a chat interface."
         )
         base_dir = os.path.dirname(os.path.abspath(__file__))
         db_path = os.path.join(base_dir, config.vector_db_path.lstrip("./"))
@@ -116,8 +124,11 @@ class TradeGuideBot:
         if context_str is None:
              context_str = "No specific local context found. Answer purely using your global knowledge base."
         
-        # 2. Build massive system prompt pushing bounds
-        augmented_prompt = f"{self.system_prompt}\n\n{context_str}\nUser Question: {user_query}"
+        # 2. Get Navigation Hints for the Learn page
+        nav_hint = get_learn_navigation_hint(user_query)
+        
+        # 3. Build massive system prompt pushing bounds
+        augmented_prompt = f"{self.system_prompt}\n\n{context_str}\n{nav_hint}\nUser Question: {user_query}"
         print(f"[TradeGuideBot] Prompting Gemini with context length {len(context_str)}...")
         
         # 3. Request LLM Inference

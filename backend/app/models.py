@@ -78,6 +78,7 @@ class User(Base):
     occupation = Column(String, nullable=True) # Student, Job, Retired
     city = Column(String, nullable=True)
     security_pin = Column(String(4), nullable=True)
+    last_active_at = Column(DateTime, default=datetime.utcnow, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class UserSettings(Base):
@@ -349,3 +350,20 @@ class Lesson(Base):
 
     sub_module = relationship("SubModule", back_populates="lessons")
     module = relationship("Module", back_populates="lessons")
+
+# ──────────────────────────────────────────────
+# 7. ANALYTICS & MONITORING
+# ──────────────────────────────────────────────
+
+class PageEngagement(Base):
+    """
+    Tracks how much time each user spends on specific pages (heartbeat based).
+    """
+    __tablename__ = "page_engagement"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True)
+    page_path = Column(String, index=True) # e.g., '/markets', '/learn'
+    duration_seconds = Column(Integer, default=0) # Accumulated time in seconds
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    session_id = Column(String, nullable=True) # For grouping visits together

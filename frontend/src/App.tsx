@@ -25,6 +25,7 @@ import CommunityPage from './pages/CommunityPage';
 import HelpPage from './pages/HelpPage';
 
 import { useChartPersistence } from './hooks/useChartPersistence';
+import { usePageTracking } from './hooks/usePageTracking';
 
 function ChartPersistenceManager() {
   useChartPersistence();
@@ -32,6 +33,7 @@ function ChartPersistenceManager() {
 }
 
 export default function App() {
+  usePageTracking();
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
       <ChartPersistenceManager />

@@ -19,8 +19,11 @@ from redis import Redis
 from prometheus_fastapi_instrumentator import Instrumentator
 from app.oms import OrderManager
 from app import auth
-from app.routers import inngest, portfolio, history, trading, news, community
+from app.routers import inngest, portfolio, history, trading, news, community, analytics
 from app.websocket_manager import order_manager
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from app.models import User
 from app.database import get_db
 from app.news_service import fetch_news_for_date
@@ -60,7 +63,10 @@ except ImportError:
         def generate_ticks(self, o, h, l, c, num_ticks=60):
             return [o] * num_ticks
 
+limiter = Limiter(key_func=get_remote_address)
 app = FastAPI()
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Instrumentator (Monitoring)
 Instrumentator().instrument(app).expose(app)
@@ -157,6 +163,7 @@ app.include_router(user.router)
 app.include_router(news.router)
 app.include_router(community.router)
 app.include_router(learn.router)
+app.include_router(analytics.router)
 
 # --- 3. INFRASTRUCTURE CONNECTIONS ---
 

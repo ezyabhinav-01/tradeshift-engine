@@ -10,17 +10,11 @@ load_dotenv()
 
 # API Keys
 HF_TOKEN = os.getenv("HUGGINGFACE_API_KEY", None)
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", None)
+
+from .utils.gemini_pool import gemini_pool
 
 # Models
 MODEL_ID = "HuggingFaceH4/zephyr-7b-beta" 
-
-# Configure Gemini for high-quality fallback
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
-    gemini_model = genai.GenerativeModel('gemini-2.5-flash')
-else:
-    gemini_model = None
 
 async def _call_hf_inference(messages: list) -> str:
     """
@@ -99,10 +93,8 @@ async def analyze_news_impact(news_title: str, news_desc: str, symbol: str) -> d
     """
 
     try:
-        if gemini_model:
-            # Use run_in_executor to call the synchronous Gemini SDK without blocking
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(None, lambda: gemini_model.generate_content(analysis_prompt))
+        if gemini_pool.keys:
+            response = await gemini_pool.generate_content(analysis_prompt, is_async=True)
             output = response.text.strip()
         else:
             # Fallback to HF if Gemini is not configured
@@ -173,9 +165,8 @@ async def ask_news_question(news_title: str, news_desc: str, question: str, symb
     """
 
     try:
-        if gemini_model:
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(None, lambda: gemini_model.generate_content(qa_prompt))
+        if gemini_pool.keys:
+            response = await gemini_pool.generate_content(qa_prompt, is_async=True)
             return response.text.strip()
         else:
             messages = [
@@ -215,9 +206,8 @@ async def analyze_stock_fundamentals(symbol: str, fund_data: dict) -> str:
     """
 
     try:
-        if gemini_model:
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(None, lambda: gemini_model.generate_content(prompt))
+        if gemini_pool.keys:
+            response = await gemini_pool.generate_content(prompt, is_async=True)
             return response.text.strip()
         else:
             messages = [
@@ -249,9 +239,8 @@ async def explain_in_layman(symbol: str, complex_info: str) -> str:
     """
 
     try:
-        if gemini_model:
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(None, lambda: gemini_model.generate_content(prompt))
+        if gemini_pool.keys:
+            response = await gemini_pool.generate_content(prompt, is_async=True)
             return response.text.strip()
         else:
             messages = [
@@ -291,9 +280,8 @@ async def chat_about_stock(symbol: str, fund_data: dict, question: str, chat_his
     """
 
     try:
-        if gemini_model:
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(None, lambda: gemini_model.generate_content(prompt))
+        if gemini_pool.keys:
+            response = await gemini_pool.generate_content(prompt, is_async=True)
             return response.text.strip()
         else:
             messages = [{"role": "system", "content": "You are a financial educator."}]
@@ -329,9 +317,8 @@ async def generate_news_explainer(news_title: str, news_desc: str, symbol: str) 
     """
 
     try:
-        if gemini_model:
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(None, lambda: gemini_model.generate_content(explainer_prompt))
+        if gemini_pool.keys:
+            response = await gemini_pool.generate_content(explainer_prompt, is_async=True)
             output = response.text.strip()
             
             # Basic JSON extraction if Gemini adds markdown markers
@@ -389,9 +376,8 @@ async def generate_news_explanation(news_title: str, news_desc: str, user_level:
     """
 
     try:
-        if gemini_model:
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(None, lambda: gemini_model.generate_content(prompt))
+        if gemini_pool.keys:
+            response = await gemini_pool.generate_content(prompt, is_async=True)
             return response.text.strip()
         else:
             # Fallback to HF

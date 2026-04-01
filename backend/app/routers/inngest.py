@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 import inngest.fast_api
 from app.inngest.client import inngest_client
-from app.inngest.functions import send_signup_email
+from app.inngest.functions import send_signup_email, sync_chatbot_navigation
 
 import logging
 
@@ -15,5 +15,5 @@ print("🛠️ Inngest Router Loaded")
 inngest.fast_api.serve(
     app=router,
     client=inngest_client,
-    functions=[send_signup_email],
+    functions=[send_signup_email, sync_chatbot_navigation],
 )

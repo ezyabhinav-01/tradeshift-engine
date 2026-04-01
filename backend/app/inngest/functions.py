@@ -9,12 +9,10 @@ from .client import inngest_client
 from fastapi_mail import FastMail, MessageSchema, MessageType
 from app.config import conf
 
-# Configure Gemini
-# Ensure GEMINI_API_KEY is allowed to be read from os.environ
-# If not set, it might fail.
-api_key = os.getenv("GEMINI_API_KEY")
-if api_key:
-    genai.configure(api_key=api_key)
+from app.utils.gemini_pool import gemini_pool
+from .chatbot_sync import create_chatbot_sync_function
+
+sync_chatbot_navigation = create_chatbot_sync_function(inngest_client)
 
 PERSONALIZED_WELCOME_EMAIL_PROMPT = """Generate highly personalized HTML content that will be inserted into an email template at the {{intro}} placeholder.
 
@@ -73,10 +71,6 @@ async def send_signup_email(ctx: inngest.Context, step: inngest.Step):
         # helper for AI generation
         async def generate_intro():
             print("  👉 [AI] generate_intro started")
-            if not api_key:
-                print("  ⚠️ [AI] No API Key, returning default")
-                return f"Welcome to Tradeshift, {first_name}!"
-                
             user_profile = f"""
             -Country: {event.data.get('country', 'N/A')}
             -Investment goals: {event.data.get('investment_goals', 'N/A')}
@@ -87,9 +81,8 @@ async def send_signup_email(ctx: inngest.Context, step: inngest.Step):
             prompt = PERSONALIZED_WELCOME_EMAIL_PROMPT.replace("{{userProfile}}", user_profile)
             
             try:
-                print("  👉 [AI] Calling Gemini API...")
-                model = genai.GenerativeModel("gemini-1.5-flash")
-                response = await model.generate_content_async(prompt)
+                print("  👉 [AI] Calling Gemini API (via Pool)...")
+                response = await gemini_pool.generate_content(prompt, is_async=True)
                 print("  ✅ [AI] Generation success")
                 return response.text
             except Exception as e:

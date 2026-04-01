@@ -1,40 +1,49 @@
 import os
+import asyncio
 from pathlib import Path
 from dotenv import load_dotenv
-import google.generativeai as genai
 
-_model = None
+# Ensure the app context is available for imports
+import sys
+base_dir = Path(__file__).resolve().parent.parent
+if str(base_dir) not in sys.path:
+    sys.path.append(str(base_dir))
 
-def get_gemini_model():
-    global _model
-    if _model is not None:
-        return _model
-        
-    load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / '.env', override=True)
-    load_dotenv(dotenv_path=Path(__file__).resolve().parent / '.env', override=True)
-    
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if api_key:
-        genai.configure(api_key=api_key)
-        _model = genai.GenerativeModel('gemini-2.5-flash')
-        return _model
-        
-    print("WARNING: GEMINI_API_KEY not found in environment variables!")
-    return None
+from app.utils.gemini_pool import gemini_pool
 
 def generate_response(prompt: str, history: list = None) -> str:
     """
     Sends the fully augmented system prompt (containing RAG context + user question) 
-    directly to the Gemini frontier model for absolute intelligence and speed.
+    to the Gemini API via the GeminiPool for high availability and automatic rotation.
     """
-    model = get_gemini_model()
-    if model is None:
-        return "CRITICAL ERROR: Gemini API Key is missing from the environment. Inference halted."
-        
+    # Note: TradeGuideBot uses this synchronously in its current structure
+    # We wrap the async call to the pool using asyncio.run()
+    # If this is called within another event loop, we might need a better bridging strategy
+    
     try:
-        print(f"[Gemini] Sending request to models/gemini-2.5-flash...")
-        response = model.generate_content(prompt)
-        print(f"[Gemini] Response received successfully.")
+        print(f"[GeminiPool] Requesting generation for ChatBot...")
+        
+        # Determine if we're already in an async context
+        try:
+            loop = asyncio.get_running_loop()
+            # If in an async loop, we need to handle this differently
+            # For now, let's try to run it directly if possible, or use a separate thread
+            # But usually, it's called from a sync FastAPI worker.
+            
+            # Simple wrapper for when we have a loop
+            if loop.is_running():
+                future = asyncio.run_coroutine_threadsafe(
+                    gemini_pool.generate_content(prompt, is_async=True), 
+                    loop
+                )
+                response = future.result()
+            else:
+                response = asyncio.run(gemini_pool.generate_content(prompt, is_async=True))
+        except RuntimeError:
+            # No running event loop, safe to use asyncio.run
+            response = asyncio.run(gemini_pool.generate_content(prompt, is_async=True))
+            
+        print(f"[GeminiPool] Response received successfully.")
         return response.text
     except Exception as e:
         print(f"Gemini API Inference Error: {e}")

@@ -5,7 +5,8 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depe
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import logging
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, select, update, insert
+from sqlalchemy.ext.asyncio import AsyncSession
 import pandas as pd
 from minio import Minio
 import io
@@ -24,14 +25,11 @@ from app.websocket_manager import order_manager
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-from app.models import User
-from app.database import get_db
-from app.news_service import fetch_news_for_date
-from app.nlp_engine import analyze_news_impact, ask_news_question, generate_news_explainer
-from app.database import Base, connect_to_database, connect_to_database_sync, get_db_sync
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.screener_service import ScreenerService
 from app.fundamental_service import FundamentalService
+from app.models import User, UserEvent
+from app.database import Base, get_db, get_session, connect_to_database, connect_to_database_sync, get_db_sync
+import jwt
+from app.config import SECRET_KEY, ALGORITHM
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO)
@@ -151,6 +149,78 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.get("/api/user/heartbeat")
+async def user_heartbeat():
+    """
+    Lightweight endpoint to trigger 'last_active_at' updates via middleware.
+    """
+    return {"status": "alive", "timestamp": datetime.datetime.utcnow()}
+
+@app.middleware("http")
+async def log_user_activity(request: Request, call_next):
+    """
+    Middleware to track real-time user activity for the Admin Dashboard.
+    Updates 'last_active_at' and logs to 'user_events' table.
+    """
+    try:
+        # 1. Skip activity logging for static/docs/health
+        if request.url.path.startswith(("/static", "/docs", "/openapi.json", "/favicon.ico", "/health", "/api/market/indices")):
+            return await call_next(request)
+
+        # 2. Extract user from cookie
+        token = request.cookies.get("access_token")
+        if not token:
+            # Also check Authorization header as fallback
+            auth_header = request.headers.get("Authorization")
+            if auth_header and auth_header.startswith("Bearer "):
+                token = auth_header.split(" ")[1]
+
+        if token:
+            try:
+                # Use pyjwt
+                payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+                email = payload.get("sub")
+                
+                if email:
+                    logger.info(f"📍 Logging activity for user: {email} on {request.url.path}")
+                    # 3. Log activity in background to avoid blocking request
+                    async def record_activity(user_email: str, path: str):
+                        try:
+                            # Use sync connection for quick updates if async session is tricky in background
+                            # Actually, sticking to async but with proper error handling
+                            async with await get_session() as db:
+                                # Update User timestamp
+                                await db.execute(
+                                    update(User)
+                                    .where(User.email == user_email)
+                                    .values(last_active_at=text("CURRENT_TIMESTAMP"))
+                                )
+                                # Log discrete event
+                                await db.execute(
+                                    insert(UserEvent).values(
+                                        user_id=select(User.id).where(User.email == user_email).scalar_subquery(),
+                                        event_name="page_view",
+                                        event_data={"path": path},
+                                        created_at=text("CURRENT_TIMESTAMP")
+                                    )
+                                )
+                                await db.commit()
+                        except Exception as e:
+                            logger.error(f"⚠️ Activity Log DB Error: {e}")
+
+                    asyncio.create_task(record_activity(email, request.url.path))
+            except jwt.ExpiredSignatureError:
+                logger.warning("📍 Token expired in activity logging")
+            except jwt.InvalidTokenError:
+                logger.warning("📍 Invalid token in activity logging")
+            except Exception as e:
+                logger.error(f"📍 Auth error in activity logging: {e}")
+
+        return await call_next(request)
+    except Exception as e:
+        logger.error(f"⚠️ Middleware Critical Error: {e}")
+        return await call_next(request)
 
 app.include_router(auth.router)
 app.include_router(inngest.router)

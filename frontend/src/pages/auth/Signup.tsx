@@ -4,8 +4,32 @@ import { useAuth } from '../../context/AuthContext';
 import { 
   Mail, Lock, User, Target, Shield, Briefcase, 
   UserPlus, AlertCircle, ArrowLeft, Calendar, 
-  BarChart3, Layers, MapPin, KeyRound
+  BarChart3, Layers, MapPin, KeyRound, Phone, Eye, EyeOff
 } from 'lucide-react';
+import { PremiumSelect } from '@/components/ui/PremiumSelect';
+import { PremiumDatePicker } from '@/components/ui/PremiumDatePicker';
+
+const EXPERIENCE_OPTIONS = [
+  { value: 'Beginner', label: 'Beginner' },
+  { value: 'Intermediate', label: 'Intermediate' },
+  { value: 'Advance', label: 'Advance' }
+];
+const GOAL_OPTIONS = [
+  { value: 'Learn', label: 'Learn' },
+  { value: 'Growth', label: 'Growth' },
+  { value: 'Income', label: 'Income' },
+  { value: 'Speculation', label: 'Speculation' }
+];
+const RISK_OPTIONS = [
+  { value: 'Low', label: 'Low' },
+  { value: 'Moderate', label: 'Moderate' },
+  { value: 'High', label: 'High' }
+];
+const OCCUPATION_OPTIONS = [
+  { value: 'Student', label: 'Student' },
+  { value: 'Job', label: 'Job' },
+  { value: 'Retired', label: 'Retired' }
+];
 
 const Signup: React.FC = () => {
   const [formData, setFormData] = useState({
@@ -13,6 +37,7 @@ const Signup: React.FC = () => {
     password: '',
     full_name: '',
     dob: '',
+    phone_number: '',
     experience_level: 'Beginner',
     investment_goals: 'Learn',
     preferred_instruments: [] as string[],
@@ -21,7 +46,9 @@ const Signup: React.FC = () => {
     city: '',
     security_pin: ''
   });
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const { register } = useAuth();
   const navigate = useNavigate();
@@ -30,6 +57,10 @@ const Signup: React.FC = () => {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+    // Clear field error on change
+    if (fieldErrors[name]) {
+      setFieldErrors((prev: Record<string, string>) => { const n = { ...prev }; delete n[name]; return n; });
+    }
   };
 
   const handleInstrumentChange = (instrument: string) => {
@@ -41,24 +72,66 @@ const Signup: React.FC = () => {
         return { ...prev, preferred_instruments: [...current, instrument] };
       }
     });
+    if (fieldErrors['preferred_instruments']) {
+      setFieldErrors((prev: Record<string, string>) => { const n = { ...prev }; delete n['preferred_instruments']; return n; });
+    }
+  };
+
+  const calculateAge = (dobString: string) => {
+    const today = new Date();
+    const birthDate = new Date(dobString);
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const m = today.getMonth() - birthDate.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age;
+  };
+
+  const validate = (): boolean => {
+    const errors: Record<string, string> = {};
+    if (!formData.full_name.trim()) errors.full_name = 'Full name is required';
+    if (!formData.email.trim()) {
+      errors.email = 'Email address is required';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      errors.email = 'Please enter a valid email address';
+    }
+    if (!formData.password) {
+      errors.password = 'Password is required';
+    } else if (formData.password.length < 6) {
+      errors.password = 'Password must be at least 6 characters';
+    }
+    if (!formData.dob) {
+      errors.dob = 'Date of Birth is required';
+    } else if (calculateAge(formData.dob) < 12) {
+      errors.dob = 'You must be at least 12 years old';
+    }
+    if (!formData.phone_number.trim()) {
+      errors.phone_number = 'Phone number is required';
+    } else if (!/^[1-9]\d{9}$/.test(formData.phone_number.replace(/[- ]/g, ''))) {
+      errors.phone_number = 'Please enter a valid 10-digit phone number';
+    }
+    if (!formData.city.trim()) errors.city = 'City is required';
+    if (!formData.security_pin) {
+      errors.security_pin = 'Security PIN is required';
+    } else if (formData.security_pin.length !== 4 || !/^\d+$/.test(formData.security_pin)) {
+      errors.security_pin = 'PIN must be exactly 4 digits';
+    }
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    // Validation
-    if (formData.security_pin.length !== 4 || !/^\d+$/.test(formData.security_pin)) {
-      setError('PIN must be exactly 4 digits');
-      return;
-    }
+    if (!validate()) return;
 
     setLoading(true);
-
     try {
-      // Convert array to comma-separated string for backend
       const submissionData = {
         ...formData,
+        phone_number: `+91${formData.phone_number.replace(/[- ]/g, '')}`,
         preferred_instruments: formData.preferred_instruments.join(', ')
       };
       await register(submissionData);
@@ -113,11 +186,15 @@ const Signup: React.FC = () => {
                       name="full_name"
                       type="text"
                       onChange={handleChange}
-                      className="block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl leading-5 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-tv-primary/50 focus:border-tv-primary transition-all sm:text-sm"
+                      className={`block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 transition-all sm:text-sm ${
+                        fieldErrors.full_name
+                          ? 'border-red-500 focus:ring-red-500/50'
+                          : 'border-slate-200 dark:border-white/10 focus:ring-tv-primary/50 focus:border-tv-primary'
+                      }`}
                       placeholder="John Doe"
-                      required
                     />
                   </div>
+                  {fieldErrors.full_name && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle size={12}/>{fieldErrors.full_name}</p>}
                 </div>
 
                 <div className="space-y-2">
@@ -130,27 +207,53 @@ const Signup: React.FC = () => {
                       name="email"
                       type="email"
                       onChange={handleChange}
-                      className="block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl leading-5 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-tv-primary/50 focus:border-tv-primary transition-all sm:text-sm"
+                      className={`block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 transition-all sm:text-sm ${
+                        fieldErrors.email
+                          ? 'border-red-500 focus:ring-red-500/50'
+                          : 'border-slate-200 dark:border-white/10 focus:ring-tv-primary/50 focus:border-tv-primary'
+                      }`}
                       placeholder="name@gmail.com"
-                      required
                     />
                   </div>
+                  {fieldErrors.email && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle size={12}/>{fieldErrors.email}</p>}
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1">Date of Birth</label>
-                  <div className="relative group">
+                  <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1">Phone Number</label>
+                  <div className="relative group flex items-center">
                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-tv-primary transition-colors">
-                      <Calendar size={18} />
+                      <Phone size={18} />
+                      <span className="ml-2 pl-2 pr-2 border-r border-slate-200 dark:border-white/10 text-sm font-medium text-slate-600 dark:text-slate-300">
+                        +91
+                      </span>
                     </div>
                     <input
-                      name="dob"
-                      type="date"
+                      name="phone_number"
+                      type="tel"
+                      maxLength={10}
                       onChange={handleChange}
-                      className="block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl leading-5 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-tv-primary/50 focus:border-tv-primary transition-all sm:text-sm"
-                      required
+                      className={`block w-full pl-24 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 transition-all sm:text-sm ${
+                        fieldErrors.phone_number
+                          ? 'border-red-500 focus:ring-red-500/50'
+                          : 'border-slate-200 dark:border-white/10 focus:ring-tv-primary/50 focus:border-tv-primary'
+                      }`}
+                      placeholder="9876543210"
                     />
                   </div>
+                  {fieldErrors.phone_number && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle size={12}/>{fieldErrors.phone_number}</p>}
+                </div>
+
+<div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1">Date of Birth</label>
+                  <PremiumDatePicker
+                    value={formData.dob}
+                    onChange={(val) => {
+                      setFormData(prev => ({ ...prev, dob: val }));
+                      if (fieldErrors.dob) setFieldErrors((prev: Record<string, string>) => { const n = { ...prev }; delete n['dob']; return n; });
+                    }}
+                    placeholder="Select Date of Birth"
+                  />
+                  {fieldErrors.dob && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle size={12}/>{fieldErrors.dob}</p>}
                 </div>
 
                 <div className="space-y-2">
@@ -163,11 +266,15 @@ const Signup: React.FC = () => {
                       name="city"
                       type="text"
                       onChange={handleChange}
-                      className="block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl leading-5 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-tv-primary/50 focus:border-tv-primary transition-all sm:text-sm"
+                      className={`block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 transition-all sm:text-sm ${
+                        fieldErrors.city
+                          ? 'border-red-500 focus:ring-red-500/50'
+                          : 'border-slate-200 dark:border-white/10 focus:ring-tv-primary/50 focus:border-tv-primary'
+                      }`}
                       placeholder="Mumbai"
-                      required
                     />
                   </div>
+                  {fieldErrors.city && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle size={12}/>{fieldErrors.city}</p>}
                 </div>
               </div>
 
@@ -179,16 +286,12 @@ const Signup: React.FC = () => {
                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
                       <BarChart3 size={18} />
                     </div>
-                    <select
-                      name="experience_level"
+                    <PremiumSelect
                       value={formData.experience_level}
-                      onChange={handleChange}
-                      className="block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-tv-primary/50 focus:border-tv-primary transition-all sm:text-sm appearance-none"
-                    >
-                      <option className="bg-white dark:bg-[#1E222D]" value="Beginner">Beginner</option>
-                      <option className="bg-white dark:bg-[#1E222D]" value="Intermediate">Intermediate</option>
-                      <option className="bg-white dark:bg-[#1E222D]" value="Advance">Advance</option>
-                    </select>
+                      onChange={(value) => setFormData({ ...formData, experience_level: value })}
+                      options={EXPERIENCE_OPTIONS}
+                      className="block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-tv-primary/50 focus:border-tv-primary transition-all sm:text-sm"
+                    />
                   </div>
                 </div>
 
@@ -198,17 +301,12 @@ const Signup: React.FC = () => {
                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
                       <Target size={18} />
                     </div>
-                    <select
-                      name="investment_goals"
+                    <PremiumSelect
                       value={formData.investment_goals}
-                      onChange={handleChange}
-                      className="block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-tv-primary/50 focus:border-tv-primary transition-all sm:text-sm appearance-none"
-                    >
-                      <option className="bg-white dark:bg-[#1E222D]" value="Learn">Learn</option>
-                      <option className="bg-white dark:bg-[#1E222D]" value="Growth">Growth</option>
-                      <option className="bg-white dark:bg-[#1E222D]" value="Income">Income</option>
-                      <option className="bg-white dark:bg-[#1E222D]" value="Speculation">Speculation</option>
-                    </select>
+                      onChange={(value) => setFormData({ ...formData, investment_goals: value })}
+                      options={GOAL_OPTIONS}
+                      className="block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-tv-primary/50 focus:border-tv-primary transition-all sm:text-sm"
+                    />
                   </div>
                 </div>
 
@@ -218,16 +316,12 @@ const Signup: React.FC = () => {
                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
                       <Shield size={18} />
                     </div>
-                    <select
-                      name="risk_tolerance"
+                    <PremiumSelect
                       value={formData.risk_tolerance}
-                      onChange={handleChange}
-                      className="block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-tv-primary/50 focus:border-tv-primary transition-all sm:text-sm appearance-none"
-                    >
-                      <option className="bg-white dark:bg-[#1E222D]" value="Low">Low</option>
-                      <option className="bg-white dark:bg-[#1E222D]" value="Moderate">Moderate</option>
-                      <option className="bg-white dark:bg-[#1E222D]" value="High">High</option>
-                    </select>
+                      onChange={(value) => setFormData({ ...formData, risk_tolerance: value })}
+                      options={RISK_OPTIONS}
+                      className="block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-tv-primary/50 focus:border-tv-primary transition-all sm:text-sm"
+                    />
                   </div>
                 </div>
 
@@ -237,16 +331,12 @@ const Signup: React.FC = () => {
                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
                       <Briefcase size={18} />
                     </div>
-                    <select
-                      name="occupation"
+                    <PremiumSelect
                       value={formData.occupation}
-                      onChange={handleChange}
-                      className="block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-tv-primary/50 focus:border-tv-primary transition-all sm:text-sm appearance-none"
-                    >
-                      <option className="bg-white dark:bg-[#1E222D]" value="Student">Student</option>
-                      <option className="bg-white dark:bg-[#1E222D]" value="Job">Job</option>
-                      <option className="bg-white dark:bg-[#1E222D]" value="Retired">Retired</option>
-                    </select>
+                      onChange={(value) => setFormData({ ...formData, occupation: value })}
+                      options={OCCUPATION_OPTIONS}
+                      className="block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-tv-primary/50 focus:border-tv-primary transition-all sm:text-sm"
+                    />
                   </div>
                 </div>
               </div>
@@ -285,13 +375,24 @@ const Signup: React.FC = () => {
                     </div>
                     <input
                       name="password"
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       onChange={handleChange}
-                      className="block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl leading-5 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-tv-primary/50 focus:border-tv-primary transition-all sm:text-sm"
+                      className={`block w-full pl-11 pr-11 py-2.5 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 transition-all sm:text-sm ${
+                        fieldErrors.password
+                          ? 'border-red-500 focus:ring-red-500/50'
+                          : 'border-slate-200 dark:border-white/10 focus:ring-tv-primary/50 focus:border-tv-primary'
+                      }`}
                       placeholder="••••••••"
-                      required
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors focus:outline-none"
+                    >
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
                   </div>
+                  {fieldErrors.password && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle size={12}/>{fieldErrors.password}</p>}
                 </div>
               </div>
 
@@ -307,11 +408,15 @@ const Signup: React.FC = () => {
                       type="text"
                       maxLength={4}
                       onChange={handleChange}
-                      className="block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl leading-5 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-tv-primary/50 focus:border-tv-primary transition-all sm:text-sm text-center tracking-widest font-mono"
+                      className={`block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 transition-all sm:text-sm text-center tracking-widest font-mono ${
+                        fieldErrors.security_pin
+                          ? 'border-red-500 focus:ring-red-500/50'
+                          : 'border-slate-200 dark:border-white/10 focus:ring-tv-primary/50 focus:border-tv-primary'
+                      }`}
                       placeholder="1234"
-                      required
                     />
                   </div>
+                  {fieldErrors.security_pin && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle size={12}/>{fieldErrors.security_pin}</p>}
                 </div>
               </div>
             </div>

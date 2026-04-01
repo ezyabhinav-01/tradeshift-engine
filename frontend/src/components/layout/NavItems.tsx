@@ -1,12 +1,12 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Newspaper, LineChart, History, Briefcase, LayoutDashboard, GraduationCap } from 'lucide-react';
+import { ChevronDown, Newspaper, LineChart, Search, Briefcase, LayoutDashboard, GraduationCap, HelpCircle } from 'lucide-react';
 
 const navItems = [
     { name: 'Trade', path: '/trade', icon: LineChart },
     { name: 'Markets', path: '/markets', icon: LayoutDashboard },
     { name: 'Portfolio', path: '/portfolio', icon: Briefcase },
-    { name: 'Screener', path: '/screener', icon: History },
+    { name: 'Screener', path: '/screener', icon: Search },
     { name: 'Learn', path: '/learn', icon: GraduationCap },
 ];
 
@@ -19,7 +19,7 @@ export const NavItems = ({ isMobile, onItemClick }: { isMobile?: boolean, onItem
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-                setIsMoreOpen(false);w
+                setIsMoreOpen(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -85,7 +85,7 @@ export const NavItems = ({ isMobile, onItemClick }: { isMobile?: boolean, onItem
                             onClick={() => { setIsMoreOpen(false); handleItemClick(); }}
                             className={`flex items-center gap-2 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg transition-colors outline-none cursor-pointer ${isMobile ? 'w-full' : ''}`}
                         >
-                            <History size={16} className="text-tv-primary" />
+                            <HelpCircle size={16} className="text-tv-primary" />
                             Help & Support
                         </Link>
                         

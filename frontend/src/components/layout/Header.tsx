@@ -1,15 +1,14 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useState } from 'react';
 import { Sun, Moon, Search, Bell, LogOut, ChevronDown, UserCircle, Menu, X } from 'lucide-react';
-import { useThemeStore } from '../../store/themeStore';
 import { useTheme } from '../../context/ThemeContext';
 import { NavItems } from './NavItems';
 import { SymbolSearch } from '../features/SymbolSearch';
 import { useGame } from '../../context/GameContext';
 import { useMultiChartStore } from '../../store/useMultiChartStore';
 import { useAuth } from '../../context/AuthContext';
+import { NotificationDropdown } from './NotificationDropdown';
 import { useNotifications } from '../../context/NotificationContext';
-import NotificationPanel from '../features/NotificationPanel';
 
 const Topbar = () => {
   const { theme, setTheme } = useTheme();
@@ -19,9 +18,9 @@ const Topbar = () => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const { user, logout } = useAuth();
-  const { unreadCount } = useNotifications();
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const { user, loading, logout } = useAuth();
+  const { unreadCount } = useNotifications();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -48,7 +47,7 @@ const Topbar = () => {
 
       {/* Left Section - Logo */}
       <div className="flex items-center gap-4 w-[250px] shrink-0">
-        <Link to="/landing" className="flex items-center gap-3">
+        <Link to="/" className="flex items-center gap-3">
           <h1 className="hidden sm:block text-xl font-bold tracking-wide text-tv-text-primary">
             TRADE<span className="text-tv-primary">SHIFT</span>
           </h1>
@@ -109,17 +108,22 @@ const Topbar = () => {
             )}
           </button>
           {isNotificationsOpen && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setIsNotificationsOpen(false)}></div>
-              <NotificationPanel onClose={() => setIsNotificationsOpen(false)} />
-            </>
+            <NotificationDropdown 
+              isOpen={isNotificationsOpen} 
+              onClose={() => setIsNotificationsOpen(false)} 
+            />
           )}
         </div>
 
         <div className="h-6 w-[1px] bg-tv-border"></div>
 
         {/* AUTH SECTION */}
-        {user ? (
+        {loading ? (
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-6 animate-pulse bg-slate-200 dark:bg-white/5 rounded"></div>
+            <div className="w-20 h-8 animate-pulse bg-slate-200 dark:bg-white/5 rounded-full"></div>
+          </div>
+        ) : user ? (
           <div className="relative">
             <button 
               onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
@@ -139,8 +143,14 @@ const Topbar = () => {
                 ></div>
                 <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-[#1E222D] border border-slate-200 dark:border-white/10 rounded-xl shadow-2xl py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
                   <div className="px-4 py-3 border-b border-slate-100 dark:border-white/5 mb-1">
-                    <p className="text-xs text-slate-500 dark:text-gray-400 font-medium">Signed in as</p>
-                    <p className="text-sm font-semibold truncate dark:text-white">{user.email}</p>
+                    <p className="text-xs text-slate-500 dark:text-gray-400 font-medium lowercase">Signed in as</p>
+                    <p className="text-sm font-semibold truncate dark:text-white mt-0.5">{user.email}</p>
+                    {user.demat_id && (
+                      <div className="mt-2 flex items-center gap-2 px-2 py-1 bg-tv-primary/10 border border-tv-primary/20 rounded-lg">
+                        <span className="text-[10px] font-bold text-tv-primary uppercase tracking-tighter">Demat ID</span>
+                        <span className="text-xs font-mono font-bold text-tv-primary">{user.demat_id}</span>
+                      </div>
+                    )}
                   </div>
                   
                   <Link 

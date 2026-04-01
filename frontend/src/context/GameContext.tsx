@@ -1,5 +1,6 @@
 // @refresh reset
 import React, { useState, useEffect, useCallback, createContext, useContext } from 'react';
+import axios from 'axios';
 import type { CandleData, Trade } from '../types';
 import { marketDataService, fetchHistoricalCandles, fetchAvailableDates } from '../services/MarketDataService';
 import { toast } from 'sonner';
@@ -185,27 +186,34 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
     }
   }, [loadHistory]);
 
+  const fetchUserSettings = useCallback(async () => {
+    try {
+      const response = await axios.get('/api/user/settings');
+      setUserSettings(response.data);
+    } catch (err) {
+      console.error('Failed to fetch user settings:', err);
+    }
+  }, []);
+
   // Load on mount
   useEffect(() => {
     loadAvailableDatesAndHistory(DEFAULT_SYMBOL);
     fetchUserSettings();
-  }, [loadAvailableDatesAndHistory]); // Dependency on loadAvailableDatesAndHistory
+  }, [loadAvailableDatesAndHistory, fetchUserSettings]);
 
-  const fetchUserSettings = async () => {
-    try {
-      const response = await fetch(`/api/user/settings`, {
-        credentials: 'include'
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setUserSettings(data);
-      } else {
-        throw new Error(`Failed to fetch user settings: ${response.statusText}`);
+  // ── Heartbeat tracking for Admin Dashboard ────────────────
+  useEffect(() => {
+    // Ping heartbeat every 30 seconds to keep last_active_at fresh
+    const heartbeatInterval = setInterval(async () => {
+      try {
+        await fetch('/api/user/heartbeat', { credentials: 'include' });
+      } catch (err) {
+        // Silent fail for heartbeat
       }
-    } catch (err) {
-      console.error('Failed to fetch user settings:', err);
-    }
-  };
+    }, 30000);
+
+    return () => clearInterval(heartbeatInterval);
+  }, []);
 
   const updateUserSettings = async (updates: any) => {
     try {

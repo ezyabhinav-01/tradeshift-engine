@@ -1,5 +1,5 @@
 import { ThemeProvider } from './context/ThemeContext';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 import { GameProvider } from './context/GameContext';
 import { Toaster } from 'sonner';
 import { ChatBot } from './components/ChatBot/ChatBot';
@@ -7,6 +7,8 @@ import { AuthProvider } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
 import Login from './pages/auth/Login';
 import Signup from './pages/auth/Signup';
+import PinVerification from './pages/auth/PinVerification';
+import ForgotPassword from './pages/auth/ForgotPassword';
 
 import Layout from './components/layout/layout';
 import Home from './pages/Home';
@@ -15,7 +17,6 @@ import Home1 from './pages/Home1';
 import ResearchHub from './pages/ResearchHub';
 import ScreenerPage from './pages/ScreenerPage';
 import MarketPage from './pages/MarketPage';
-import HistoryPage from './pages/HistoryPage';
 import SettingsPage from './pages/SettingsPage';
 import PortfolioPage from './pages/PortfolioPage'; // Renamed to avoid clash
 import LearnPage from './pages/LearnPage';
@@ -41,17 +42,17 @@ function AppContent() {
     <>
       <ChartPersistenceManager />
       <Routes>
-        <Route path="/" element={<Navigate to="/landing" replace />} />
-        <Route path="/landing" element={<LandingPage />} />
+        <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
+        <Route path="/pin-verify" element={<PinVerification />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
 
         <Route element={<Layout />}>
           <Route path="trade" element={<Home />} />
           <Route path="home1" element={<Home1 />} />
           <Route path="markets" element={<MarketPage />} />
           <Route path="screener" element={<ScreenerPage />} />
-          <Route path="history" element={<HistoryPage />} />
           <Route path="portfolio" element={<PortfolioPage />} />
           <Route path="learn" element={<LearnPage />} />
           <Route path="learn/track/:trackId" element={<TrackDetailPage />} />

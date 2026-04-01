@@ -1,14 +1,19 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import axios from 'axios';
 
 interface User {
   id: number;
   email: string;
   full_name?: string;
-  country?: string;
+  dob?: string;
+  phone_number?: string;
+  demat_id?: string;
+  experience_level?: string;
   investment_goals?: string;
   risk_tolerance?: string;
-  preferred_industries?: string;
+  occupation?: string;
+  city?: string;
 }
 
 interface AuthContextType {
@@ -31,7 +36,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const response = await axios.get('/auth/me');
       setUser(response.data);
     } catch (error) {
-      setUser(null);
+      // If access token is expired or missing, try silent refresh
+      try {
+        await axios.post('/auth/refresh');
+        // If refresh succeeds, try getting the user profile again
+        const retryResponse = await axios.get('/auth/me');
+        setUser(retryResponse.data);
+      } catch (refreshError) {
+        setUser(null);
+      }
     } finally {
       setLoading(false);
     }

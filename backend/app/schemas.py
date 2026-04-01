@@ -27,6 +27,7 @@ class UserCreate(UserBase):
     password: str
     full_name: Optional[str] = None
     dob: Optional[str] = None
+    phone_number: Optional[str] = None
     experience_level: Optional[str] = None
     investment_goals: Optional[str] = None
     preferred_instruments: Optional[str] = None
@@ -52,6 +53,62 @@ class UserLogin(UserBase):
     password: str
 
 
+class UserProfileUpdate(BaseModel):
+    full_name: Optional[str] = None
+    dob: Optional[str] = None
+    phone_number: Optional[str] = None
+    experience_level: Optional[str] = None
+    investment_goals: Optional[str] = None
+    preferred_instruments: Optional[str] = None
+    risk_tolerance: Optional[str] = None
+    occupation: Optional[str] = None
+    city: Optional[str] = None
+
+
+# --- Forgot Password Schemas ---
+class ForgotPasswordRequest(BaseModel):
+    email: str
+    phone_number: str
+
+class OtpVerifyRequest(BaseModel):
+    email: str
+    otp_code: str
+
+class ResetPasswordRequest(BaseModel):
+    email: str
+    otp_code: str
+    new_password: str
+# ------------------------------
+
+
+class PinVerifyRequest(BaseModel):
+    email: str
+    pin: str
+
+    @field_validator("pin")
+    def validate_pin(cls, value):
+        if not value.isdigit() or len(value) != 4:
+            raise ValueError("PIN must be exactly 4 digits.")
+        return value
+
+
+class PinIdentityRequest(BaseModel):
+    email: str
+    dob: str
+
+
+class PinResetRequest(BaseModel):
+    email: str
+    dob: str
+    new_pin: str
+
+    @field_validator("new_pin")
+    def validate_new_pin(cls, value):
+        if not value.isdigit() or len(value) != 4:
+            raise ValueError("New PIN must be exactly 4 digits.")
+        return value
+
+
 class User(UserBase):
     id: int
     full_name: Optional[str] = None
@@ -62,6 +119,7 @@ class User(UserBase):
     risk_tolerance: Optional[str] = None
     occupation: Optional[str] = None
     city: Optional[str] = None
+    demat_id: Optional[str] = None
     created_at: datetime
     
     class Config:
@@ -297,7 +355,7 @@ class NotificationBase(BaseModel):
 class NotificationCreate(NotificationBase):
     user_id: Optional[int] = None # NULL means broadcast
 
-class Notification(NotificationBase):
+class NotificationResponse(NotificationBase):
     id: int
     user_id: Optional[int] = None
     is_read: bool
@@ -305,3 +363,12 @@ class Notification(NotificationBase):
     
     class Config:
         from_attributes = True
+
+
+class AlertTriggerRequest(BaseModel):
+    symbol: str
+    condition: str
+    target_value: float
+    current_price: float
+    side: str
+    message: Optional[str] = None

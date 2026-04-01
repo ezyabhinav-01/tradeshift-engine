@@ -98,7 +98,6 @@ interface ScrambleTextProps {
 
 const ScrambleText: React.FC<ScrambleTextProps> = ({ text, duration = 3000, delay = 0 }) => {
   const [displayText, setDisplayText] = useState('');
-  const [isFinished, setIsFinished] = useState(false);
   const chars = "hanibvanrdabimaatnndrajatya!@#$%^&*()";
 
   useEffect(() => {
@@ -128,7 +127,6 @@ const ScrambleText: React.FC<ScrambleTextProps> = ({ text, duration = 3000, dela
         );
 
         if (iteration >= text.length) {
-          setIsFinished(true);
           clearInterval(intervalId);
         }
 
@@ -1198,7 +1196,7 @@ const MobileShowcaseSection = () => {
   )
 }
 
-const MeteorScrollSection: React.FC<{ canStart: boolean }> = ({ canStart }) => {
+export const MeteorScrollSection: React.FC<{ canStart: boolean }> = ({ canStart }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const starRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);

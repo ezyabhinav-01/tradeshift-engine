@@ -11,6 +11,7 @@ services:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./database/fix_schema.sql:/docker-entrypoint-initdb.d/fix_schema.sql:ro
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U user -d tradeshift" ]
       interval: 5s
@@ -88,7 +89,6 @@ services:
       # Inngest
       - INNGEST_SIGNING_KEY=mock_key
       - INNGEST_DEV=1
-
   # 5. Message Queue
   rabbitmq:
     image: rabbitmq:3-management
@@ -140,7 +140,7 @@ services:
 
   # 8. AI ChatBot (FinGPT / RAG)
   chatbot:
-    build: 
+    build:
       context: ./backend/chatbot
       dockerfile: Dockerfile
     container_name: tradeshift_chatbot

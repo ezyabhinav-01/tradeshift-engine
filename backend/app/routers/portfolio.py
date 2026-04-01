@@ -35,9 +35,11 @@ async def get_optional_user(request: Request, db: AsyncSession = Depends(get_db)
 
 
 async def _get_user_id(request: Request, db: AsyncSession) -> int:
-    """Helper to extract user_id, fallback to 1 for dev."""
+    """Helper to extract user_id, strictly requires authentication."""
     user = await get_optional_user(request, db)
-    return user.id if user else 1
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return user.id
 
 
 @router.get("/summary")

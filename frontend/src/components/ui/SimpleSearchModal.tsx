@@ -138,7 +138,7 @@ const SimpleSearchModal: React.FC<SymbolSearchProps> = ({ open, onOpenChange, on
                         type="text"
                         placeholder="Search"
                         className="flex-1 bg-transparent border-none outline-none text-2xl font-semibold text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-600 w-full"
-           w             value={query}
+                        value={query}
                         onChange={(e) => setQuery(e.target.value)}
                         onKeyDown={(e) => {
                             if (e.key === 'Escape') onOpenChange(false);

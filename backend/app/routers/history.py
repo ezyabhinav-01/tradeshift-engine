@@ -35,7 +35,7 @@ async def _get_user_id(request: Request, db: AsyncSession) -> int:
                     return user.id
         except Exception:
             pass
-    return 1  # fallback for dev
+    raise HTTPException(status_code=401, detail="Authentication required")
 
 
 def _apply_filters(stmt, date_from, date_to, symbol, direction, search, session_type):

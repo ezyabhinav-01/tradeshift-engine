@@ -144,7 +144,7 @@ class PortfolioService:
 
     async def get_positions(self, db: AsyncSession, user_id: int, session_type: str = 'LIVE') -> List[Dict[str, Any]]:
         result = await db.execute(select(TradeLog).filter(
-            TradeLog.session_id.isnot(None),
+            TradeLog.user_id == user_id,
             TradeLog.session_type == session_type,
             (TradeLog.exit_price == None) | (TradeLog.exit_price == 0)
         ))
@@ -215,6 +215,7 @@ class PortfolioService:
 
     async def get_trade_research(self, db: AsyncSession, user_id: int, session_type: str = 'LIVE') -> Dict[str, Any]:
         result = await db.execute(select(TradeLog).filter(
+            TradeLog.user_id == user_id,
             TradeLog.session_type == session_type,
             TradeLog.exit_price.isnot(None),
             TradeLog.exit_price != 0

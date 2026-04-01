@@ -78,6 +78,16 @@ class User(Base):
     occupation = Column(String, nullable=True) # Student, Job, Retired
     city = Column(String, nullable=True)
     security_pin = Column(String(4), nullable=True)
+    
+    # --- Forgot Password Fields ---
+    phone_number = Column(String, nullable=True)
+    otp_code = Column(String(6), nullable=True)
+    otp_expiry = Column(DateTime, nullable=True)
+    
+    # --- Demat Details ---
+    demat_id = Column(String(50), unique=True, index=True, nullable=True)
+    
+    refresh_token = Column(String, nullable=True, index=True)
     last_active_at = Column(DateTime, default=datetime.utcnow, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -396,3 +406,15 @@ class Notification(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="notifications")
+
+class UserEvent(Base):
+    """
+    Tracks discrete user actions for analytics (e.g., login, trade_place, page_view).
+    """
+    __tablename__ = "user_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    event_name = Column(String, index=True)
+    event_data = Column(JSON, nullable=True) # Dict of arbitrary event metadata
+    created_at = Column(DateTime, default=datetime.utcnow)

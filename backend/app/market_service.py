@@ -17,11 +17,12 @@ class MarketService:
         
         # Mapping of common names to Yahoo Finance symbols for Indian Indices
         self.INDICES_MAP = {
-            "NIFTY 50": "^NSEI",
+            "NIFTY": "^NSEI",
             "SENSEX": "^BSESN",
-            "BANK NIFTY": "^NSEBANK",
-            "NIFTY IT": "^CNXIT",
-            "INDIA VIX": "^INDIAVIX"
+            "BANKNIFTY": "^NSEBANK",
+            "HDFCBANK": "HDFCBANK.NS",
+            "RELIANCE": "RELIANCE.NS",
+            "NIFTY IT": "^CNXIT"
         }
         
         self.SECTORS_MAP = {

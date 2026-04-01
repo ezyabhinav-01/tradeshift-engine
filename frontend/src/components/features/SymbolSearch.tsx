@@ -59,9 +59,8 @@ export const SymbolSearch: React.FC<SymbolSearchProps> = ({ open, onOpenChange, 
                         symbol: s.symbol,
                         name: s.name || s.symbol,
                         instrument_type: s.instrument_type || 'EQUITY',
-                        file: s.file
                     };
-                }).filter(s => s.symbol);
+                }).filter((s: any) => s.symbol);
 
                 if (formattedSymbols.length === 0) {
                     console.warn('⚠️ SymbolSearch: No symbols found in API response');

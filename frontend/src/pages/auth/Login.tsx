@@ -1,26 +1,44 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { Mail, Lock, LogIn, AlertCircle, ArrowRight } from 'lucide-react';
+import { Mail, Lock, LogIn, AlertCircle, ArrowRight, Eye, EyeOff } from 'lucide-react';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
+  const validate = (): boolean => {
+    const errors: Record<string, string> = {};
+    if (!email.trim()) {
+      errors.email = 'Email address is required';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errors.email = 'Please enter a valid email address';
+    }
+    if (!password) {
+      errors.password = 'Password is required';
+    }
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    if (!validate()) return;
     setLoading(true);
 
     try {
       await login({ email, password });
       const from = location.state?.from || '/trade';
-      navigate(from, { replace: true });
+      // Redirect to PIN verification with the intended destination
+      navigate('/pin-verify', { state: { email, from } });
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to login. Please check your credentials.');
     } finally {
@@ -56,39 +74,54 @@ const Login: React.FC = () => {
             )}
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1">Email Address</label>
+              <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1">Email or Demat ID</label>
               <div className="relative group">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-tv-primary transition-colors">
                   <Mail size={18} />
                 </div>
                 <input
-                  type="email"
+                  type="text"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="block w-full pl-11 pr-4 py-3 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl leading-5 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-tv-primary/50 focus:border-tv-primary transition-all sm:text-sm"
-                  placeholder="name@example.com"
-                  required
+                  onChange={(e) => { setEmail(e.target.value); if (fieldErrors.email) setFieldErrors((prev: Record<string, string>) => { const n = { ...prev }; delete n['email']; return n; }); }}
+                  className={`block w-full pl-11 pr-4 py-3 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 transition-all sm:text-sm ${fieldErrors.email ? 'border-red-500 focus:ring-red-500/50' : 'border-slate-200 dark:border-white/10 focus:ring-tv-primary/50 focus:border-tv-primary'}`}
+                  placeholder="name@example.com or Demat ID"
                 />
               </div>
+              {fieldErrors.email && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle size={12} />{fieldErrors.email}</p>}
             </div>
 
             <div className="space-y-2">
               <div className="flex justify-between items-center ml-1">
                 <label className="text-sm font-medium text-slate-700 dark:text-gray-300">Password</label>
-                <a href="#" className="text-xs text-tv-primary hover:underline transition-all">Forgot password?</a>
               </div>
               <div className="relative group">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-tv-primary transition-colors">
                   <Lock size={18} />
                 </div>
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="block w-full pl-11 pr-4 py-3 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl leading-5 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-tv-primary/50 focus:border-tv-primary transition-all sm:text-sm"
+                  onChange={(e) => { setPassword(e.target.value); if (fieldErrors.password) setFieldErrors((prev: Record<string, string>) => { const n = { ...prev }; delete n['password']; return n; }); }}
+                  className={`block w-full pl-11 pr-11 py-3 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 transition-all sm:text-sm ${fieldErrors.password ? 'border-red-500 focus:ring-red-500/50' : 'border-slate-200 dark:border-white/10 focus:ring-tv-primary/50 focus:border-tv-primary'}`}
                   placeholder="••••••••"
-                  required
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors focus:outline-none"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+              {fieldErrors.password && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle size={12} />{fieldErrors.password}</p>}
+
+              <div className="flex justify-end mt-2">
+                <Link
+                  to="/forgot-password"
+                  className="text-xs font-semibold text-tv-primary hover:text-tv-primary-hover transition-colors"
+                >
+                  Forgot Password?
+                </Link>
               </div>
             </div>
 

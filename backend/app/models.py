@@ -211,3 +211,12 @@ class CommunityMessage(Base):
     recipient_id = Column(Integer, nullable=True, index=True) # Null for channel messages
     content = Column(String)
     timestamp = Column(DateTime, default=datetime.utcnow)
+
+class HelpRequest(Base):
+    __tablename__ = "help_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True)
+    message = Column(String)
+    status = Column(String, default="OPEN") # OPEN, CLOSED
+    created_at = Column(DateTime, default=datetime.utcnow)

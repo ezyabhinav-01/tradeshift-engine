@@ -1,8 +1,22 @@
-
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+# Calculate absolute path to .env file (backend/.env)
+base_dir = Path(__file__).resolve().parent.parent
+dotenv_path = base_dir / ".env"
+
+if dotenv_path.exists():
+    load_dotenv(dotenv_path=dotenv_path)
+    print(f"✅ Config: Loaded .env from {dotenv_path}")
+else:
+    print(f"⚠️ Config: .env file not found at {dotenv_path}")
+
+# Diagnostic: Check if critical variables are loaded
+if not os.getenv("MAIL_USERNAME"):
+    print("❌ Config Warning: MAIL_USERNAME is not set in environment!")
+else:
+    print(f"📧 Config: Support email sender configured as {os.getenv('MAIL_USERNAME')}")
 
 SECRET_KEY = os.getenv("SECRET_KEY", "supersecretkey")
 ALGORITHM = "HS256"

@@ -33,6 +33,11 @@ class ShoonyaLiveService:
         
         self.latest_data: Dict[str, Any] = {}
         
+        # Status tracking
+        self.status = "disconnected" # disconnected, connecting, connected, error
+        self.error_message = None
+        self._reconnect_task = None
+        
     def add_callback(self, callback):
         self.callbacks.append(callback)
 
@@ -84,16 +89,23 @@ class ShoonyaLiveService:
     def on_open(self, *args):
         logger.info("🟢 Shoonya WebSocket Connected")
         self.connected = True
+        self.status = "connected"
+        self.error_message = None
         self._subscribe()
 
     def on_close(self, *args):
         # NorenApi might pass (code, reason) or nothing depending on version
         logger.warning(f"🔴 Shoonya WebSocket Closed. Args: {args}")
         self.connected = False
+        self.status = "disconnected"
+        # Trigger reconnection if not intentional
+        self._ensure_reconnect_loop()
 
     def on_error(self, err):
         # Some versions might pass (ws, err), but NorenApi usually wraps it
         logger.error(f"⚠️ Shoonya WebSocket Error: {err}")
+        self.status = "error"
+        self.error_message = str(err)
 
     def _subscribe(self):
         if self.connected and self.api:
@@ -101,11 +113,26 @@ class ShoonyaLiveService:
                 logger.info(f"Subscribing to {token}")
                 self.api.subscribe(token)
 
+    def _ensure_reconnect_loop(self):
+        if self._reconnect_task is None or self._reconnect_task.done():
+            self._reconnect_task = asyncio.create_task(self._reconnect_loop())
+
+    async def _reconnect_loop(self):
+        """Background loop to attempt reconnection every 60 seconds if disconnected."""
+        while not self.connected:
+            logger.info("Retrying Shoonya connection in 60 seconds...")
+            await asyncio.sleep(60)
+            await self.connect()
+
     async def connect(self):
         if not NorenApi:
             logger.error("Cannot connect to Shoonya: NorenRestApiPy missing")
             return
             
+        if self.status == "connecting":
+            return
+            
+        self.status = "connecting"
         try:
             self.loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -121,26 +148,27 @@ class ShoonyaLiveService:
         if not all([user_id, password, vendor_code, api_secret, totp_secret]):
             missing = [k for k,v in {'user_id': user_id, 'password': password, 'vendor_code': vendor_code, 'api_secret': api_secret, 'totp_secret': totp_secret}.items() if not v]
             logger.error(f"Missing Shoonya credentials in .env: {missing}")
+            self.status = "error"
+            self.error_message = f"Missing credentials: {missing}"
             return
             
         class CustomNoren(NorenApi):
            def __init__(self, host, websocket):
                super().__init__(host=host, websocket=websocket)
                
+        # Normalize endpoints (ensure trailing slash)
         API_ENDPOINT = "https://api.shoonya.com/NorenWClientTP/"
         WS_ENDPOINT = "wss://api.shoonya.com/NorenWSTP/"
-        self.api = CustomNoren(host=API_ENDPOINT, websocket=WS_ENDPOINT)
+        
+        # Ensure we don't have double slashes if using some SDK versions
+        self.api = CustomNoren(host=API_ENDPOINT.rstrip('/'), websocket=WS_ENDPOINT)
         
         try:
             # Time synchronization check
             now = datetime.datetime.now()
-            logger.info(f"System Time: {now.strftime('%Y-%m-%d %H:%M:%S')} | UTC: {datetime.datetime.utcnow().strftime('%H:%M:%S')}")
-            
             totp = pyotp.TOTP(totp_secret).now()
-            # Obscure the TOTP for safety but log its length and first digit
-            logger.info(f"Generated TOTP (length {len(totp)}): {totp[0]}****")
             
-            logger.info(f"Attempting Shoonya login for ID: {user_id} | Vendor: {vendor_code} | IMEI: {imei}")
+            logger.info(f"Attempting Shoonya login for ID: {user_id}")
             
             login_resp = await asyncio.to_thread(
                 self.api.login,
@@ -154,6 +182,9 @@ class ShoonyaLiveService:
             
             if login_resp and login_resp.get("stat") == "Ok":
                 logger.info("✅ Shoonya API Login Successful")
+                self.connected = True
+                self.status = "connected"
+                self.error_message = None
                 self.api.start_websocket(
                     subscribe_callback=self.on_feed,
                     socket_open_callback=self.on_open,
@@ -161,16 +192,26 @@ class ShoonyaLiveService:
                     socket_error_callback=self.on_error
                 )
             else:
-                logger.error(f"❌ Shoonya API Login Failed. Response: {login_resp}")
-                if login_resp is None:
-                    logger.error("Shoonya API returned 'None'. Check if credentials/secret are correct and specifically if system time matches real time (TOTP issue).")
-                elif login_resp.get("emsg"):
-                    logger.error(f"Error Message from Shoonya: {login_resp.get('emsg')}")
+                self.status = "error"
+                self.connected = False
+                self.error_message = f"Login failed: {login_resp.get('emsg', 'Unknown error') if login_resp else 'None'}"
+                logger.error(f"❌ Shoonya API Login Failed: {self.error_message}")
+                self._ensure_reconnect_loop()
         except Exception as e:
-            logger.error(f"❌ Exception during Shoonya login: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-        except Exception as e:
-            logger.error(f"❌ Error connecting to Shoonya: {e}")
+            self.connected = False
+            self.status = "error"
+            
+            # Specific handling for JSON/HTML error (502 Gateway)
+            if "Expecting value" in str(e):
+                self.error_message = "Shoonya API returned 502/HTML (Service unavailable or down for maintenance)"
+                logger.error(f"🛑 Shoonya Connectivity: {self.error_message}")
+            else:
+                self.error_message = str(e)
+                logger.error(f"❌ Exception during Shoonya login: {e}")
+                import traceback
+                logger.debug(traceback.format_exc())
+            
+            self._ensure_reconnect_loop()
+
 
 shoonya_live = ShoonyaLiveService()

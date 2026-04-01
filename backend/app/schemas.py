@@ -274,3 +274,22 @@ class CommunityUser(BaseModel):
 
     class Config:
         from_attributes = True
+
+# ─── Notification Schemas ──────────────────────────────────────
+
+class NotificationBase(BaseModel):
+    title: str
+    content: str
+    type: str = "info" # info, warning, success, error
+
+class NotificationCreate(NotificationBase):
+    user_id: Optional[int] = None # NULL means broadcast
+
+class Notification(NotificationBase):
+    id: int
+    user_id: Optional[int] = None
+    is_read: bool
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True

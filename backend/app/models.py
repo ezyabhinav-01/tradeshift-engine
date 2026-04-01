@@ -81,6 +81,9 @@ class User(Base):
     last_active_at = Column(DateTime, default=datetime.utcnow, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
+
+
 class UserSettings(Base):
     """
     User-specific risk limits and trading preferences.
@@ -367,3 +370,21 @@ class PageEngagement(Base):
     duration_seconds = Column(Integer, default=0) # Accumulated time in seconds
     timestamp = Column(DateTime, default=datetime.utcnow)
     session_id = Column(String, nullable=True) # For grouping visits together
+
+class Notification(Base):
+    """
+    Model for global and user-specific notifications.
+    """
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True) # NULL means broadcast to all
+    
+    title = Column(String(255), nullable=False)
+    content = Column(Text, nullable=False)
+    type = Column(String(50), default="info") # info, warning, success, error
+    
+    is_read = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="notifications")

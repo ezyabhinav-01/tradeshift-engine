@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 
 import { useGame } from '../context/GameContext';
+import { useAuth } from '../context/AuthContext';
+import { useAccessControl } from '../hooks/useAccessControl';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const api = axios.create({ baseURL: '', withCredentials: true });
@@ -37,6 +39,9 @@ export default function PortfolioPage() {
   const [research, setResearch] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const { sessionType } = useGame();
+  const { user } = useAuth();
+  const { checkAccess } = useAccessControl();
+  const isGuest = !user;
 
   const fallback = {
     current_value: 0, total_invested: 0, total_pnl: 0,
@@ -44,6 +49,14 @@ export default function PortfolioPage() {
   };
 
   const fetchAll = async () => {
+    if (isGuest) {
+      setLoading(false);
+      setSummary(fallback); // Reset to zeroes
+      setHoldings([]);
+      setPositions([]);
+      setHistory([]);
+      return;
+    }
     setLoading(true);
     try {
       const params = { session_type: sessionType };
@@ -87,7 +100,14 @@ export default function PortfolioPage() {
           </h2>
           <p className="text-muted-foreground text-sm">Real-time asset tracking and behavioral analytics.</p>
         </div>
-        <button onClick={fetchAll} disabled={loading} className="p-2.5 rounded-full bg-sidebar-accent/50 hover:bg-sidebar-accent text-sidebar-primary transition-colors disabled:opacity-50">
+        <button 
+          onClick={() => {
+            if (checkAccess()) fetchAll();
+          }} 
+          disabled={loading} 
+          className="p-2.5 rounded-full bg-sidebar-accent/50 hover:bg-sidebar-accent text-sidebar-primary transition-colors disabled:opacity-50"
+          title={isGuest ? "Sign in to refresh live data" : "Refresh Portfolio"}
+        >
           <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
         </button>
       </div>
@@ -167,7 +187,11 @@ export default function PortfolioPage() {
         </TabsList>
 
         <TabsContent value="holdings">
-          <HoldingsTab holdings={holdings} />
+          <HoldingsTab 
+            holdings={holdings} 
+            isGuest={isGuest} 
+            checkAccess={checkAccess} 
+          />
         </TabsContent>
         <TabsContent value="positions">
           <PositionsTab positions={positions} />
@@ -189,7 +213,15 @@ export default function PortfolioPage() {
 // ═══════════════════════════════════════════════════════════════
 // TAB 1: HOLDINGS (Equity Portfolio)
 // ═══════════════════════════════════════════════════════════════
-function HoldingsTab({ holdings }: { holdings: any[] }) {
+function HoldingsTab({ 
+  holdings, 
+  isGuest, 
+  checkAccess 
+}: { 
+  holdings: any[], 
+  isGuest: boolean, 
+  checkAccess: () => boolean 
+}) {
   return (
     <div className="border border-gray-200 dark:border-white/10 bg-white dark:bg-[#121212] rounded-md overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
       <div className="overflow-x-auto">
@@ -207,7 +239,21 @@ function HoldingsTab({ holdings }: { holdings: any[] }) {
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-white/5">
             {holdings.length === 0 ? (
-               <tr><td colSpan={7} className="px-6 py-12 text-center text-sm text-gray-400">No equity holdings found. Place delivery trades to see them here.</td></tr>
+               <tr>
+                 <td colSpan={7} className="px-6 py-12 text-center">
+                   <div className="flex flex-col items-center gap-2">
+                     <p className="text-sm text-gray-400">No equity holdings found.</p>
+                     {isGuest && (
+                       <button 
+                         onClick={() => checkAccess()}
+                         className="text-xs font-bold text-sidebar-primary hover:underline"
+                       >
+                         Sign in to track your real investments
+                       </button>
+                     )}
+                   </div>
+                 </td>
+               </tr>
             ) : holdings.map((h) => (
               <tr key={h.symbol} className="hover:bg-sidebar-accent/20 transition-colors">
                 <td className="px-6 py-5">

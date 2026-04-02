@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import TradingViewWidget from '@/components/ui/TradingViewWidget';
 import { SCREENER_WIDGET_CONFIG } from '@/lib/constants';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useAccessControl } from '@/hooks/useAccessControl';
 
 interface Candidate {
   symbol: string;
@@ -43,6 +44,7 @@ const ScreenerPage: React.FC = () => {
   const [category, setCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState("");
   const navigate = useNavigate();
+  const { checkAccess } = useAccessControl();
 
   useEffect(() => {
     const fetchCandidates = async () => {
@@ -289,7 +291,9 @@ const ScreenerPage: React.FC = () => {
                 </div>
 
                 <Button
-                  onClick={() => navigate(`/research/${stock.symbol}`)}
+                  onClick={() => {
+                    if (checkAccess()) navigate(`/research/${stock.symbol}`);
+                  }}
                   className="w-full mt-4 bg-slate-100 dark:bg-white/5 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-white/10 hover:bg-blue-600 hover:text-white hover:border-transparent transition-all duration-300 rounded-xl group-hover:translate-y-[-2px]"
                 >
                   Start Deep Learning

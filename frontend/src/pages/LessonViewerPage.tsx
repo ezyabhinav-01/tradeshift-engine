@@ -5,6 +5,8 @@ import {
   ArrowLeft, ArrowRight, CheckCircle2, Clock, BookOpen,
   MessageCircle, Send, ThumbsUp, Award, LineChart
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { useAccessControl } from '../hooks/useAccessControl';
 import './LearnPage.css';
 
 interface SiblingLesson {
@@ -46,6 +48,8 @@ interface Comment {
 export default function LessonViewerPage() {
   const { trackId, lessonId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { checkAccess } = useAccessControl();
   const { completeLesson, completedLessons, logLearningTime } = useLearnStore();
   const [lesson, setLesson] = useState<LessonData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -57,6 +61,15 @@ export default function LessonViewerPage() {
   const contentRef = useRef<HTMLDivElement>(null);
 
   const isCompleted = lessonId ? completedLessons.includes(lessonId) : false;
+
+  useEffect(() => {
+    // If guest, trigger access modal and kick back to track detail
+    if (!user) {
+      checkAccess();
+      navigate(`/learn/track/${trackId}`);
+      return;
+    }
+  }, [user, trackId, navigate, checkAccess]);
 
   useEffect(() => {
     setLoading(true);

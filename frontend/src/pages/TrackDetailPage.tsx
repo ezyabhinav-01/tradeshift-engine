@@ -6,6 +6,8 @@ import {
   Target, Award, ArrowRight
 } from 'lucide-react';
 import { useLearnStore } from '../store/useLearnStore';
+import { useAuth } from '../context/AuthContext';
+import { useAccessControl } from '../hooks/useAccessControl';
 import './LearnPage.css';
 
 const TRACK_ICONS: Record<string, React.ReactNode> = {
@@ -20,6 +22,9 @@ const TRACK_ICONS: Record<string, React.ReactNode> = {
 const TrackDetailPage: React.FC = () => {
   const { trackId } = useParams<{ trackId: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { checkAccess } = useAccessControl();
+  const isGuest = !user;
   const { tracks, completedLessons, getTrackProgress, getModuleProgress, fetchTracks, fetchUserStats } = useLearnStore();
 
   useEffect(() => {
@@ -66,12 +71,12 @@ const TrackDetailPage: React.FC = () => {
           <div className="flex items-center gap-4">
             <div className="hidden md:flex flex-col items-end">
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Your Progress</span>
-              <span className="text-sm font-black text-white">{progress}% Complete</span>
+              <span className="text-sm font-black text-white">{isGuest ? 0 : progress}% Complete</span>
             </div>
             <div className="w-32 h-1.5 bg-white/5 rounded-full overflow-hidden hidden md:block">
               <div 
                 className={`h-full bg-gradient-to-r ${track.color} transition-all duration-1000`}
-                style={{ width: `${progress}%` }}
+                style={{ width: `${isGuest ? 0 : progress}%` }}
               />
             </div>
           </div>
@@ -119,11 +124,11 @@ const TrackDetailPage: React.FC = () => {
                     </div>
                   </div>
                   <div className="text-right hidden sm:block">
-                    <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">{modProgress}% Done</div>
+                    <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">{isGuest ? 0 : modProgress}% Done</div>
                     <div className="w-24 h-1 bg-white/5 rounded-full overflow-hidden">
                       <div 
                         className={`h-full bg-gradient-to-r ${track.color}`}
-                        style={{ width: `${modProgress}%` }}
+                        style={{ width: `${isGuest ? 0 : modProgress}%` }}
                       />
                     </div>
                   </div>
@@ -134,10 +139,14 @@ const TrackDetailPage: React.FC = () => {
                   {module.subModules.flatMap(sm => sm.lessons).map((lesson, lIdx) => {
                     const isCompleted = completedLessons.includes(lesson.id);
                     return (
-                      <Link
+                      <button
                         key={lesson.id}
-                        to={`/learn/${track.id}/${lesson.id}`}
-                        className="group relative flex items-center justify-between p-4 rounded-xl hover:bg-white/[0.03] transition-all border border-transparent hover:border-white/5"
+                        onClick={() => {
+                          if (checkAccess()) {
+                            navigate(`/learn/${track.id}/${lesson.id}`);
+                          }
+                        }}
+                        className="group relative flex items-center justify-between p-4 rounded-xl hover:bg-white/[0.03] transition-all border border-transparent hover:border-white/5 w-full text-left bg-transparent"
                       >
                         <div className="flex items-center gap-5">
                           <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold transition-all ${
@@ -169,7 +178,7 @@ const TrackDetailPage: React.FC = () => {
                           <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Start Chapter</span>
                           <ChevronRight size={14} className="text-indigo-400" />
                         </div>
-                      </Link>
+                      </button>
                     );
                   })}
                 </div>

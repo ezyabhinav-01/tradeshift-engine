@@ -5,6 +5,10 @@ import { MarketJourneyInteractive } from '../components/MarketJourney/MarketJour
 import { useGSAP } from '@gsap/react';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useAuth } from '../context/AuthContext';
+import { useGame } from '../context/GameContext';
+import { useMultiChartStore } from '../store/useMultiChartStore';
+import { useAccessControl } from '../hooks/useAccessControl';
+import { SymbolSearch } from '../components/features/SymbolSearch';
 import { LogOut, ChevronLeft, ChevronRight, ChevronDown, UserCircle, BarChart3, BarChart2, Globe, Search, PieChart, BookOpen, Activity, MoreHorizontal, CheckCircle2 } from 'lucide-react';
 import './LandingPage.css';
 
@@ -1279,7 +1283,11 @@ export const MeteorScrollSection: React.FC<{ canStart: boolean }> = ({ canStart 
 export default function LandingPage() {
   const [isLightMode, setIsLightMode] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const { user, logout } = useAuth();
+  const { setSymbol } = useGame();
+  const activeChartId = useMultiChartStore(state => state.activeChartId);
+  const { checkAccess } = useAccessControl();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [showWelcome, setShowWelcome] = useState(true);
@@ -1290,6 +1298,7 @@ export default function LandingPage() {
   // Auto-dismiss the welcome intro
   useEffect(() => {
     const timer = window.setTimeout(() => {
+      // Primary GSAP Dismissal
       if (document.querySelector('.welcome-overlay')) {
         gsap.to('.welcome-overlay', {
           autoAlpha: 0,
@@ -1300,8 +1309,17 @@ export default function LandingPage() {
       } else {
         setShowWelcome(false);
       }
-    }, 3700); // 3s scramble + 0.2s delay + 0.5s pause to read
-    return () => window.clearTimeout(timer);
+    }, 3700);
+
+    // CRITICAL SAFETY FALLBACK: Forces the landing page to load even if GSAP or API stutters
+    const safetyTimeout = window.setTimeout(() => {
+      setShowWelcome(false);
+    }, 6000); 
+
+    return () => {
+      window.clearTimeout(timer);
+      window.clearTimeout(safetyTimeout);
+    };
   }, []);
 
   // Sequence the Hero typing after welcome is gone
@@ -1390,14 +1408,55 @@ export default function LandingPage() {
       )}
 
       {showFlash && <div className="flash-overlay" />}
+
+      <SymbolSearch 
+        open={isSearchOpen} 
+        onOpenChange={setIsSearchOpen} 
+        onSelect={(symbol, token) => {
+          setSymbol(symbol, token);
+          if (activeChartId) {
+            useMultiChartStore.getState().updateChart(activeChartId, { symbol });
+          }
+          navigate('/trade');
+        }}
+        activeChartId={activeChartId}
+      />
+
       <nav className="navbar">
         <div className="nav-container">
-          <Link to="/landing" className="brand">TRADE<span className="accent">SHIFT</span></Link>
-          <div className="nav-links">
-            <a href="#simulator">Simulator</a>
-            <a href="#learn">Learn</a>
-            <a href="#features">Features</a>
+          <Link to="/" className="brand">TRADE<span className="accent">SHIFT</span></Link>
+          
+          <div className="nav-center-group" style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
+            {/* SEARCH BAR TRIGGER */}
+            <div 
+              onClick={() => setIsSearchOpen(true)}
+              className="landing-search-trigger hidden md:flex items-center rounded-full px-5 py-2.5 transition-all cursor-pointer group"
+              style={{ minWidth: '180px' }}
+            >
+              <Search size={18} className="text-gray-400 mr-3 group-hover:text-white transition-colors" />
+              <span className="text-sm font-medium text-gray-400 group-hover:text-white transition-colors select-none">
+                Search (⌘K)
+              </span>
+            </div>
+
+            <div className="nav-links">
+              <Link to="/markets">Market</Link>
+              <Link to="/screener">Screener</Link>
+              <Link to="/portfolio" className="nav-link-btn" title="View Portfolio Overview">Portfolio</Link>
+              <Link to="/learn" className="nav-link-btn" title="View Academy Curriculum">Learn</Link>
+              <div className="nav-more-dropdown relative group">
+                <button className="flex items-center gap-1 hover:text-accent-secondary transition-colors" style={{ background: 'none', border: 'none', color: 'inherit', font: 'inherit', cursor: 'pointer', padding: 0 }}>
+                  More <ChevronDown size={14} />
+                </button>
+                <div className="absolute top-full right-0 mt-2 w-48 bg-[#0a0f1d] border border-white/10 rounded-xl shadow-2xl py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
+                  <Link to="/news" className="block px-4 py-2 hover:bg-white/5 text-sm">FinNews Hub</Link>
+                  <Link to="/community" className="block px-4 py-2 hover:bg-white/5 text-sm" onClick={(e) => { e.preventDefault(); checkAccess(); }}>Community</Link>
+                  <Link to="/help" className="block px-4 py-2 hover:bg-white/5 text-sm">Help Center</Link>
+                </div>
+              </div>
+            </div>
           </div>
+
           <div className="nav-actions" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <button
               onClick={() => setIsLightMode(!isLightMode)}

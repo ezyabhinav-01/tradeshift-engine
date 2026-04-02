@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import { useLearnStore, getXPForLevel } from '../store/useLearnStore';
 import type { Track, Badge } from '../store/useLearnStore';
+import { useAuth } from '../context/AuthContext';
+import { useAccessControl } from '../hooks/useAccessControl';
 import './LearnPage.css';
 
 // ═══════════════════════════════════════════
@@ -216,6 +218,9 @@ export default function LearnPage() {
   } = useLearnStore();
 
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { checkAccess } = useAccessControl();
+  const isGuest = !user;
   const [isLoading, setIsLoading] = useState(true);
 
   // Check streak and fetch tracks on mount
@@ -296,10 +301,10 @@ export default function LearnPage() {
             <div className="flex items-center gap-6 flex-wrap justify-center">
               {/* XP Ring */}
               <div className="flex flex-col items-center gap-2">
-                <XPRing xp={totalXP} level={level} />
+                <XPRing xp={isGuest ? 0 : totalXP} level={isGuest ? 1 : level} />
                 <div className="text-center">
-                  <div className="text-xs font-bold text-slate-700 dark:text-white">{totalXP} XP</div>
-                  <div className="text-[9px] text-slate-400 dark:text-slate-500">{nextLevelXP - totalXP} to Lvl {level + 1}</div>
+                  <div className="text-xs font-bold text-slate-700 dark:text-white">{isGuest ? 0 : totalXP} XP</div>
+                  <div className="text-[9px] text-slate-400 dark:text-slate-500">{isGuest ? getXPForLevel(1) : nextLevelXP - totalXP} to Lvl {isGuest ? 2 : level + 1}</div>
                 </div>
               </div>
 
@@ -309,10 +314,10 @@ export default function LearnPage() {
                   <Flame size={12} className="text-orange-500" /> Current Streak
                 </div>
                 <div className="flex items-baseline gap-1.5">
-                  <span className="text-3xl font-black text-slate-800 dark:text-white group-hover:text-emerald-500 transition-colors">{currentStreak}</span>
+                  <span className="text-3xl font-black text-slate-800 dark:text-white group-hover:text-emerald-500 transition-colors">{isGuest ? 0 : currentStreak}</span>
                   <span className="streak-flame text-xl">🔥</span>
                 </div>
-                <div className="text-[9px] text-slate-400 dark:text-slate-600 mt-1">Best: {longestStreak} days</div>
+                <div className="text-[9px] text-slate-400 dark:text-slate-600 mt-1">Best: {isGuest ? 0 : longestStreak} days</div>
               </div>
 
               {/* Badges Count */}
@@ -333,7 +338,7 @@ export default function LearnPage() {
                   <BookOpen size={12} className="text-blue-500" /> Lessons Done
                 </div>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-3xl font-black text-slate-800 dark:text-white group-hover:text-blue-500 transition-colors">{completedLessons.length}</span>
+                  <span className="text-3xl font-black text-slate-800 dark:text-white group-hover:text-blue-500 transition-colors">{isGuest ? 0 : completedLessons.length}</span>
                   <span className="text-sm font-bold text-slate-300 dark:text-slate-600">/{totalLessons}</span>
                 </div>
                 <div className="text-[9px] text-slate-400 dark:text-slate-600 mt-1">Completed</div>
@@ -345,7 +350,7 @@ export default function LearnPage() {
                   <Clock size={12} className="text-emerald-500" /> Time Spent
                 </div>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-3xl font-black text-slate-800 dark:text-white group-hover:text-emerald-500 transition-colors uppercase tracking-tight">{formatMinutes(learningMinutes)}</span>
+                  <span className="text-3xl font-black text-slate-800 dark:text-white group-hover:text-emerald-500 transition-colors uppercase tracking-tight">{isGuest ? "0m" : formatMinutes(learningMinutes)}</span>
                 </div>
                 <div className="text-[9px] text-slate-400 dark:text-slate-600 mt-1">Active Learning</div>
               </div>
@@ -411,7 +416,7 @@ export default function LearnPage() {
               </div>
               <button
                 onClick={() => {
-                  navigate(`/learn/track/${continueSuggestion.track.id}`);
+                  if (checkAccess()) navigate(`/learn/track/${continueSuggestion.track.id}`);
                 }}
                 className="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-indigo-500 to-purple-600 hover:opacity-90 transition-opacity flex items-center gap-2 shadow-lg shadow-indigo-500/20"
               >
@@ -429,10 +434,19 @@ export default function LearnPage() {
               <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Learning Tracks</h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Choose a track and start mastering finance</p>
             </div>
-            <div className="flex items-center gap-2 text-[11px] text-slate-400 dark:text-slate-500 font-medium">
-              <BookOpen size={14} />
-              {tracks.length} Tracks · {totalLessons} Total Lessons
-            </div>
+            {isGuest ? (
+               <button 
+                 onClick={() => checkAccess()}
+                 className="px-4 py-2 bg-indigo-500 text-white text-[10px] font-black uppercase tracking-widest rounded-lg"
+               >
+                 Sign in to track progress
+               </button>
+            ) : (
+              <div className="flex items-center gap-2 text-[11px] text-slate-400 dark:text-slate-500 font-medium">
+                <BookOpen size={14} />
+                {tracks.length} Tracks · {totalLessons} Total Lessons
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -444,7 +458,9 @@ export default function LearnPage() {
                   track={track}
                   progress={progress}
                   isActive={false}
-                  onClick={() => navigate(`/learn/track/${track.id}`)}
+                  onClick={() => {
+                    navigate(`/learn/track/${track.id}`);
+                  }}
                   index={idx}
                 />
               );

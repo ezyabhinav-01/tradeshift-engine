@@ -13,6 +13,8 @@ import ObjectTreePanel from '../components/ProChart/ObjectTreePanel';
 import ReplayToolbar from '../components/features/ReplayToolbar';
 import { useGame } from '../hooks/useGame';
 import type { DrawingToolId } from '../hooks/useDrawingTools';
+import { useAccessControl } from '../hooks/useAccessControl';
+import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
 
 import type { IndicatorTemplate } from '../store/useChartObjects';
@@ -22,6 +24,9 @@ const Home = () => {
   const [isObjectTreeOpen, setIsObjectTreeOpen] = useState(false);
   const [isIndicatorsOpen, setIsIndicatorsOpen] = useState(false);
   const [isAlertsOpen, setIsAlertsOpen] = useState(false);
+  const { checkAccess } = useAccessControl();
+  const { user } = useAuth();
+  const isGuest = !user;
 
   // Indicator state for TopToolbar
   const [activeIndicatorIds, setActiveIndicatorIds] = useState<string[]>([]);
@@ -188,6 +193,7 @@ const Home = () => {
   ]);
 
   const handleExecuteOrder = (orderData: any) => {
+    if (!checkAccess()) return;
     if (userSettings?.one_click_trading_enabled) {
       executeOrder(orderData);
     } else {
@@ -237,9 +243,12 @@ const Home = () => {
         isObjectTreeOpen={isObjectTreeOpen}
         onToggleObjectTree={() => setIsObjectTreeOpen(prev => !prev)}
         onToggleIndicators={() => setIsIndicatorsOpen(prev => !prev)}
-        onOpenAlerts={() => setIsAlertsOpen(true)}
+        onOpenAlerts={() => {
+          if (checkAccess()) setIsAlertsOpen(true);
+        }}
         activeIndicatorIds={activeIndicatorIds}
         onApplyIndicatorTemplate={onApplyIndicatorTemplate}
+        isGuest={isGuest}
       />
 
       <div className="flex flex-1 min-h-0 relative">
@@ -475,7 +484,7 @@ const Home = () => {
         </div>
       )}
 
-      <ReplayToolbar />
+      {!isGuest && <ReplayToolbar />}
 
       {/* BOTTOM FOOTER */}
       <div className="h-8 border-t-4 border-tv-border bg-tv-bg-base flex items-center justify-between px-4 text-xs font-semibold text-tv-text-secondary select-none flex-shrink-0">

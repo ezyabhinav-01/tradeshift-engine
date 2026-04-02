@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
+import axios from 'axios';
 import { createChart, ColorType, CandlestickSeries } from '@pipsend/charts';
 import type { IChartApi, ISeriesApi } from '@pipsend/charts';
 import { useChartIndicators } from '../../hooks/useChartIndicators';
@@ -829,6 +830,26 @@ export const ProChart: React.FC<ProChartProps> = ({
 
       if (triggered) {
         console.log(`🔔 ALERT TRIGGERED: ${alert.condition} on ${alert.symbol} at ${currentPrice} (Threshold: ${alert.value})`);
+        
+        // --- NEW: Trigger Backend Email Alert ---
+        const triggerBackendAlert = async () => {
+          try {
+             await axios.post('/api/trade/alert/trigger', {
+              symbol: alert.symbol,
+              condition: alert.condition,
+              target_value: alert.value,
+              current_price: currentPrice,
+              side: 'TARGET', // Horizontal Line alerts are general targets
+              message: alert.message || `Price ${alert.condition} Rs ${alert.value}`
+            }, { withCredentials: true });
+            console.log('📧 Backend alert email triggered successfully');
+          } catch (err) {
+            console.error('❌ Failed to trigger backend alert email:', err);
+          }
+        };
+        triggerBackendAlert();
+        // ----------------------------------------
+
         toast.info(alert.message, {
           description: `Price reached ${value.toFixed(2)}`,
           duration: 10000,

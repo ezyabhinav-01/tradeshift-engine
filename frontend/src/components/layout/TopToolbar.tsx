@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { IndicatorTemplateMenu } from '../ProChart/IndicatorTemplateMenu';
 import { LayoutSwitcher } from '../ProChart/MultiChartGrid';
 import type { IndicatorTemplate } from '../../store/useChartObjects';
+import { useAccessControl } from '../../hooks/useAccessControl';
 
 const TIMEFRAMES: { id: TimeframeId; label: string; shortLabel: string }[] = [
     { id: '1min',  label: '1 Minute',   shortLabel: '1m' },
@@ -33,14 +34,17 @@ interface TopToolbarProps {
     onOpenAlerts?: () => void;
     activeIndicatorIds: string[];
     onApplyIndicatorTemplate: (template: IndicatorTemplate) => void;
+    isGuest?: boolean;
 }
 
 const TopToolbar = ({ 
     isNewsOpen, onToggleNews, isObjectTreeOpen, onToggleObjectTree, 
-    onToggleIndicators, onOpenAlerts, activeIndicatorIds, onApplyIndicatorTemplate 
+    onToggleIndicators, onOpenAlerts, activeIndicatorIds, onApplyIndicatorTemplate,
+    isGuest
 }: TopToolbarProps) => {
     const { selectedSymbol, isReplayActive, toggleReplay } = useGame();
     const { activeChartId, updateChart, activeTimeframe, setActiveTimeframe } = useMultiChartStore();
+    const { checkAccess } = useAccessControl();
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const [isTimeframeOpen, setIsTimeframeOpen] = useState(false);
     const timeframeRef = useRef<HTMLDivElement>(null);
@@ -151,7 +155,9 @@ const TopToolbar = ({
                 />
 
                 {/* Multi-Chart Layout Switcher */}
-                <LayoutSwitcher />
+                <div className={isGuest ? "opacity-30 pointer-events-none filter grayscale" : ""}>
+                    <LayoutSwitcher />
+                </div>
 
                 <Separator orientation="vertical" className="h-6 bg-tv-border" />
 
@@ -170,9 +176,11 @@ const TopToolbar = ({
                 <div className="flex items-center gap-2 ml-2">
                     <Button
                         variant="ghost"
-                        onClick={toggleReplay}
+                        onClick={() => {
+                            if (checkAccess()) toggleReplay();
+                        }}
                         className={`h-8 gap-2 px-2 border border-tv-border text-tv-text-primary hover:opacity-90 ${isReplayActive ? 'bg-gradient-to-r from-blue-600/20 to-blue-700/20 text-blue-500 border-blue-500/50' : 'bg-tv-bg-pane'
-                            }`}
+                            } ${isGuest ? 'opacity-40 cursor-not-allowed' : ''}`}
                     >
                         <Rewind size={18} />
                         <span className="text-sm font-bold">Replay</span>
@@ -208,7 +216,9 @@ const TopToolbar = ({
                     size="icon"
                     className="h-8 w-8 hover:bg-tv-bg-pane/50 hover:text-primary"
                     title="Stock Research Hub (FinGPT)"
-                    onClick={() => navigate(`/research/${selectedSymbol || 'RELIANCE'}`)}
+                    onClick={() => {
+                        if (checkAccess()) navigate(`/research/${selectedSymbol || 'RELIANCE'}`);
+                    }}
                 >
                     <SearchCode size={18} />
                 </Button>

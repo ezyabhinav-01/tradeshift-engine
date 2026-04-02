@@ -49,6 +49,7 @@ const TradePanel = ({ price, onExecute, onClose }: TradePanelProps) => {
   const [takeProfit, setTakeProfit] = useState<string>('');
   const [alertEnabled, setAlertEnabled] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
 
   // Animate in
   useEffect(() => {
@@ -107,7 +108,10 @@ const TradePanel = ({ price, onExecute, onClose }: TradePanelProps) => {
       toast.error(error);
       return;
     }
+    setIsConfirming(true);
+  };
 
+  const handleConfirm = () => {
     const orderData: OrderData = {
       symbol: activeSymbol,
       direction,
@@ -316,15 +320,49 @@ const TradePanel = ({ price, onExecute, onClose }: TradePanelProps) => {
                 </div>
 
                 {/* Submit Action */}
-                <button 
-                  disabled={!isPlaying}
-                  onClick={handleExecute}
-                  className={`w-full py-5 rounded-md font-black text-lg transition-all transform active:scale-[0.98] disabled:opacity-30 disabled:grayscale ${isBuy ? 'bg-[#089981] hover:bg-[#067a65] shadow-xl shadow-[#089981]/20' : 'bg-[#f23645] hover:bg-[#d12435] shadow-xl shadow-[#f23645]/20'} text-white`}
-                >
-                  PLACE {direction} {orderType} ORDER
-                </button>
+                {!isConfirming ? (
+                  <button 
+                    disabled={!isPlaying}
+                    onClick={handleExecute}
+                    className={`w-full py-5 rounded-md font-black text-lg transition-all transform active:scale-[0.98] disabled:opacity-30 disabled:grayscale ${isBuy ? 'bg-[#089981] hover:bg-[#067a65] shadow-xl shadow-[#089981]/20' : 'bg-[#f23645] hover:bg-[#d12435] shadow-xl shadow-[#f23645]/20'} text-white`}
+                  >
+                    PLACE {direction} {orderType} ORDER
+                  </button>
+                ) : (
+                  <div className="space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                    <div className="p-4 bg-white/5 border border-white/10 rounded-xl space-y-2">
+                       <p className="text-xs font-black text-white/40 uppercase tracking-widest text-center">Confirm Order Details</p>
+                       <div className="flex justify-between items-center py-1">
+                          <span className="text-sm text-white/60">Action</span>
+                          <span className={`text-sm font-bold ${isBuy ? 'text-[#089981]' : 'text-[#f23645]'}`}>{direction} {orderType}</span>
+                       </div>
+                       <div className="flex justify-between items-center py-1">
+                          <span className="text-sm text-white/60">Quantity</span>
+                          <span className="text-sm font-bold text-white">{qty} units</span>
+                       </div>
+                       <div className="flex justify-between items-center py-1">
+                          <span className="text-sm text-white/60">Total Value</span>
+                          <span className="text-sm font-bold text-white">₹{((orderType === 'MARKET' ? price : limitPrice) * qty).toLocaleString()}</span>
+                       </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <button 
+                        onClick={() => setIsConfirming(false)}
+                        className="flex-1 py-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold transition-all"
+                      >
+                        CANCEL
+                      </button>
+                      <button 
+                        onClick={handleConfirm}
+                        className={`flex-[2] py-4 rounded-xl font-black text-white shadow-xl transition-all active:scale-[0.98] ${isBuy ? 'bg-[#089981] hover:bg-[#067a65] shadow-[#089981]/20' : 'bg-[#f23645] hover:bg-[#d12435] shadow-[#f23645]/20'}`}
+                      >
+                        CONFIRM {direction}
+                      </button>
+                    </div>
+                  </div>
+                )}
 
-                {!isPlaying && (
+                {!isPlaying && !isConfirming && (
                   <p className="text-center text-[10px] font-black text-white/20 tracking-widest uppercase">Start simulation to trade</p>
                 )}
               </div>

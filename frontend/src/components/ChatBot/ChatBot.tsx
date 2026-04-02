@@ -4,6 +4,7 @@ import { sendChatQuery, fetchSuggestedTopics } from '../../services/chatApi';
 import type { ChatMessage } from '../../services/chatApi';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
+import { useAuth } from '../../context/AuthContext';
 
 export const ChatBot: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -19,6 +20,8 @@ export const ChatBot: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isGuest = !user;
 
   // Auto-resize textarea
   useEffect(() => {
@@ -128,8 +131,8 @@ export const ChatBot: React.FC = () => {
   
   const location = useLocation();
 
-  // Hide on community page
-  if (location.pathname === '/community') {
+  // Hide on community page or for guests
+  if (location.pathname === '/community' || isGuest) {
     return null;
   }
 

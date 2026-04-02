@@ -10,8 +10,12 @@ const navItems = [
     { name: 'Learn', path: '/learn', icon: GraduationCap },
 ];
 
+import { useAccessControl } from '../../hooks/useAccessControl';
+import { useAuth } from '../../context/AuthContext';
+
 export const NavItems = ({ isMobile, onItemClick }: { isMobile?: boolean, onItemClick?: () => void }) => {
     const location = useLocation();
+    const { checkAccess } = useAccessControl();
     const [isMoreOpen, setIsMoreOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -34,13 +38,18 @@ export const NavItems = ({ isMobile, onItemClick }: { isMobile?: boolean, onItem
 
     return (
         <nav className={isMobile ? "flex flex-col gap-4 w-full" : "hidden lg:flex items-center gap-6"}>
-            {navItems.map((item) => {
+            {navItems.filter(item => {
+                if (item.name === 'Trade' && location.pathname === '/') return false;
+                return true;
+            }).map((item) => {
                 const isActive = location.pathname === item.path;
                 return (
                     <Link
                         key={item.path}
                         to={item.path}
-                        onClick={handleItemClick}
+                        onClick={(e) => {
+                            handleItemClick();
+                        }}
                         className={`text-sm font-semibold transition-colors duration-200 ${isActive
                                 ? 'text-tv-primary'
                                 : 'text-tv-text-secondary hover:text-tv-text-primary'
@@ -73,7 +82,14 @@ export const NavItems = ({ isMobile, onItemClick }: { isMobile?: boolean, onItem
 
                         <Link
                             to="/community"
-                            onClick={() => { setIsMoreOpen(false); handleItemClick(); }}
+                            onClick={(e) => { 
+                                if (!checkAccess()) {
+                                    e.preventDefault();
+                                    return;
+                                }
+                                setIsMoreOpen(false); 
+                                handleItemClick(); 
+                            }}
                             className={`flex items-center gap-2 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg transition-colors outline-none cursor-pointer ${isMobile ? 'w-full' : ''}`}
                         >
                             <LayoutDashboard size={16} className="text-tv-primary" />
@@ -82,7 +98,14 @@ export const NavItems = ({ isMobile, onItemClick }: { isMobile?: boolean, onItem
 
                         <Link
                             to="/help"
-                            onClick={() => { setIsMoreOpen(false); handleItemClick(); }}
+                            onClick={(e) => { 
+                                if (!checkAccess()) {
+                                    e.preventDefault();
+                                    return;
+                                }
+                                setIsMoreOpen(false); 
+                                handleItemClick(); 
+                            }}
                             className={`flex items-center gap-2 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg transition-colors outline-none cursor-pointer ${isMobile ? 'w-full' : ''}`}
                         >
                             <HelpCircle size={16} className="text-tv-primary" />

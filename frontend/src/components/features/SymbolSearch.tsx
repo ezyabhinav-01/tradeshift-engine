@@ -31,8 +31,9 @@ export const SymbolSearch: React.FC<SymbolSearchProps> = ({ open, onOpenChange, 
     const [availableSymbols, setAvailableSymbols] = useState<Instrument[]>([]);
     const [isLoading, setIsLoading] = useState(false);
 
-    const { addChart, charts } = useMultiChartStore();
-    const canAddMore = charts.length < 4;
+    const chartsCount = useMultiChartStore(state => state.charts.length);
+    const addChart = useMultiChartStore(state => state.addChart);
+    const canAddMore = chartsCount < 4;
 
     // Fetch available symbols on mount with Mock Fallback
     useEffect(() => {
@@ -42,7 +43,6 @@ export const SymbolSearch: React.FC<SymbolSearchProps> = ({ open, onOpenChange, 
                 const response = await fetch(`/api/available-symbols`);
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
-                console.log('📦 SymbolSearch: Raw API Data:', data);
 
                 const rawSymbols = Array.isArray(data.symbols) ? data.symbols : [];
                 const formattedSymbols = rawSymbols.map((s: any) => {
@@ -63,7 +63,6 @@ export const SymbolSearch: React.FC<SymbolSearchProps> = ({ open, onOpenChange, 
                 }).filter((s: any) => s.symbol);
 
                 if (formattedSymbols.length === 0) {
-                    console.warn('⚠️ SymbolSearch: No symbols found in API response');
                     throw new Error("No symbols returned by API");
                 }
 
@@ -109,7 +108,6 @@ export const SymbolSearch: React.FC<SymbolSearchProps> = ({ open, onOpenChange, 
     }, [query, availableSymbols]);
 
     const handleSelect = useCallback((instrument: Instrument) => {
-        console.log('🎯 SymbolSearch: handleSelect triggered for:', instrument.symbol, instrument.token);
         onSelect(instrument.symbol, instrument.token);
         setQuery('');
         onOpenChange(false);
@@ -122,7 +120,6 @@ export const SymbolSearch: React.FC<SymbolSearchProps> = ({ open, onOpenChange, 
         onOpenChange(false);
     }, [addChart, onOpenChange]);
 
-    console.log('🔍 SymbolSearch render:', { open, availableSymbols: availableSymbols.length, results: results.length });
 
     return (
         <CommandDialog open={open} onOpenChange={onOpenChange} shouldFilter={false}>

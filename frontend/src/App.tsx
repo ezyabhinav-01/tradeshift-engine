@@ -4,6 +4,7 @@ import { GameProvider } from './context/GameContext';
 import { Toaster } from 'sonner';
 import { ChatBot } from './components/ChatBot/ChatBot';
 import { AuthProvider } from './context/AuthContext';
+import { AccessProvider } from './hooks/useAccessControl';
 import { NotificationProvider } from './context/NotificationContext';
 import Login from './pages/auth/Login';
 import Signup from './pages/auth/Signup';
@@ -76,11 +77,13 @@ export default function App() {
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
       <AuthProvider>
-        <NotificationProvider>
-          <GameProvider>
-            <AppContent />
-          </GameProvider>
-        </NotificationProvider>
+        <AccessProvider>
+          <NotificationProvider>
+            <GameProvider>
+              <AppContent />
+            </GameProvider>
+          </NotificationProvider>
+        </AccessProvider>
       </AuthProvider>
     </ThemeProvider>
   );

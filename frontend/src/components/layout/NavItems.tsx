@@ -3,19 +3,18 @@ import { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Newspaper, LineChart, Search, Briefcase, LayoutDashboard, GraduationCap, HelpCircle } from 'lucide-react';
 
 const navItems = [
-    { name: 'Trade', path: '/trade', icon: LineChart },
     { name: 'Markets', path: '/markets', icon: LayoutDashboard },
-    { name: 'Portfolio', path: '/portfolio', icon: Briefcase },
     { name: 'Screener', path: '/screener', icon: Search },
+    { name: 'Portfolio', path: '/portfolio', icon: Briefcase },
     { name: 'Learn', path: '/learn', icon: GraduationCap },
+    { name: 'Trade', path: '/trade', icon: LineChart },
 ];
 
-import { useAccessControl } from '../../hooks/useAccessControl';
 import { useAuth } from '../../context/AuthContext';
 
 export const NavItems = ({ isMobile, onItemClick }: { isMobile?: boolean, onItemClick?: () => void }) => {
     const location = useLocation();
-    const { checkAccess } = useAccessControl();
+    const { user } = useAuth();
     const [isMoreOpen, setIsMoreOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -39,7 +38,7 @@ export const NavItems = ({ isMobile, onItemClick }: { isMobile?: boolean, onItem
     return (
         <nav className={isMobile ? "flex flex-col gap-4 w-full" : "hidden lg:flex items-center gap-6"}>
             {navItems.filter(item => {
-                if (item.name === 'Trade' && location.pathname === '/') return false;
+                if (item.name === 'Trade' && (!user || location.pathname === '/')) return false;
                 return true;
             }).map((item) => {
                 const isActive = location.pathname === item.path;
@@ -47,7 +46,7 @@ export const NavItems = ({ isMobile, onItemClick }: { isMobile?: boolean, onItem
                     <Link
                         key={item.path}
                         to={item.path}
-                        onClick={(e) => {
+                        onClick={() => {
                             handleItemClick();
                         }}
                         className={`text-sm font-semibold transition-colors duration-200 ${isActive
@@ -82,11 +81,7 @@ export const NavItems = ({ isMobile, onItemClick }: { isMobile?: boolean, onItem
 
                         <Link
                             to="/community"
-                            onClick={(e) => { 
-                                if (!checkAccess()) {
-                                    e.preventDefault();
-                                    return;
-                                }
+                            onClick={() => { 
                                 setIsMoreOpen(false); 
                                 handleItemClick(); 
                             }}
@@ -98,11 +93,7 @@ export const NavItems = ({ isMobile, onItemClick }: { isMobile?: boolean, onItem
 
                         <Link
                             to="/help"
-                            onClick={(e) => { 
-                                if (!checkAccess()) {
-                                    e.preventDefault();
-                                    return;
-                                }
+                            onClick={() => { 
                                 setIsMoreOpen(false); 
                                 handleItemClick(); 
                             }}

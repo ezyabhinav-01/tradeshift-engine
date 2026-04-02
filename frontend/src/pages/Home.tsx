@@ -507,7 +507,6 @@ const Home = () => {
 
         {/* Bottom Right: Time Info */}
         <div className="flex items-center space-x-4 pr-1">
-          <span className="hover:text-tv-text-primary cursor-pointer">Replay Trading</span>
           <span className="text-tv-text-primary border-b-2 border-blue-500 pb-[6px] cursor-pointer font-bold">Trade</span>
           <span className="ml-4 tabular-nums">{new Date().toLocaleTimeString()} UTC+5:30</span>
         </div>

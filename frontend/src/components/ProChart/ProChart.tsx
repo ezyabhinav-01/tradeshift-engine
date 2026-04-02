@@ -7,7 +7,7 @@ import { useDrawingTools } from '../../hooks/useDrawingTools';
 import type { DrawingToolId } from '../../hooks/useDrawingTools';
 import { useIndicatorSettings } from '../../store/useIndicatorSettings';
 import { useMultiChartStore } from '../../store/useMultiChartStore';
-import { useThemeStore } from '../../store/themeStore';
+import { useTheme } from '../../context/ThemeContext';
 import type { ChartInstance } from '../../store/useMultiChartStore';
 import { useDrawingSettings } from '../../store/useDrawingSettings';
 import IndicatorLegend from './IndicatorLegend';
@@ -90,8 +90,9 @@ export const ProChart: React.FC<ProChartProps> = ({
   isAlertsOpen: externalAlertsOpen, onToggleAlerts, onIndicatorStateChange,
   chartId = 'chart-0', isPrimary = true, gameData,
 }) => {
-  const { theme: globalTheme } = useThemeStore();
-  const theme = propTheme || globalTheme;
+  const { isDark: globalIsDark } = useTheme();
+  const isDark = propTheme ? propTheme === 'dark' : globalIsDark;
+  const theme = isDark ? 'dark' : 'light';
   const { magnetMode } = useDrawingSettings();
   const internalGame = useGame();
   const {
@@ -124,8 +125,10 @@ export const ProChart: React.FC<ProChartProps> = ({
   }, [activeDrawingTool]);
 
   const [positionsWithPnL, setPositionsWithPnL] = useState<any[]>([]);
+  const [hoveredCandle, setHoveredCandle] = useState<any | null>(null);
   const [isLocalAlertsOpen, setIsLocalAlertsOpen] = useState(false);
   const lastPriceRef = useRef<number>(currentPrice);
+  const lastFitIdRef = useRef<string>('');
 
   // Combine external (from TopToolbar) and internal (from DrawingToolbar) alert triggers
   const isAlertsDialogOpen = externalAlertsOpen || isLocalAlertsOpen;
@@ -146,7 +149,24 @@ export const ProChart: React.FC<ProChartProps> = ({
 
   // OHLC legend fallback: use last candle from data prop when currentCandle is null
   // OHLC legend fallback: use last candle from data prop when currentCandle is null
-  const displayCandle = currentCandle || 
+  const { activeIndicators, currentValues, hoverValues, updateHoverValues,
+    addSMA, addEMA, addVWAP, addBB, addRSI, addMACD, 
+    removeIndicator, setIndicatorVisibility,
+    applyTemplate
+  } = useChartIndicators(chartInstance, seriesInstance);
+
+  // Fast O(1) lookup for candles during hover
+  const indexedData = useMemo(() => {
+    const map = new Map<number, any>();
+    data.forEach(d => {
+      if (d && typeof d.time === 'number') {
+        map.set(d.time, d);
+      }
+    });
+    return map;
+  }, [data]);
+
+  const displayCandle = hoveredCandle || currentCandle || 
     (myIndexData ? { 
         time: Math.floor(currentTime?.getTime() || 0 / 1000),
         open: myIndexData.price, 
@@ -156,12 +176,6 @@ export const ProChart: React.FC<ProChartProps> = ({
         symbol: mySymbol
     } : null) || 
     (data.length > 0 ? data[data.length - 1] : null);
-
-  const { activeIndicators, currentValues, hoverValues, updateHoverValues,
-    addSMA, addEMA, addVWAP, addBB, addRSI, addMACD, 
-    removeIndicator, setIndicatorVisibility,
-    applyTemplate
-  } = useChartIndicators(chartInstance, seriesInstance);
 
   const { alerts, updateAlert } = useAlerts();
 
@@ -379,7 +393,7 @@ export const ProChart: React.FC<ProChartProps> = ({
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
-    const isDark = theme === 'dark';
+    // Using isDark from above scope
     
     const chart = createChart(chartContainerRef.current, {
       layout: { 
@@ -398,6 +412,18 @@ export const ProChart: React.FC<ProChartProps> = ({
         timeVisible: true, 
         secondsVisible: false, 
         borderColor: isDark ? 'rgba(42, 46, 57, 0.5)' : '#E0E3EB',
+        kineticScroll: true,
+      },
+      handleScroll: {
+        mouseWheel: true,
+        pressedMouseMove: true,
+        horzTouchDrag: true,
+        vertTouchDrag: true,
+      },
+      handleScale: {
+        axisPressedMouseMove: true,
+        mouseWheel: true,
+        pinch: true,
       },
       crosshair: {
         mode: magnetMode ? 1 : 0,
@@ -448,7 +474,7 @@ export const ProChart: React.FC<ProChartProps> = ({
     if (currentData.length > 0) {
       const uniqueData = Array.from(new Map(currentData.map((d) => [d.time, d])).values()).sort((a, b) => (a.time as number) - (b.time as number));
       series.setData(uniqueData as any);
-      chart.timeScale().fitContent();
+      // No fitContent() here, as it will be handled by the data effect with proper conditions
     }
 
     const resizeObserver = new ResizeObserver((entries) => {
@@ -482,8 +508,16 @@ export const ProChart: React.FC<ProChartProps> = ({
     const handleCrosshairMove = (param: any) => {
       if (param.time) {
         updateHoverValues(param.time);
+        // Sync OHLC with crosshair
+        const candle = indexedData.get(param.time as number);
+        if (candle) {
+          setHoveredCandle(candle);
+        } else {
+          setHoveredCandle(null);
+        }
       } else {
         updateHoverValues(null);
+        setHoveredCandle(null);
       }
     };
 
@@ -612,9 +646,11 @@ export const ProChart: React.FC<ProChartProps> = ({
         // Reset building candle when doing a full reload
         buildingCandleRef.current = null;
         
-        // Fit content after loading new data (e.g. timeframe change)
-        if (!isActivelyPlaying && chartRef.current && uniqueData.length > 0) {
+        // Fit content ONLY IF symbol or timeframe has changed (to preserve user's manual zoom)
+        const currentFitId = `${mySymbol}-${activeTimeframe}`;
+        if (chartRef.current && uniqueData.length > 0 && lastFitIdRef.current !== currentFitId) {
           chartRef.current.timeScale().fitContent();
+          lastFitIdRef.current = currentFitId;
         }
       }
 

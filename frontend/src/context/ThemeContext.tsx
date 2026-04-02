@@ -10,11 +10,13 @@ type ThemeProviderProps = {
 
 type ThemeProviderState = {
     theme: Theme;
+    isDark: boolean;
     setTheme: (theme: Theme) => void;
 };
 
 const initialState: ThemeProviderState = {
     theme: "system",
+    isDark: false,
     setTheme: () => null,
 };
 
@@ -28,29 +30,27 @@ export function ThemeProvider({
     const [theme, setTheme] = useState<Theme>(
         () => (localStorage.getItem(storageKey) as Theme) || defaultTheme
     );
+    const [isDark, setIsDark] = useState(false);
 
     useEffect(() => {
         const root = window.document.documentElement;
-
         root.classList.remove("light", "dark");
 
+        let resolvedTheme = theme;
         if (theme === "system") {
-            const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
-                .matches
-                ? "dark"
-                : "light";
-
-            root.classList.add(systemTheme);
-            return;
+            const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+            resolvedTheme = systemTheme;
         }
 
-        root.classList.add(theme);
+        root.classList.add(resolvedTheme);
+        setIsDark(resolvedTheme === "dark");
     }, [theme]);
 
     return (
         <ThemeProviderContext.Provider 
             value={{ 
                 theme, 
+                isDark,
                 setTheme: (newTheme: Theme) => {
                     localStorage.setItem(storageKey, newTheme);
                     setTheme(newTheme);

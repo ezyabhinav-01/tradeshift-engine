@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { 
-    Bell, Rewind, Settings, Maximize, Camera, Newspaper, SearchCode,
-    PlusCircle, BarChart2, LayoutTemplate, Layers, ChevronDown
+    Bell, Rewind, Newspaper, SearchCode,
+    PlusCircle, LayoutTemplate, ChevronDown
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -38,7 +38,7 @@ interface TopToolbarProps {
 }
 
 const TopToolbar = ({ 
-    isNewsOpen, onToggleNews, isObjectTreeOpen, onToggleObjectTree, 
+    isNewsOpen, onToggleNews, 
     onToggleIndicators, onOpenAlerts, activeIndicatorIds, onApplyIndicatorTemplate,
     isGuest
 }: TopToolbarProps) => {
@@ -135,11 +135,6 @@ const TopToolbar = ({
                     )}
                 </div>
 
-                {/* Chart Type */}
-                <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-tv-bg-pane/50 hover:text-blue-500" onClick={() => toast.info('Chart Type Options...')}>
-                    <BarChart2 size={18} className="text-tv-text-primary" />
-                </Button>
-
                 <Separator orientation="vertical" className="h-6 bg-tv-border" />
 
                 {/* Indicators */}
@@ -161,11 +156,6 @@ const TopToolbar = ({
 
                 <Separator orientation="vertical" className="h-6 bg-tv-border" />
 
-                {/* Object Tree */}
-                <Button variant="ghost" size="icon" className={`h-8 w-8 hover:bg-tv-bg-pane/50 hover:text-blue-500 ${isObjectTreeOpen ? 'text-blue-500 bg-tv-bg-pane/50' : ''}`} onClick={onToggleObjectTree} title="Object Tree">
-                    <Layers size={18} />
-                </Button>
-
                 {/* Alert */}
                 <Button variant="ghost" className="h-8 gap-2 px-2 hover:bg-tv-bg-pane/50 hover:text-blue-500" onClick={onOpenAlerts}>
                     <Bell size={18} />
@@ -185,15 +175,6 @@ const TopToolbar = ({
                         <Rewind size={18} />
                         <span className="text-sm font-bold">Replay</span>
                     </Button>
-
-                    <div className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border ${
-                        isReplayActive 
-                        ? 'bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400' 
-                        : 'bg-green-500/10 border-green-500/30 text-green-600 dark:text-green-400'
-                    }`}>
-                        {isReplayActive ? 'Simulation' : 'Live Mode'}
-                    </div>
-
                 </div>
             </div>
 
@@ -221,22 +202,6 @@ const TopToolbar = ({
                     }}
                 >
                     <SearchCode size={18} />
-                </Button>
-
-                <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-tv-bg-pane/50 hover:text-blue-500" title="Chart Settings" onClick={() => toast.info('Settings opening...')}>
-                    <Settings size={18} />
-                </Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-tv-bg-pane/50 hover:text-blue-500" title="Fullscreen" onClick={() => {
-                    if (!document.fullscreenElement) {
-                        document.documentElement.requestFullscreen();
-                    } else if (document.exitFullscreen) {
-                        document.exitFullscreen();
-                    }
-                }}>
-                    <Maximize size={18} />
-                </Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-tv-bg-pane/50 hover:text-blue-500" title="Take a snapshot" onClick={() => toast.success('Snapshot captured!')}>
-                    <Camera size={18} />
                 </Button>
 
                 <Button className="h-8 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 shadow-md text-white text-xs px-4 ml-2 rounded font-bold cursor-pointer" onClick={() => toast.success('Ideas Published!')}>

@@ -7,7 +7,6 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useAuth } from '../context/AuthContext';
 import { useGame } from '../context/GameContext';
 import { useMultiChartStore } from '../store/useMultiChartStore';
-import { useAccessControl } from '../hooks/useAccessControl';
 import { SymbolSearch } from '../components/features/SymbolSearch';
 import { LogOut, ChevronLeft, ChevronRight, ChevronDown, UserCircle, BarChart3, BarChart2, Globe, Search, PieChart, BookOpen, Activity, MoreHorizontal, CheckCircle2 } from 'lucide-react';
 import './LandingPage.css';
@@ -1287,7 +1286,6 @@ export default function LandingPage() {
   const { user, logout } = useAuth();
   const { setSymbol } = useGame();
   const activeChartId = useMultiChartStore(state => state.activeChartId);
-  const { checkAccess } = useAccessControl();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [showWelcome, setShowWelcome] = useState(true);
@@ -1450,7 +1448,7 @@ export default function LandingPage() {
                 </button>
                 <div className="absolute top-full right-0 mt-2 w-48 bg-[#0a0f1d] border border-white/10 rounded-xl shadow-2xl py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
                   <Link to="/news" className="block px-4 py-2 hover:bg-white/5 text-sm">FinNews Hub</Link>
-                  <Link to="/community" className="block px-4 py-2 hover:bg-white/5 text-sm" onClick={(e) => { e.preventDefault(); checkAccess(); }}>Community</Link>
+                  <Link to="/community" className="block px-4 py-2 hover:bg-white/5 text-sm">Community</Link>
                   <Link to="/help" className="block px-4 py-2 hover:bg-white/5 text-sm">Help Center</Link>
                 </div>
               </div>
@@ -1558,8 +1556,8 @@ export default function LandingPage() {
           </Reveal>
 
           <Reveal type="reveal" delay={400} className="hero-actions" when={line2Done}>
-            <button onClick={() => navigate(user ? '/trade' : '/signup')} className="btn btn-primary btn-large">Start Learning Free</button>
-            <button className="btn btn-outline btn-large">View Curriculum</button>
+            <button onClick={() => navigate(user ? '/trade' : '/learn')} className="btn btn-primary btn-large">Start Learning Free</button>
+            <button onClick={() => navigate('/learn')} className="btn btn-outline btn-large">View Curriculum</button>
           </Reveal>
 
           <Reveal type="reveal" delay={500} className="hero-stats" when={line2Done}>

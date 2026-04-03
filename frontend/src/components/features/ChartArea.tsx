@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createChart, ColorType, CrosshairMode } from 'lightweight-charts';
 import type { ISeriesApi, IChartApi, UTCTimestamp, IPriceLine } from 'lightweight-charts';
 import { useGame } from '../../hooks/useGame';
-import { useThemeStore } from '../../store/themeStore';
+import { useTheme } from '../../context/ThemeContext';
 import { Play, Pause, SkipForward, Calendar as CalendarIcon, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -20,7 +20,7 @@ const ChartArea = ({ onPriceClick, onEntryLineClick, previewPrice, positions: pr
     selectedDate, availableDates, setDate, speed, setSpeed,
     trades, modifyOrder
   } = useGame();
-  const { theme } = useThemeStore();
+  const { isDark } = useTheme();
   const [isDateDropdownOpen, setIsDateDropdownOpen] = useState(false);
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -36,7 +36,6 @@ const ChartArea = ({ onPriceClick, onEntryLineClick, previewPrice, positions: pr
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
-    const isDark = theme === 'dark';
     const chart = createChart(chartContainerRef.current, {
       layout: {
         background: { type: ColorType.Solid, color: 'transparent' },
@@ -156,7 +155,6 @@ const ChartArea = ({ onPriceClick, onEntryLineClick, previewPrice, positions: pr
   // ── Update Theme ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!chartRef.current) return;
-    const isDark = theme === 'dark';
     chartRef.current.applyOptions({
       layout: { textColor: isDark ? '#D1D4DC' : '#131722' },
       grid: {
@@ -170,7 +168,7 @@ const ChartArea = ({ onPriceClick, onEntryLineClick, previewPrice, positions: pr
         borderColor: isDark ? '#1a2333' : '#E0E3EB',
       }
     });
-  }, [theme]);
+  }, [isDark]);
 
   // ── Preview Price Line ─────────────────────────────────────────────────
   useEffect(() => {

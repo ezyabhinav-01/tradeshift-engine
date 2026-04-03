@@ -30,6 +30,7 @@ interface LessonData {
   moduleTitle: string;
   trackId: string;
   xpReward: number;
+  duration: number;
   type: string;
   quizQuestions: QuizQuestion[];
   practiceSceneId?: string;
@@ -251,7 +252,7 @@ export default function LessonViewerPage() {
 
         {/* Duration */}
         <div className="flex items-center gap-3 text-sm text-slate-400 mb-12">
-          <span className="flex items-center gap-1.5"><Clock size={14} /> ~5 min read</span>
+          <span className="flex items-center gap-1.5"><Clock size={14} /> ~{lesson.duration || 5} min read</span>
         </div>
 
         {/* ─── ARTICLE CONTENT ─── */}

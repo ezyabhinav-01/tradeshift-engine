@@ -9,7 +9,7 @@ const api = axios.create({
 export interface Notification {
     id: number;
     title: string;
-    message: string;
+    content: string;
     type: string;
     is_read: boolean;
     created_at: string;

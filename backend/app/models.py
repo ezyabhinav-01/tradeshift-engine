@@ -335,12 +335,50 @@ class SubModule(Base):
     id = Column(Integer, primary_key=True, index=True)
     module_id = Column(Integer, ForeignKey("modules.id", ondelete="CASCADE"))
     title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
     sub_module_number = Column(String(50))
     sort_order = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     module = relationship("Module", back_populates="sub_modules")
     lessons = relationship("Lesson", back_populates="sub_module")
+    comments = relationship("ChapterComment", back_populates="sub_module", cascade="all, delete-orphan")
+
+
+class ChapterComment(Base):
+    """
+    User comments/discussions on a specific chapter (Sub-Module).
+    """
+    __tablename__ = "chapter_comments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sub_module_id = Column(Integer, ForeignKey("sub_modules.id", ondelete="CASCADE"), index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    sub_module = relationship("SubModule", back_populates="comments")
+    user = relationship("User")
+
+
+class TopicTag(Base):
+    """
+    Registered topic tags for the #TopicRef Knowledge Graph.
+    Each tag links to a specific entity (Track, Module, Chapter, or Lesson).
+    Format: #risk-management, #candlestick, #vwap
+    """
+    __tablename__ = "topic_tags"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tag_name = Column(String(100), unique=True, nullable=False, index=True)
+    display_name = Column(String(150), nullable=False)
+    short_summary = Column(Text, nullable=True)
+    target_type = Column(String(20), nullable=False, default='chapter')  # track, module, chapter, lesson
+    target_id = Column(Integer, nullable=False)
+    icon_emoji = Column(String(10), default='📘')
+    usage_count = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class Lesson(Base):
@@ -360,6 +398,7 @@ class Lesson(Base):
     quiz_questions = Column(JSON, default=list)
     practice_scene_id = Column(String(255))
     xp_reward = Column(Integer, default=0)
+    read_time = Column(Integer, default=5)
     is_published = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

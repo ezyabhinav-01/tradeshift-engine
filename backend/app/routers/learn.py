@@ -1,7 +1,7 @@
 # File: backend/app/routers/learn.py
 # Learning Progress API Router
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks,Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from pydantic import BaseModel
@@ -10,10 +10,8 @@ from typing import Optional, List
 
 from sqlalchemy.orm import joinedload
 from app.database import get_db
-from app.models import (
-    Track, Module, SubModule, Lesson, LearningProgress, UserStreak, UserBadge,
-    ChapterComment, User, TopicTag
-)
+from app.models import LearningProgress, UserStreak, UserBadge, Track, Module, SubModule, Lesson
+from app.services.badge_service import check_and_grant_badges
 
 router = APIRouter(prefix="/api/learn", tags=["learn"])
 
@@ -104,7 +102,12 @@ async def get_learning_stats(user_id: int = 1, db: AsyncSession = Depends(get_db
 
 
 @router.post("/progress")
-async def complete_lesson(request: CompleteLessonRequest, user_id: int = 1, db: AsyncSession = Depends(get_db)):
+async def complete_lesson(
+    request: CompleteLessonRequest, 
+    background_tasks: BackgroundTasks,
+    user_id: int = 1, 
+    db: AsyncSession = Depends(get_db)
+):
     """
     Mark a lesson as completed and award XP.
     """
@@ -138,6 +141,9 @@ async def complete_lesson(request: CompleteLessonRequest, user_id: int = 1, db: 
         await update_streak(db, user_id)
 
         await db.commit()
+
+        # [GAMIFICATION] Check for badges in background
+        background_tasks.add_task(check_and_grant_badges, user_id)
 
         return {"status": "completed", "xp_earned": actual_xp}
     except Exception as e:

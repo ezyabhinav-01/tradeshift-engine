@@ -77,6 +77,7 @@ class User(Base):
     risk_tolerance = Column(String, nullable=True) # Low, Moderate, High
     occupation = Column(String, nullable=True) # Student, Job, Retired
     city = Column(String, nullable=True)
+    how_heard_about = Column(String, nullable=True)
     security_pin = Column(String(4), nullable=True)
     
     # --- Forgot Password Fields ---
@@ -88,10 +89,24 @@ class User(Base):
     demat_id = Column(String(50), unique=True, index=True, nullable=True)
     
     refresh_token = Column(String, nullable=True, index=True)
+    is_verified = Column(Boolean, default=False)
     last_active_at = Column(DateTime, default=datetime.utcnow, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
+
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    session_token = Column(String, unique=True, index=True)
+    expires_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    ip_address = Column(String, nullable=True)
+    user_agent = Column(String, nullable=True)
+
+    user = relationship("User")
 
 
 class UserSettings(Base):

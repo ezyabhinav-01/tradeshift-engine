@@ -18,6 +18,34 @@ class CandleResponse(BaseModel):
     close: float
     volume: int
 
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    email: Optional[str] = None
+
+class User(BaseModel):
+    id: int
+    email: str
+    full_name: Optional[str] = None
+    dob: Optional[str] = None
+    phone_number: Optional[str] = None
+    demat_id: Optional[str] = None
+    experience_level: Optional[str] = None
+    investment_goals: Optional[str] = None
+    risk_tolerance: Optional[str] = None
+    preferred_instruments: Optional[str] = None
+    occupation: Optional[str] = None
+    city: Optional[str] = None
+    how_heard_about: Optional[str] = None
+    security_pin: Optional[str] = None
+    created_at: datetime
+    last_active_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
 
 class UserBase(BaseModel):
     email: str
@@ -34,6 +62,7 @@ class UserCreate(UserBase):
     risk_tolerance: Optional[str] = None
     occupation: Optional[str] = None
     city: Optional[str] = None
+    how_heard_about: Optional[str] = None
     security_pin: Optional[str] = None
 
     @field_validator("email")
@@ -78,6 +107,20 @@ class ResetPasswordRequest(BaseModel):
     email: str
     otp_code: str
     new_password: str
+# --- Signup/PIN (OTP Flow) ---
+class SignupVerifyRequest(BaseModel):
+    email: str
+    otp_code: str
+
+class SignupPinRequest(BaseModel):
+    email: str
+    pin: str
+
+    @field_validator("pin")
+    def validate_pin(cls, value):
+        if not value.isdigit() or len(value) != 4:
+            raise ValueError("PIN must be exactly 4 digits.")
+        return value
 # ------------------------------
 
 
@@ -92,14 +135,17 @@ class PinVerifyRequest(BaseModel):
         return value
 
 
-class PinIdentityRequest(BaseModel):
+# --- Signup/PIN (OTP Flow) ---
+class PinResetOtpRequest(BaseModel):
     email: str
-    dob: str
 
-
-class PinResetRequest(BaseModel):
+class PinResetVerifyRequest(BaseModel):
     email: str
-    dob: str
+    otp_code: str
+
+class PinResetConfirmRequest(BaseModel):
+    email: str
+    otp_code: str
     new_pin: str
 
     @field_validator("new_pin")
@@ -108,6 +154,20 @@ class PinResetRequest(BaseModel):
             raise ValueError("New PIN must be exactly 4 digits.")
         return value
 
+class SignupVerifyRequest(BaseModel):
+    email: str
+    otp_code: str
+
+class SignupPinRequest(BaseModel):
+    email: str
+    pin: str
+
+    @field_validator("pin")
+    def validate_pin(cls, value):
+        if not value.isdigit() or len(value) != 4:
+            raise ValueError("PIN must be exactly 4 digits.")
+        return value
+# ---------------------------
 
 class User(UserBase):
     id: int

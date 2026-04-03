@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Response, BackgroundTasks, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from .models import User
+from .models import User, UserSession
+import uuid
 from .database import get_db
 from .schemas import (
     UserCreate, UserLogin, Token, User as UserSchema, 
-    PinVerifyRequest, PinIdentityRequest, PinResetRequest,
+    PinVerifyRequest, SignupVerifyRequest, SignupPinRequest,
+    PinResetOtpRequest, PinResetVerifyRequest, PinResetConfirmRequest,
     ForgotPasswordRequest, OtpVerifyRequest, ResetPasswordRequest,
     UserProfileUpdate
 )
@@ -16,11 +18,10 @@ import os
 import logging
 from .config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
 from .services.email_service import (
-    send_welcome_email,
-    send_pin_verified_email,
-    send_pin_reset_email,
     send_login_alert_email,
     send_pin_created_email,
+    send_signup_otp_email,
+    send_welcome_email,
 )
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,30 @@ def get_password_hash(password):
     salt = bcrypt.gensalt()
     return bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
 
+async def create_session(db: AsyncSession, user_id: int, request: Request, response: Response):
+    session_token = str(uuid.uuid4())
+    expires_at = datetime.utcnow() + timedelta(days=7)
+    
+    db_session = UserSession(
+        user_id=user_id,
+        session_token=session_token,
+        expires_at=expires_at,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent")
+    )
+    db.add(db_session)
+    await db.commit()
+    
+    response.set_cookie(
+        key="session_id",
+        value=session_token,
+        httponly=True,
+        max_age=7 * 24 * 60 * 60, # 7 days
+        samesite="lax",
+        secure=False # Set to True in production
+    )
+    return session_token
+
 from typing import Optional
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
@@ -54,111 +79,123 @@ def generate_demat_id() -> str:
     random_code = f"{random.randint(0, 9999):04d}"
     return f"RS-{category}-{random_code}"
 
-@router.post("/register", response_model=UserSchema)
-async def register(
+@router.post("/register/request")
+async def register_request(
     user: UserCreate, 
-    response: Response, 
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db)
 ):
     # 1. Check if user exists
     result = await db.execute(select(User).filter(User.email == user.email))
     db_user = result.scalars().first()
+    
     if db_user:
-        logger.warning(f"Registration failed: Email {user.email} already exists")
-        raise HTTPException(status_code=400, detail="Email already registered")
+        if db_user.is_verified:
+            raise HTTPException(status_code=400, detail="Email already registered")
+        # Update existing unverified user
+        db_user.hashed_password = get_password_hash(user.password)
+        db_user.full_name = user.full_name
+        db_user.dob = user.dob
+        db_user.phone_number = user.phone_number
+        db_user.experience_level = user.experience_level
+        db_user.investment_goals = user.investment_goals
+        db_user.preferred_instruments = user.preferred_instruments
+        db_user.risk_tolerance = user.risk_tolerance
+        db_user.occupation = user.occupation
+        db_user.city = user.city
+        db_user.how_heard_about = user.how_heard_about
+    else:
+        # 2. Create Pending User
+        hashed_password = get_password_hash(user.password)
+        db_user = User(
+            email=user.email, 
+            hashed_password=hashed_password, 
+            full_name=user.full_name,
+            dob=user.dob,
+            phone_number=user.phone_number,
+            experience_level=user.experience_level,
+            investment_goals=user.investment_goals,
+            preferred_instruments=user.preferred_instruments,
+            risk_tolerance=user.risk_tolerance,
+            occupation=user.occupation,
+            city=user.city,
+            how_heard_about=user.how_heard_about,
+            security_pin=None,
+            is_verified=False,
+            demat_id=generate_demat_id()
+        )
+        db.add(db_user)
     
-    # 2. Create User
-    hashed_password = get_password_hash(user.password)
-
-
-         
-    new_user = User(
-        email=user.email, 
-        hashed_password=hashed_password, 
-        full_name=user.full_name,
-        dob=user.dob,
-        phone_number=user.phone_number,
-        experience_level=user.experience_level,
-        investment_goals=user.investment_goals,
-        preferred_instruments=user.preferred_instruments,
-        risk_tolerance=user.risk_tolerance,
-        occupation=user.occupation,
-        city=user.city,
-        security_pin=user.security_pin,
-        demat_id=generate_demat_id()
-    )
+    # 3. Generate OTP
+    otp = str(random.randint(100000, 999999))
+    db_user.otp_code = otp
+    db_user.otp_expiry = datetime.utcnow() + timedelta(minutes=10)
     
-    # Generate Refresh Token
+    await db.commit()
+    
+    # 4. Send OTP Email
+    background_tasks.add_task(send_signup_otp_email, db_user.email, otp)
+    
+    return {"message": "Verification code sent to your email."}
+
+@router.post("/register/verify")
+async def register_verify(
+    request: SignupVerifyRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(User).filter(User.email == request.email))
+    user = result.scalars().first()
+    
+    if not user or user.is_verified:
+        raise HTTPException(status_code=400, detail="Invalid verification request.")
+        
+    if user.otp_code != request.otp_code:
+        raise HTTPException(status_code=400, detail="Invalid verification code.")
+    
+    if datetime.utcnow() > user.otp_expiry:
+        raise HTTPException(status_code=400, detail="Verification code has expired.")
+    
+    user.is_verified = True
+    user.otp_code = None
+    user.otp_expiry = None
+    await db.commit()
+    
+    return {"message": "Email verified successfully. Please set your security PIN."}
+
+@router.post("/register/set-pin", response_model=UserSchema)
+async def register_set_pin(
+    request: Request,
+    request_data: SignupPinRequest,
+    response: Response,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(User).filter(User.email == request_data.email))
+    user = result.scalars().first()
+    
+    if not user or not user.is_verified:
+        raise HTTPException(status_code=400, detail="Account must be verified before setting a PIN.")
+        
+    if user.security_pin is not None:
+         raise HTTPException(status_code=400, detail="Security PIN already set.")
+
+    user.security_pin = request_data.pin
+    
     refresh_token = create_access_token(
         data={"sub": user.email, "type": "refresh"}, 
         expires_delta=timedelta(days=7)
     )
-    new_user.refresh_token = refresh_token
-
-    db.add(new_user)
+    user.refresh_token = refresh_token
     await db.commit()
-    await db.refresh(new_user)
+    await db.refresh(user)
 
-    # 3. Auto-Login (Set Cookies)
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": new_user.email}, expires_delta=access_token_expires
-    )
+    await create_session(db, user.id, request, response)
+
+    background_tasks.add_task(send_welcome_email, user.email, user.full_name or "Trader", user.demat_id)
     
-    response.set_cookie(
-        key="access_token",
-        value=access_token,
-        httponly=True,
-        secure=False,
-        samesite="lax",
-        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
-    )
-    
-    response.set_cookie(
-        key="refresh_token",
-        value=refresh_token,
-        httponly=True,
-        secure=False,
-        samesite="lax",
-        max_age=7 * 24 * 60 * 60 # 7 days
-    )
+    return user
 
-    # 4. Trigger Inngest Workflow
-    import inngest
-    from app.inngest.client import inngest_client
-    
-    try:
-        await inngest_client.send(
-            inngest.Event(
-                name="app/user.created",
-                data={
-                    "email": new_user.email,
-                    "firstName": new_user.full_name.split()[0] if new_user.full_name else "Trader",
-                    "fullname": new_user.full_name,
-                    "dob": new_user.dob,
-                    "experience_level": new_user.experience_level,
-                    "investment_goals": new_user.investment_goals,
-                    "preferred_instruments": new_user.preferred_instruments,
-                    "risk_tolerance": new_user.risk_tolerance,
-                    "occupation": new_user.occupation,
-                    "city": new_user.city
-                }
-            )
-        )
-        print(f"✅ Inngest event sent for {new_user.email}")
-    except Exception as e:
-        print(f"❌ Failed to send Inngest event: {e}")
-
-    # 5. Send welcome email and PIN status in background
-    background_tasks.add_task(send_welcome_email, new_user.email, new_user.full_name or "Trader", new_user.demat_id)
-    
-    if new_user.security_pin:
-        background_tasks.add_task(send_pin_created_email, new_user.email, new_user.full_name or "Trader")
-
-    return new_user
-
-@router.post("/login", response_model=UserSchema)
+@router.post("/login")
 async def login(
     user: UserLogin, 
     response: Response,
@@ -168,47 +205,45 @@ async def login(
 ):
     result = await db.execute(select(User).filter(User.email == user.email))
     db_user = result.scalars().first()
+    
     if not db_user or not verify_password(user.password, db_user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password")
     
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(data={"sub": db_user.email}, expires_delta=access_token_expires)
-    
-    refresh_token = create_access_token(
-        data={"sub": db_user.email, "type": "refresh"}, 
-        expires_delta=timedelta(days=7)
-    )
-    db_user.refresh_token = refresh_token
-    await db.commit()
+    # Check if verified
+    if not db_user.is_verified:
+        # Resend OTP if unverified
+        otp = str(random.randint(100000, 999999))
+        db_user.otp_code = otp
+        db_user.otp_expiry = datetime.utcnow() + timedelta(minutes=10)
+        await db.commit()
+        background_tasks.add_task(send_signup_otp_email, db_user.email, otp)
+        return {
+            "status": "REQUIRES_VERIFICATION",
+            "message": "Email not verified. A new code has been sent.",
+            "email": db_user.email
+        }
 
-    response.set_cookie(
-        key="access_token",
-        value=access_token,
-        httponly=True,
-        secure=False,
-        samesite="lax",
-        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
-    )
+    # Check if PIN is set
+    if db_user.security_pin is None:
+        return {
+            "status": "REQUIRES_PIN_SETUP",
+            "message": "Security PIN not setup. Please set your PIN.",
+            "email": db_user.email
+        }
     
-    response.set_cookie(
-        key="refresh_token",
-        value=refresh_token,
-        httponly=True,
-        secure=False,
-        samesite="lax",
-        max_age=7 * 24 * 60 * 60
-    )
+    # Create persistent session
+    await create_session(db, db_user.id, request, response)
     
     # Trigger New Login Alert
     current_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
     ip_address = request.client.host if request.client else "Unknown"
-    background_tasks.add_task(
-        send_login_alert_email,
-        email=db_user.email,
-        name=db_user.full_name or "Trader",
-        login_time=current_time,
-        ip_address=ip_address
-    )
+    # background_tasks.add_task(
+    #     send_login_alert_email,
+    #     email=db_user.email,
+    #     name=db_user.full_name or "Trader",
+    #     login_time=current_time,
+    #     ip_address=ip_address
+    # )
     
     return db_user
 
@@ -286,62 +321,48 @@ async def reset_password(
     return {"message": "Password updated successfully."}
 
 @router.post("/logout")
-def logout(response: Response):
+async def logout(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+    session_token = request.cookies.get("session_id")
+    if session_token:
+        # Delete session from DB
+        await db.execute(
+            select(UserSession).filter(UserSession.session_token == session_token)
+        )
+        # Note: Using execute + delete for async
+        from sqlalchemy import delete
+        await db.execute(delete(UserSession).where(UserSession.session_token == session_token))
+        await db.commit()
+        
+    response.delete_cookie("session_id")
     response.delete_cookie("access_token")
+    response.delete_cookie("refresh_token")
     return {"message": "Logged out successfully"}
 
 @router.post("/verify-pin")
 async def verify_pin(
-    request: PinVerifyRequest,
+    request: Request,
+    request_data: PinVerifyRequest,
     response: Response,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db)
 ):
-    result = await db.execute(select(User).filter(User.email == request.email))
+    result = await db.execute(select(User).filter(User.email == request_data.email))
     db_user = result.scalars().first()
     
     if not db_user:
         logger.warning(f"PIN Verification failed: User {request.email} not found")
         raise HTTPException(status_code=404, detail="User not found")
         
-    if db_user.security_pin != request.pin:
-        logger.warning(f"PIN Verification failed for {request.email}: Incorrect PIN")
+    if db_user.security_pin != request_data.pin:
+        logger.warning(f"PIN Verification failed for {request_data.email}: Incorrect PIN")
         raise HTTPException(status_code=400, detail="Please enter correct security pin")
     
-    # Update Refresh Token on successful verification
-    refresh_token = create_access_token(
-        data={"sub": db_user.email, "type": "refresh"}, 
-        expires_delta=timedelta(days=7)
-    )
-    db_user.refresh_token = refresh_token
-    await db.commit()
-
-    # Re-issue cookies to ensure session is fresh after identity check
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": db_user.email}, expires_delta=access_token_expires
-    )
-    
-    response.set_cookie(
-        key="access_token",
-        value=access_token,
-        httponly=True,
-        secure=False,
-        samesite="lax",
-        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
-    )
-
-    response.set_cookie(
-        key="refresh_token",
-        value=refresh_token,
-        httponly=True,
-        secure=False,
-        samesite="lax",
-        max_age=7 * 24 * 60 * 60
-    )
+    # Create persistent session on successful PIN verification
+    await create_session(db, db_user.id, request, response)
 
     # Send PIN verified email in background
     verified_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+    from app.services.email_service import send_pin_verified_email
     background_tasks.add_task(
         send_pin_verified_email,
         db_user.email,
@@ -396,47 +417,77 @@ async def refresh_session(request: Request, response: Response, db: AsyncSession
 
     return {"status": "success"}
 
-@router.post("/verify-identity")
-async def verify_identity(request: PinIdentityRequest, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).filter(User.email == request.email))
-    db_user = result.scalars().first()
-    
-    if not db_user:
-        raise HTTPException(status_code=404, detail="User not found")
-        
-    if db_user.dob != request.dob:
-        raise HTTPException(status_code=400, detail="Invalid Date of Birth")
-        
-    return {"message": "Identity verified"}
-
-@router.post("/reset-pin")
-async def reset_pin(
-    request: PinResetRequest,
+@router.post("/pin-reset/request")
+async def request_pin_reset_otp(
+    request: PinResetOtpRequest, 
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db)
 ):
     result = await db.execute(select(User).filter(User.email == request.email))
-    db_user = result.scalars().first()
+    user = result.scalars().first()
     
-    if not db_user:
-        raise HTTPException(status_code=404, detail="User not found")
-        
-    if db_user.dob != request.dob:
-        raise HTTPException(status_code=400, detail="Invalid Date of Birth")
-        
-    db_user.security_pin = request.new_pin
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+    
+    # Generate 6-digit OTP
+    otp = str(random.randint(100000, 999999))
+    user.otp_code = otp
+    user.otp_expiry = datetime.utcnow() + timedelta(minutes=10)
     await db.commit()
+    
+    from app.services.email_service import send_pin_reset_otp_email
+    background_tasks.add_task(
+        send_pin_reset_otp_email,
+        email=user.email,
+        name=user.full_name,
+        otp_code=otp
+    )
+    
+    return {"message": "Verification code sent to your email."}
 
-    # Send PIN reset confirmation email in background
+@router.post("/pin-reset/verify")
+async def verify_pin_reset_otp(request: PinResetVerifyRequest, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(User).filter(User.email == request.email))
+    user = result.scalars().first()
+    
+    if not user or user.otp_code != request.otp_code:
+        raise HTTPException(status_code=400, detail="Invalid verification code.")
+    
+    if datetime.utcnow() > user.otp_expiry:
+        raise HTTPException(status_code=400, detail="Verification code has expired.")
+        
+    return {"message": "Code verified successfully."}
+
+@router.post("/pin-reset/confirm")
+async def confirm_pin_reset(
+    request: PinResetConfirmRequest, 
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(User).filter(User.email == request.email))
+    user = result.scalars().first()
+    
+    if not user or user.otp_code != request.otp_code:
+        raise HTTPException(status_code=400, detail="Invalid request.")
+        
+    if datetime.utcnow() > user.otp_expiry:
+        raise HTTPException(status_code=400, detail="Verification code has expired.")
+        
+    user.security_pin = request.new_pin
+    user.otp_code = None # Clear OTP after use
+    user.otp_expiry = None
+    await db.commit()
+    
+    from app.services.email_service import send_pin_reset_email
     reset_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
     background_tasks.add_task(
         send_pin_reset_email,
-        db_user.email,
-        db_user.full_name or "Trader",
-        reset_at
+        email=user.email,
+        name=user.full_name,
+        reset_at=reset_at
     )
     
-    return {"message": "PIN reset successfully"}
+    return {"message": "Security PIN updated successfully."}
 
 # Import dependencies inside function/module to avoid circular import issues if placed at top
 from .dependencies import get_current_user

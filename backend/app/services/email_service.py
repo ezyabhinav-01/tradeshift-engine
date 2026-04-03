@@ -110,12 +110,17 @@ async def send_welcome_email(email: str, name: str, demat_id: str):
     first = name.split()[0] if name else "Trader"
     content = f"""
     {_heading(f"Welcome aboard, {first}!")}
-    {_text("Your TradeShift account has been successfully created. You are now part of an AI-powered trading simulation platform.")}
+    {_text("Your TradeShift account has been successfully created and verified. You are now part of an AI-powered trading simulation platform.")}
     
     <div style="background:rgba(41,98,255,0.05); border:1px solid rgba(41,98,255,0.1); border-radius:8px; padding:14px; margin:24px 0; text-align:center;">
       <span style="color:#9598A1; font-size:13px; vertical-align:middle;">Demat Account ID:</span>
       <span style="color:{PRIMARY}; font-size:18px; font-weight:800; letter-spacing:1px; font-family:monospace; margin-left:10px; vertical-align:middle;">{demat_id}</span>
     </div>
+
+    {_divider()}
+    {_badge("SECURITY ON", "#00C853")}
+    <p style="margin:16px 0 0;color:#fff;font-size:15px;font-weight:600;">Security PIN Setup Complete</p>
+    {_text("Your 4-digit Security PIN has been successfully configured. This PIN will be required for secure actions within the platform. Please keep it confidential.", 14)}
     
     {_divider()}
     {_text("Here's what you can do:", 13, TEXT_LIGHT)}
@@ -128,6 +133,23 @@ async def send_welcome_email(email: str, name: str, demat_id: str):
     {_cta_button("Start Trading Now")}
     """
     await _send(email, "Welcome to TradeShift — Your Account is Ready!", _html_wrapper("Welcome", content))
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 2.  SIGNUP OTP  (on signup request)
+# ═══════════════════════════════════════════════════════════════════════════
+async def send_signup_otp_email(email: str, otp: str):
+    content = f"""
+    {_heading("Verify Your Email")}
+    {_text("Welcome to TradeShift! Please enter the following 6-digit code to verify your email address and continue with your registration.")}
+    
+    <div style="background:rgba(41,98,255,0.05); border:1px solid rgba(41,98,255,0.1); border-radius:12px; padding:24px; margin:24px 0; text-align:center;">
+      <span style="color:{PRIMARY}; font-size:32px; font-weight:800; letter-spacing:8px; font-family:monospace;">{otp}</span>
+    </div>
+    
+    {_text("This code will expire in 10 minutes. If you did not request this, please ignore this email.")}
+    """
+    await _send(email, f"{otp} is your TradeShift Verification Code", _html_wrapper("Verify Email", content))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -171,14 +193,30 @@ async def send_pin_created_email(email: str, name: str):
 async def send_otp_email(email: str, name: str, otp_code: str):
     first = name.split()[0] if name else "Trader"
     content = f"""
-    {_heading("Password Reset Requested")}
-    {_text(f"Hi {first}, we received a request to reset your password. Use the following 6-digit verification code to proceed:")}
+    {_heading("Reset Your Password")}
+    {_text(f"Hi {first}, we received a request to reset your TradeShift account password. Use the following 6-digit verification code to proceed:")}
+    <div style="background:rgba(41,98,255,0.05); border:1px solid rgba(41,98,255,0.1); border-radius:12px; padding:24px; margin:24px 0; text-align:center;">
+      <span style="color:{PRIMARY}; font-size:32px; font-weight:800; letter-spacing:8px; font-family:monospace;">{otp_code}</span>
+    </div>
+    {_text("This code will expire in 10 minutes. If you did not request this, please ignore this email and your password will remain unchanged.")}
+    """
+    await _send(email, f"{otp_code} is your TradeShift verification code", _html_wrapper("Reset Password", content))
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 4b. PIN RESET OTP
+# ═══════════════════════════════════════════════════════════════════════════
+async def send_pin_reset_otp_email(email: str, name: str, otp_code: str):
+    first = name.split()[0] if name else "Trader"
+    content = f"""
+    {_heading("PIN Reset Requested")}
+    {_text(f"Hi {first}, we received a request to reset your 4-digit Security PIN. Use the following 6-digit verification code to proceed:")}
     <div style="background:rgba(255,255,255,0.05);border-radius:12px;padding:24px;text-align:center;margin:24px 0;">
       <span style="font-size:32px;font-weight:800;letter-spacing:8px;color:{PRIMARY};">{otp_code}</span>
     </div>
     {_text("This code will expire in 10 minutes. If you did not request this, please ignore this email.")}
     """
-    await _send(email, f"{otp_code} is your TradeShift verification code", _html_wrapper("Reset Password", content))
+    await _send(email, f"{otp_code} is your Security PIN reset code", _html_wrapper("Reset PIN", content))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -406,3 +444,62 @@ async def send_price_alert_email(
     {_cta_button(f"Go to {side_label} Dashboard")}
     """
     await _send(email, f"Target Hit: {symbol} at Rs {current_price:.2f}", _html_wrapper("Market Alert", content))
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 8.  BADGE EARNED  (gamification notification)
+# ═══════════════════════════════════════════════════════════════════════════
+
+MOTIVATIONAL_QUOTES = [
+    "The goal of a successful trader is to make the best trades. Money is secondary. — Alexander Elder",
+    "In trading, everything works some of the time and nothing works all of the time. — Anonymous",
+    "An investment in knowledge pays the best interest. — Benjamin Franklin",
+    "The secret to getting ahead is getting started. — Mark Twain",
+    "Success is not final; failure is not fatal: it is the courage to continue that counts. — Winston Churchill",
+    "Discipline is the bridge between goals and accomplishment. — Jim Rohn",
+    "Compound interest is the eighth wonder of the world. He who understands it, earns it... he who doesn't... pays it. — Albert Einstein",
+    "The stock market is a device for transferring money from the impatient to the patient. — Warren Buffett",
+    "Your level of success is determined by your level of discipline and perseverance. — Unknown",
+    "Don't let the fear of losing be greater than the excitement of winning. — Robert Kiyosaki"
+]
+
+import random
+
+async def send_badge_earned_email(
+    email: str,
+    name: str,
+    badge_title: str,
+    badge_description: str
+):
+    first = name.split()[0] if name else "Trader"
+    quote = random.choice(MOTIVATIONAL_QUOTES)
+    
+    content = f"""
+    {_heading("Congratulations! You've Earned a New Badge 🏆")}
+    
+    <div style="text-align:center; margin:32px 0;">
+      <div style="background:rgba(255,215,0,0.1); border:2px solid #FFD700; border-radius:50%; width:100px; height:100px; line-height:100px; margin:0 auto; font-size:48px; box-shadow:0 0 20px rgba(255,215,0,0.2); animation: pulse 2s infinite;">
+        🏆
+      </div>
+      <h3 style="color:#FFF; font-size:24px; margin:20px 0 10px; font-weight:800; letter-spacing:0.5px; text-transform:uppercase;">{badge_title}</h3>
+      <div style="background:{PRIMARY}20; color:{PRIMARY}; padding:4px 12px; border-radius:30px; font-size:11px; font-weight:900; display:inline-block; margin-bottom:12px; border:1px solid {PRIMARY}40;">NEW ACHIEVEMENT</div>
+      <p style="color:{TEXT_LIGHT}; font-size:14px; max-width:320px; margin:0 auto; line-height:1.5;">{badge_description}</p>
+    </div>
+    
+    <div style="background:rgba(255,255,255,0.03); border-left:4px solid {PRIMARY}; padding:20px; margin:24px 0; border-radius:4px; font-style:italic;">
+      <p style="color:rgba(255,255,255,0.8); font-size:15px; line-height:1.6; margin:0;">
+        "{quote.split(' — ')[0]}"
+      </p>
+      <p style="color:{PRIMARY}; font-size:12px; margin-top:8px; font-weight:bold; font-style:normal; text-transform:uppercase; letter-spacing:1px;">
+        — {quote.split(' — ')[1]}
+      </p>
+    </div>
+
+    {_text(f"Well done, {first}! Your progress in the Academy is truly impressive. Each badge you earn represents a step closer to financial mastery. This badge has been securely saved to your profile dashboard.")}
+    
+    <div style="border:1px dashed rgba(255,255,255,0.15); border-radius:12px; padding:20px; margin:32px 0; text-align:center;">
+       <p style="color:{TEXT_LIGHT}; font-size:12px; margin:0;">Level up even faster by maintaining your daily streak. The markets never stop, and neither should your growth.</p>
+    </div>
+
+    {_cta_button("View My Badge Collection")}
+    """
+    await _send(email, f"New Achievement Unlocked: {badge_title} 🏆", _html_wrapper("Academy Achievement", content))

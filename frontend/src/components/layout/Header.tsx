@@ -26,7 +26,6 @@ const Topbar = () => {
 
   const handleLogout = async () => {
     await logout();
-    navigate('/login');
   };
 
   return (
@@ -143,14 +142,8 @@ const Topbar = () => {
                 ></div>
                 <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-[#1E222D] border border-slate-200 dark:border-white/10 rounded-xl shadow-2xl py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
                   <div className="px-4 py-3 border-b border-slate-100 dark:border-white/5 mb-1">
-                    <p className="text-xs text-slate-500 dark:text-gray-400 font-medium lowercase">Signed in as</p>
-                    <p className="text-sm font-semibold truncate dark:text-white mt-0.5">{user.email}</p>
-                    {user.demat_id && (
-                      <div className="mt-2 flex items-center gap-2 px-2 py-1 bg-tv-primary/10 border border-tv-primary/20 rounded-lg">
-                        <span className="text-[10px] font-bold text-tv-primary uppercase tracking-tighter">Demat ID</span>
-                        <span className="text-xs font-mono font-bold text-tv-primary">{user.demat_id}</span>
-                      </div>
-                    )}
+                    <p className="text-base font-bold dark:text-white mt-0.5 tracking-tight">{user.demat_id || 'N/A'}</p>
+                    <p className="text-[11px] text-slate-500 dark:text-gray-400 font-medium truncate">{user.email}</p>
                   </div>
                   
                   <Link 
@@ -236,8 +229,8 @@ const Topbar = () => {
                   {(user.full_name || user.email || "U").charAt(0).toUpperCase()}
                 </div>
                 <div className="flex flex-col overflow-hidden">
-                   <p className="text-xs text-slate-400 font-medium">Signed in</p>
-                   <p className="text-sm font-semibold truncate dark:text-white text-slate-900">{user.email}</p>
+                   <p className="text-sm font-bold dark:text-white text-slate-900 tracking-tight">{user.demat_id || 'N/A'}</p>
+                   <p className="text-[11px] font-medium text-slate-400 truncate">{user.email}</p>
                 </div>
               </div>
               <Link to="/settings" onClick={() => setIsMobileMenuOpen(false)} className="px-2 py-2 text-sm flex items-center gap-2 text-slate-700 dark:text-gray-300">

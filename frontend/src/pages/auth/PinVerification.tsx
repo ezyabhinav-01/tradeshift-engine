@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import { Shield, AlertCircle, ArrowLeft, Calendar, Mail, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { PremiumDatePicker } from '@/components/ui/PremiumDatePicker';
 import OtpInput from '@/components/ui/OtpInput';
+import type { OtpInputRef } from '@/components/ui/OtpInput';
 
 const PinVerification: React.FC = () => {
   const location = useLocation();
@@ -30,6 +31,7 @@ const PinVerification: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [success, setSuccess] = useState<string | null>(null);
+  const pinRef = useRef<OtpInputRef>(null);
 
   const calculateAge = (dobString: string) => {
     if (!dobString) return 0;
@@ -66,10 +68,15 @@ const PinVerification: React.FC = () => {
     setLoading(true);
     try {
       await axios.post('/auth/verify-pin', { email, pin: finalPin });
-      const from = location.state?.from || '/trade';
+      let from = location.state?.from || '/trade';
+      // If we came from home or landing, stay there
+      if (from === '/' || from === '/landing') {
+        from = from; 
+      }
       navigate(from, { replace: true });
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Please enter correct security pin');
+      pinRef.current?.reset();
     } finally {
       setLoading(false);
     }
@@ -207,6 +214,7 @@ const PinVerification: React.FC = () => {
                 </div>
                 <div className="flex justify-center pt-2">
                   <OtpInput 
+                    ref={pinRef}
                     length={4} 
                     type="password"
                     disabled={loading}

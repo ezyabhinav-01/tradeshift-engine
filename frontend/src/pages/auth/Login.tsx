@@ -47,7 +47,12 @@ const Login: React.FC = () => {
         return;
       }
 
-      const from = location.state?.from || '/trade';
+      let from = location.state?.from || '/trade';
+      // If we came from home or landing, stay there
+      if (from === '/' || from === '/landing') {
+        from = from; 
+      }
+      
       // Redirect to PIN verification for normal login
       navigate('/pin-verify', { state: { email, from } });
     } catch (err: any) {

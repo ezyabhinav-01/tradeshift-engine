@@ -64,7 +64,7 @@ services:
       minio:
         condition: service_started
     environment:
-      - DATABASE_URL=postgresql://user:password@db:5432/tradeshift
+      - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=redis://redis:6379/0
       - REDIS_HOST=redis
       - MINIO_ENDPOINT=http://minio:9000
@@ -127,7 +127,7 @@ services:
       redis:
         condition: service_healthy
     environment:
-      - DATABASE_URL=postgresql://user:password@db:5432/tradeshift
+      - DATABASE_URL=${DATABASE_URL}
       - PYTHONUNBUFFERED=1
       # Pass necessary API keys to worker too
       - NEWSDATA_API_KEY=${NEWSDATA_API_KEY}

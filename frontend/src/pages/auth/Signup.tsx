@@ -1,15 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { 
-  Mail, Lock, User, Shield, 
-  UserPlus, AlertCircle, 
+import {
+  Mail, Lock, User, Shield,
+  UserPlus, AlertCircle,
   Layers, MapPin, Phone, Eye, EyeOff,
   Share2, Target
 } from 'lucide-react';
 import { PremiumSelect } from '@/components/ui/PremiumSelect';
 import { PremiumDatePicker } from '@/components/ui/PremiumDatePicker';
 import OtpInput from '@/components/ui/OtpInput';
+import type { OtpInputRef } from '@/components/ui/OtpInput';
 
 const EXPERIENCE_OPTIONS = [
   { value: 'Beginner', label: 'Beginner' },
@@ -56,6 +57,8 @@ const Signup: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const { register, verifySignupOtp, finalizeSignupPin } = useAuth();
   const navigate = useNavigate();
+  const otpRef = useRef<OtpInputRef>(null);
+  const pinRef = useRef<OtpInputRef>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -150,6 +153,7 @@ const Signup: React.FC = () => {
       setStep(3);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Invalid or expired code.');
+      otpRef.current?.reset();
     } finally {
       setLoading(false);
     }
@@ -166,10 +170,15 @@ const Signup: React.FC = () => {
     setError(null);
     try {
       await finalizeSignupPin(formData.email, finalPin);
-      const from = location.state?.from || '/trade';
+      let from = location.state?.from || '/trade';
+      // If we came from home or landing, stay there
+      if (from === '/' || from === '/landing') {
+        from = from;
+      }
       navigate(from, { replace: true });
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to setup PIN.');
+      pinRef.current?.reset();
     } finally {
       setLoading(false);
     }
@@ -187,16 +196,15 @@ const Signup: React.FC = () => {
 
       <div className="w-full max-w-3xl relative z-10">
         <div className="bg-white/80 dark:bg-[#1E222D]/80 backdrop-blur-xl border border-slate-200 dark:border-white/10 rounded-3xl shadow-2xl p-8 md:p-10 transition-all duration-300">
-          
+
           {/* Progress Header */}
           <div className="mb-10">
             <div className="flex items-center justify-between mb-4">
               {[1, 2, 3].map((s) => (
                 <div key={s} className="flex flex-col items-center flex-1 relative">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-all z-10 ${
-                    step === s ? 'bg-tv-primary text-white scale-110 shadow-lg shadow-tv-primary/30' : 
-                    step > s ? 'bg-green-500 text-white' : 'bg-slate-200 dark:bg-white/10 text-slate-500'
-                  }`}>
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-all z-10 ${step === s ? 'bg-tv-primary text-white scale-110 shadow-lg shadow-tv-primary/30' :
+                      step > s ? 'bg-green-500 text-white' : 'bg-slate-200 dark:bg-white/10 text-slate-500'
+                    }`}>
                     {step > s ? '✓' : s}
                   </div>
                   <span className={`text-[10px] mt-2 font-bold uppercase tracking-wider ${step >= s ? 'text-tv-primary' : 'text-slate-400'}`}>
@@ -208,15 +216,15 @@ const Signup: React.FC = () => {
                 </div>
               ))}
             </div>
-            
+
             <div className="text-center">
-               <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-1 tracking-tight">
+              <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-1 tracking-tight">
                 {step === 1 ? 'Create Your Account' : step === 2 ? 'Verify Your Email' : 'Setup Security PIN'}
               </h1>
               <p className="text-sm text-slate-500 dark:text-gray-400">
-                {step === 1 ? 'Start your professional trading journey' : 
-                 step === 2 ? `We've sent a code to ${formData.email}` : 
-                 'Create a 4-digit PIN to protect your account'}
+                {step === 1 ? 'Start your professional trading journey' :
+                  step === 2 ? `We've sent a code to ${formData.email}` :
+                    'Create a 4-digit PIN to protect your account'}
               </p>
             </div>
           </div>
@@ -244,9 +252,8 @@ const Signup: React.FC = () => {
                         type="text"
                         value={formData.full_name}
                         onChange={handleChange}
-                        className={`block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white focus:outline-none focus:ring-2 transition-all sm:text-sm ${
-                          fieldErrors.full_name ? 'border-red-500' : 'border-slate-200 dark:border-white/10'
-                        }`}
+                        className={`block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white focus:outline-none focus:ring-2 transition-all sm:text-sm ${fieldErrors.full_name ? 'border-red-500' : 'border-slate-200 dark:border-white/10'
+                          }`}
                         placeholder="John Doe"
                       />
                     </div>
@@ -263,9 +270,8 @@ const Signup: React.FC = () => {
                         type="email"
                         value={formData.email}
                         onChange={handleChange}
-                        className={`block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white focus:outline-none focus:ring-2 transition-all sm:text-sm ${
-                          fieldErrors.email ? 'border-red-500' : 'border-slate-200 dark:border-white/10'
-                        }`}
+                        className={`block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white focus:outline-none focus:ring-2 transition-all sm:text-sm ${fieldErrors.email ? 'border-red-500' : 'border-slate-200 dark:border-white/10'
+                          }`}
                         placeholder="name@gmail.com"
                       />
                     </div>
@@ -284,9 +290,8 @@ const Signup: React.FC = () => {
                         maxLength={10}
                         value={formData.phone_number}
                         onChange={handleChange}
-                        className={`block w-full pl-24 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white focus:outline-none focus:ring-2 transition-all sm:text-sm ${
-                          fieldErrors.phone_number ? 'border-red-500' : 'border-slate-200 dark:border-white/10'
-                        }`}
+                        className={`block w-full pl-24 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white focus:outline-none focus:ring-2 transition-all sm:text-sm ${fieldErrors.phone_number ? 'border-red-500' : 'border-slate-200 dark:border-white/10'
+                          }`}
                         placeholder="9876543210"
                       />
                     </div>
@@ -296,14 +301,31 @@ const Signup: React.FC = () => {
                     <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1">Date of Birth</label>
                     <PremiumDatePicker
                       value={formData.dob}
-                      onChange={(val) => setFormData(prev => ({ ...prev, dob: val }))}
+                      onChange={(val) => {
+                        setFormData(prev => ({ ...prev, dob: val }));
+                        if (val && calculateAge(val) < 12) {
+                          setFieldErrors(prev => ({ ...prev, dob: 'You must be at least 12 years old' }));
+                        } else {
+                          setFieldErrors(prev => {
+                            const newErrors = { ...prev };
+                            delete newErrors.dob;
+                            return newErrors;
+                          });
+                        }
+                      }}
                       placeholder="Select Date of Birth"
+                      className={fieldErrors.dob ? 'border-red-500' : ''}
                     />
+                    {fieldErrors.dob && (
+                      <p className="text-red-500 text-xs mt-1 ml-1 animate-pulse font-medium">
+                        {fieldErrors.dob}
+                      </p>
+                    )}
                   </div>
                 </div>
 
                 <div className="space-y-4">
-                   <div className="space-y-2">
+                  <div className="space-y-2">
                     <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1">City</label>
                     <div className="relative group">
                       <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-tv-primary transition-colors">
@@ -314,9 +336,8 @@ const Signup: React.FC = () => {
                         type="text"
                         value={formData.city}
                         onChange={handleChange}
-                        className={`block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white focus:outline-none focus:ring-2 transition-all sm:text-sm ${
-                          fieldErrors.city ? 'border-red-500' : 'border-slate-200 dark:border-white/10'
-                        }`}
+                        className={`block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white focus:outline-none focus:ring-2 transition-all sm:text-sm ${fieldErrors.city ? 'border-red-500' : 'border-slate-200 dark:border-white/10'
+                          }`}
                         placeholder="Mumbai"
                       />
                     </div>
@@ -324,8 +345,8 @@ const Signup: React.FC = () => {
 
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1 flex items-center gap-2">
-                       <Shield size={18} className="text-slate-400" />
-                       Experience Level
+                      <Shield size={18} className="text-slate-400" />
+                      Experience Level
                     </label>
                     <PremiumSelect
                       value={formData.experience_level}
@@ -336,8 +357,8 @@ const Signup: React.FC = () => {
 
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1 flex items-center gap-2">
-                       <Target size={18} className="text-slate-400" />
-                       Investment Goals
+                      <Target size={18} className="text-slate-400" />
+                      Investment Goals
                     </label>
                     <PremiumSelect
                       value={formData.investment_goals}
@@ -345,7 +366,7 @@ const Signup: React.FC = () => {
                       options={GOAL_OPTIONS}
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1">Password</label>
                     <div className="relative group">
@@ -357,9 +378,8 @@ const Signup: React.FC = () => {
                         type={showPassword ? "text" : "password"}
                         value={formData.password}
                         onChange={handleChange}
-                        className={`block w-full pl-11 pr-11 py-2.5 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white focus:outline-none focus:ring-2 transition-all sm:text-sm ${
-                          fieldErrors.password ? 'border-red-500' : 'border-slate-200 dark:border-white/10'
-                        }`}
+                        className={`block w-full pl-11 pr-11 py-2.5 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white focus:outline-none focus:ring-2 transition-all sm:text-sm ${fieldErrors.password ? 'border-red-500' : 'border-slate-200 dark:border-white/10'
+                          }`}
                         placeholder="••••••••"
                       />
                       <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400">
@@ -392,11 +412,10 @@ const Signup: React.FC = () => {
                         key={inst}
                         type="button"
                         onClick={() => handleInstrumentChange(inst)}
-                        className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all border ${
-                          formData.preferred_instruments.includes(inst)
+                        className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all border ${formData.preferred_instruments.includes(inst)
                             ? 'bg-tv-primary border-tv-primary text-white'
                             : 'bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-600 dark:text-gray-400'
-                        }`}
+                          }`}
                       >
                         {inst}
                       </button>
@@ -410,13 +429,13 @@ const Signup: React.FC = () => {
                 disabled={loading}
                 className="w-full flex justify-center items-center gap-2 py-4 px-4 border border-transparent rounded-xl shadow-lg text-sm font-bold text-white bg-tv-primary hover:bg-tv-primary-hover disabled:opacity-50 transition-all active:scale-[0.98] mt-4"
               >
-                {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 
-                <>
-                  <UserPlus size={20} />
-                  <span>Create Account & Send OTP</span>
-                </>}
+                {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> :
+                  <>
+                    <UserPlus size={20} />
+                    <span>Create Account & Send OTP</span>
+                  </>}
               </button>
-              
+
               <div className="pt-4 border-t border-slate-200 dark:border-white/10 text-center">
                 <p className="text-sm text-slate-500 dark:text-gray-400">
                   Already verified? <Link to="/login" className="text-tv-primary font-bold">Login here</Link>
@@ -429,15 +448,16 @@ const Signup: React.FC = () => {
             <form onSubmit={handleVerifyOtp} className="space-y-6 max-w-md mx-auto">
               <div className="space-y-8">
                 <div className="flex justify-center">
-                  <OtpInput 
-                    length={6} 
+                  <OtpInput
+                    ref={otpRef}
+                    length={6}
                     disabled={loading}
                     onComplete={(code) => {
                       setOtp(code);
-                      const submitEvent = { preventDefault: () => {} } as React.FormEvent;
+                      const submitEvent = { preventDefault: () => { } } as React.FormEvent;
                       // small timeout for user to see the last digit
                       setTimeout(() => handleVerifyOtp(submitEvent, code), 100);
-                    }} 
+                    }}
                   />
                 </div>
                 <p className="text-center text-xs text-slate-500 dark:text-gray-400">
@@ -468,15 +488,16 @@ const Signup: React.FC = () => {
             <form onSubmit={handleFinalizePin} className="space-y-6 max-w-md mx-auto">
               <div className="space-y-8">
                 <div className="flex justify-center">
-                  <OtpInput 
-                    length={4} 
+                  <OtpInput
+                    ref={pinRef}
+                    length={4}
                     type="password"
                     disabled={loading}
                     onComplete={(code) => {
                       setFormData(prev => ({ ...prev, security_pin: code }));
-                      const submitEvent = { preventDefault: () => {} } as React.FormEvent;
+                      const submitEvent = { preventDefault: () => { } } as React.FormEvent;
                       setTimeout(() => handleFinalizePin(submitEvent, code), 100);
-                    }} 
+                    }}
                   />
                 </div>
                 <div className="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-xl border border-blue-100 dark:border-blue-500/20">
@@ -494,11 +515,11 @@ const Signup: React.FC = () => {
                 disabled={loading}
                 className="w-full py-4 bg-tv-primary hover:bg-tv-primary-hover text-white rounded-xl font-bold shadow-lg shadow-tv-primary/20 transition-all flex items-center justify-center gap-2"
               >
-                {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 
-                <>
-                  <Shield size={20} />
-                  <span>Setup PIN & Complete Signup</span>
-                </>}
+                {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> :
+                  <>
+                    <Shield size={20} />
+                    <span>Setup PIN & Complete Signup</span>
+                  </>}
               </button>
             </form>
           )}

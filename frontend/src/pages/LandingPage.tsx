@@ -8,7 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { useGame } from '../context/GameContext';
 import { useMultiChartStore } from '../store/useMultiChartStore';
 import { SymbolSearch } from '../components/features/SymbolSearch';
-import { LogOut, ChevronLeft, ChevronRight, ChevronDown, UserCircle, BarChart3, BarChart2, Globe, Search, PieChart, BookOpen, Activity, MoreHorizontal, CheckCircle2 } from 'lucide-react';
+import { LogOut, ChevronLeft, ChevronRight, ChevronDown, UserCircle, BarChart2, Globe, Search, PieChart, BookOpen, Activity, MoreHorizontal, CheckCircle2 } from 'lucide-react';
 import './LandingPage.css';
 
 gsap.registerPlugin(ScrollTrigger);
@@ -1485,27 +1485,16 @@ export default function LandingPage() {
                       onClick={() => setIsUserMenuOpen(false)}
                       style={{ position: 'fixed', inset: 0, zIndex: 40 }}
                     ></div>
-                    <div className="absolute right-0 mt-2 w-56 bg-[#1A1E29] border border-white/10 rounded-xl shadow-2xl py-2 z-50" style={{ position: 'absolute', right: 0, marginTop: '0.5rem', width: '224px', background: '#1A1E29', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.5)', zIndex: 50, padding: '0.5rem 0' }}>
-                      <div className="px-4 py-3 border-b border-white/5 mb-1" style={{ padding: '0.75rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.05)', marginBottom: '0.25rem' }}>
-                        <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', margin: 0 }}>Signed in as</p>
-                        <p style={{ fontSize: '0.875rem', fontWeight: 600, color: '#fff', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</p>
+                    <div className="absolute right-0 mt-2 w-56 bg-[#1A1E29] border border-white/10 rounded-xl shadow-2xl py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                      <div className="px-4 py-3 border-b border-white/5 mb-1">
+                        <p className="text-base font-bold text-white mt-0.5 tracking-tight">{user.demat_id || 'N/A'}</p>
+                        <p className="text-[11px] text-gray-400 font-medium truncate">{user.email}</p>
                       </div>
 
                       <Link
-                        to="/trade"
-                        className="flex items-center gap-3 px-4 py-2 text-sm text-gray-300 hover:bg-white/5 transition-colors"
-                        onClick={() => setIsUserMenuOpen(false)}
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.625rem 1rem', fontSize: '0.875rem', color: '#d1d5db', textDecoration: 'none' }}
-                      >
-                        <BarChart3 size={18} />
-                        Go to Terminal
-                      </Link>
-
-                      <Link
                         to="/settings"
-                        className="flex items-center gap-3 px-4 py-2 text-sm text-gray-300 hover:bg-white/5 transition-colors"
+                        className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 transition-colors"
                         onClick={() => setIsUserMenuOpen(false)}
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.625rem 1rem', fontSize: '0.875rem', color: '#d1d5db', textDecoration: 'none' }}
                       >
                         <UserCircle size={18} />
                         Profile Settings
@@ -1513,8 +1502,7 @@ export default function LandingPage() {
 
                       <button
                         onClick={handleLogout}
-                        className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-500 hover:bg-red-500/10 transition-colors"
-                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.625rem 1rem', fontSize: '0.875rem', color: '#ef4444', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-500/10 transition-colors"
                       >
                         <LogOut size={18} />
                         Sign Out

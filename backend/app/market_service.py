@@ -1,8 +1,10 @@
 import yfinance as yf
 import pandas as pd
+import numpy as np
 import redis
 import json
 import os
+import glob
 import logging
 from typing import List, Dict, Any
 
@@ -38,6 +40,70 @@ class MarketService:
             "Media": "^CNXMEDIA"
         }
     
+    def _safe_float(self, val: Any) -> float:
+        """Ensure the value is a valid JSON-compliant float (no NaN/Inf)."""
+        try:
+            if pd.isna(val) or np.isnan(val) or np.isinf(val):
+                return 0.0
+            return float(val)
+        except:
+            return 0.0
+
+    def _get_fallback_index_price(self, name: str) -> Dict[str, Any]:
+        """Fetch the latest price from local Parquet files for a given index."""
+        try:
+            # Match current directory structure
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            data_dir = os.path.join(base_dir, "data")
+            
+            # Pattern: symbol_*.parquet (newest first)
+            pattern = os.path.join(data_dir, f"{name}_*.parquet")
+            files = sorted(glob.glob(pattern), reverse=True)
+            
+            if not files:
+                # Try generic symbol.parquet
+                alt_pattern = os.path.join(data_dir, f"{name}.parquet")
+                if os.path.exists(alt_pattern):
+                    files = [alt_pattern]
+            
+            if files:
+                latest_file = files[0]
+                df = pd.read_parquet(latest_file)
+                if not df.empty:
+                    # Shoonya format: intc is close, into is open
+                    close_col = next((c for c in ['intc', 'Close', 'close', 'intc_'] if c in df.columns), None)
+                    open_col = next((c for c in ['into', 'Open', 'open', 'into_'] if c in df.columns), None)
+                    
+                    if close_col:
+                        # Convert column to numeric to handle strings or NaNs
+                        df[close_col] = pd.to_numeric(df[close_col], errors='coerce')
+                        if open_col:
+                            df[open_col] = pd.to_numeric(df[open_col], errors='coerce')
+                        
+                        # Find the last non-zero price (in case the file ends with heartbeats)
+                        non_zero_close = df[df[close_col] > 0][close_col]
+                        if not non_zero_close.empty:
+                            last_close = float(non_zero_close.iloc[-1])
+                            
+                            # Use first valid open or the close if no open available
+                            first_open = last_close
+                            if open_col and not df[df[open_col] > 0][open_col].empty:
+                                first_open = float(df[df[open_col] > 0][open_col].iloc[0])
+                            
+                            change = last_close - first_open
+                            change_percent = (change / first_open * 100) if first_open != 0 else 0
+                            
+                            return {
+                                "price": last_close,
+                                "change": change,
+                                "change_percent": change_percent,
+                                "is_positive": change >= 0
+                            }
+        except Exception as e:
+            logger.error(f"Fallback fetch failed for {name}: {e}")
+        
+        return None
+
     def get_indices(self) -> List[Dict[str, Any]]:
         """Fetch current data for major indices, using cache if available."""
         cache_key = "market:indices"
@@ -55,27 +121,70 @@ class MarketService:
                 ticker = yf.Ticker(symbol)
                 # Fast fetch for current price using fast_info or history
                 hist = ticker.history(period="2d")
+                
                 if len(hist) < 1:
+                    # Fallback to local data if yfinance returns nothing
+                    fallback = self._get_fallback_index_price(name)
+                    if fallback:
+                        results.append({
+                            "name": name,
+                            "symbol": symbol,
+                            "price": round(fallback["price"], 2),
+                            "change": round(fallback["change"], 2),
+                            "change_percent": round(fallback["change_percent"], 2),
+                            "is_positive": fallback["is_positive"]
+                        })
                     continue
                 
-                current_price = hist['Close'].iloc[-1]
-                prev_close = hist['Close'].iloc[-2] if len(hist) > 1 else current_price
+                current_price = self._safe_float(hist['Close'].iloc[-1])
+                prev_close = self._safe_float(hist['Close'].iloc[-2]) if len(hist) > 1 else current_price
                 
-                change = current_price - prev_close
-                change_percent = (change / prev_close) * 100 if prev_close else 0
+                # If yfinance returned 0 or NaN somehow (and we sanitized to 0)
+                if current_price == 0:
+                    fallback = self._get_fallback_index_price(name)
+                    if fallback:
+                        current_price = fallback["price"]
+                        change = fallback["change"]
+                        change_percent = fallback["change_percent"]
+                        is_pos = fallback["is_positive"]
+                    else:
+                        change = 0
+                        change_percent = 0
+                        is_pos = True
+                else:
+                    change = current_price - prev_close
+                    change_percent = (change / prev_close) * 100 if prev_close != 0 else 0
+                    is_pos = bool(change >= 0)
                 
                 results.append({
                     "name": name,
                     "symbol": symbol,
-                    "price": round(float(current_price), 2),
-                    "change": round(float(change), 2),
-                    "change_percent": round(float(change_percent), 2),
-                    "is_positive": bool(change >= 0)
+                    "price": round(current_price, 2),
+                    "change": round(change, 2),
+                    "change_percent": round(change_percent, 2),
+                    "is_positive": is_pos
                 })
             except Exception as e:
                 logger.error(f"Error fetching index {name} ({symbol}): {e}")
+                # Last resort fallback if the entire block above crashes for this symbol
+                fallback = self._get_fallback_index_price(name)
+                if fallback:
+                    results.append({
+                        "name": name,
+                        "symbol": symbol,
+                        "price": round(fallback["price"], 2),
+                        "change": round(fallback["change"], 2),
+                        "change_percent": round(fallback["change_percent"], 2),
+                        "is_positive": fallback["is_positive"]
+                    })
                 
         if results:
+            # Final safety check on results before caching
+            for r in results:
+                r["price"] = self._safe_float(r["price"])
+                r["change"] = self._safe_float(r["change"])
+                r["change_percent"] = self._safe_float(r["change_percent"])
+
             self.redis_client.setex(cache_key, self.cache_ttl, json.dumps(results))
             
         return results

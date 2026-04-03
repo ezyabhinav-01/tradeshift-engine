@@ -20,7 +20,7 @@ from redis import Redis
 from prometheus_fastapi_instrumentator import Instrumentator
 from app.oms import OrderManager
 from app import auth
-from app.routers import inngest, portfolio, history, trading, news, community, analytics, notifications
+from app.routers import inngest, portfolio, history, trading, news, community, analytics, notifications, user, learn
 from app.websocket_manager import order_manager
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -65,6 +65,10 @@ limiter = Limiter(key_func=get_remote_address)
 app = FastAPI()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "timestamp": datetime.datetime.utcnow()}
 
 # Instrumentator (Monitoring)
 Instrumentator().instrument(app).expose(app)
@@ -226,8 +230,6 @@ app.include_router(auth.router)
 app.include_router(inngest.router)
 app.include_router(portfolio.router)
 app.include_router(history.router)
-from app.routers import inngest, portfolio, history, trading, user, learn
-# ...
 app.include_router(trading.router)
 app.include_router(user.router)
 app.include_router(news.router)
@@ -1196,10 +1198,19 @@ async def websocket_endpoint(websocket: WebSocket):
 
                     # 3. Push INDICES_TICK (sync)
                     indices_payload = {}
+                    def safe_float(v):
+                        try:
+                            if pd.isna(v) or np.isnan(v) or np.isinf(v): return 0.0
+                            return float(v)
+                        except: return 0.0
+
                     for idx_name, ticks_arr in indices_ticks.items():
                         if i < len(ticks_arr):
-                            curr_idx_price = float(ticks_arr[i])
-                            day_open = indices_opens.get(idx_name, curr_idx_price)
+                            curr_idx_price = safe_float(ticks_arr[i])
+                            day_open = safe_float(indices_opens.get(idx_name, curr_idx_price))
+                            
+                            if day_open == 0: day_open = curr_idx_price
+                            
                             change = curr_idx_price - day_open
                             change_percent = (change / day_open) * 100 if day_open > 0 else 0
                             
@@ -1209,8 +1220,8 @@ async def websocket_endpoint(websocket: WebSocket):
                             indices_payload[display_name] = {
                                 "name": display_name,
                                 "price": round(curr_idx_price, 2),
-                                "change": round(change, 2),
-                                "change_percent": round(change_percent, 2),
+                                "change": round(safe_float(change), 2),
+                                "change_percent": round(safe_float(change_percent), 2),
                                 "is_positive": change >= 0
                             }
                     

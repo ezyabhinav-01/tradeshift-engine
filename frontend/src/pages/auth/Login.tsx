@@ -35,9 +35,20 @@ const Login: React.FC = () => {
     setLoading(true);
 
     try {
-      await login({ email, password });
+      const data = await login({ email, password });
+      
+      if (data.status === 'REQUIRES_VERIFICATION') {
+        navigate('/signup', { state: { email, step: 2 } });
+        return;
+      }
+      
+      if (data.status === 'REQUIRES_PIN_SETUP') {
+        navigate('/signup', { state: { email, step: 3 } });
+        return;
+      }
+
       const from = location.state?.from || '/trade';
-      // Redirect to PIN verification with the intended destination
+      // Redirect to PIN verification for normal login
       navigate('/pin-verify', { state: { email, from } });
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to login. Please check your credentials.');

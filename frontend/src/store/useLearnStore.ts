@@ -61,18 +61,38 @@ const AESTHETICS = [
 ];
 
 const DEFAULT_BADGES: Badge[] = [
-  { id: 'first-lesson', title: 'First Steps', description: 'Complete your first lesson', icon: '🎯', unlocked: false, condition: 'Complete 1 lesson' },
-  { id: 'streak-3', title: 'On Fire', description: '3-day learning streak', icon: '🔥', unlocked: false, condition: '3 consecutive days' },
-  { id: 'streak-7', title: 'Unstoppable', description: '7-day learning streak', icon: '⚡', unlocked: false, condition: '7 consecutive days' },
-  { id: 'streak-30', title: 'Legend', description: '30-day learning streak', icon: '👑', unlocked: false, condition: '30 consecutive days' },
-  { id: 'module-complete', title: 'Module Master', description: 'Complete an entire module', icon: '📚', unlocked: false, condition: 'Finish all lessons in a module' },
-  { id: 'track-complete', title: 'Track Champion', description: 'Complete an entire track', icon: '🏆', unlocked: false, condition: 'Finish all modules in a track' },
-  { id: 'xp-100', title: 'Rising Star', description: 'Earn 100 XP', icon: '⭐', unlocked: false, condition: 'Accumulate 100 XP' },
-  { id: 'xp-500', title: 'Knowledge Seeker', description: 'Earn 500 XP', icon: '🧠', unlocked: false, condition: 'Accumulate 500 XP' },
-  { id: 'xp-1000', title: 'Market Scholar', description: 'Earn 1000 XP', icon: '🎓', unlocked: false, condition: 'Accumulate 1000 XP' },
-  { id: 'speed-learner', title: 'Speed Learner', description: 'Complete 5 lessons in one day', icon: '🚀', unlocked: false, condition: '5 lessons in a single day' },
-  { id: 'quiz-ace', title: 'Quiz Ace', description: 'Complete 5 quizzes', icon: '💯', unlocked: false, condition: 'Finish 5 quiz lessons' },
-  { id: 'all-tracks', title: 'Finance Guru', description: 'Start all 6 tracks', icon: '🌟', unlocked: false, condition: 'Begin at least 1 lesson in each track' },
+  // --- Milestones ---
+  { id: 'first_steps', title: 'First Steps', description: 'Complete your first lesson', icon: '🎯', unlocked: false, condition: 'Complete 1 lesson' },
+  { id: 'scholar', title: 'Academy Scholar', description: 'First module completed', icon: '📚', unlocked: false, condition: 'Complete 1 module' },
+  { id: 'track_master', title: 'Track Master', description: 'Mastered an entire track', icon: '🛤️', unlocked: false, condition: 'Finish all modules in a track' },
+  
+  // --- XP Levels ---
+  { id: 'bronze_trader', title: 'Bronze Trader', description: 'Earn 100 XP', icon: '🥉', unlocked: false, condition: 'Reach 100 XP' },
+  { id: 'silver_trader', title: 'Silver Trader', description: 'Earn 500 XP', icon: '🥈', unlocked: false, condition: 'Reach 500 XP' },
+  { id: 'gold_trader', title: 'Gold Trader', description: 'Earn 1000 XP', icon: '🥇', unlocked: false, condition: 'Reach 1000 XP' },
+  { id: 'emerald_elite', title: 'Emerald Elite', description: 'Earn 2500 XP', icon: '💎', unlocked: false, condition: 'Reach 2500 XP' },
+  { id: 'diamond_hands', title: 'Diamond Hands', description: 'Earn 5000 XP', icon: '💠', unlocked: false, condition: 'Reach 5000 XP' },
+  
+  // --- Streaks ---
+  { id: 'on_fire', title: 'On Fire', description: '3-day learning streak', icon: '🔥', unlocked: false, condition: '3 consecutive days' },
+  { id: 'unstoppable', title: 'Charging Bull', description: '7-day learning streak', icon: '🐂', unlocked: false, condition: '7 consecutive days' },
+  { id: 'market_regular', title: 'Market Regular', description: '14-day learning streak', icon: '📅', unlocked: false, condition: '14 consecutive days' },
+  { id: 'consistency_king', title: 'Consistency King', description: '30-day learning streak', icon: '👑', unlocked: false, condition: '30 consecutive days' },
+  
+  // --- Thematic ---
+  { id: 'baby_bull', title: 'Baby Bull', description: 'Basics of Trading master', icon: '🐃', unlocked: false, condition: 'Complete Basics module' },
+  { id: 'iron_bear', title: 'Iron Bear', description: 'Risk Management master', icon: '🐻', unlocked: false, condition: 'Complete Risk module' },
+  { id: 'wolf_of_ts', title: 'Wolf of TradeShift', description: 'High difficulty track completed', icon: '🐺', unlocked: false, condition: 'Complete Advanced track' },
+  { id: 'chart_wizard', title: 'Chart Wizard', description: 'Technical Analysis master', icon: '📉', unlocked: false, condition: 'Complete TA module' },
+  { id: 'option_eagle', title: 'Option Eagle', description: 'Options Trading master', icon: '🦅', unlocked: false, condition: 'Complete Options module' },
+  { id: 'fundamental_pro', title: 'Fundamental Pro', description: 'Fundamental Analysis master', icon: '📊', unlocked: false, condition: 'Complete Fundamental module' },
+  
+  // --- Lifestyle ---
+  { id: 'night_owl', title: 'Night Owl', description: 'Late night learner', icon: '🦉', unlocked: false, condition: 'Complete lesson 10PM - 4AM' },
+  { id: 'early_bird', title: 'Early Bird', description: 'Pre-market prep', icon: '🌅', unlocked: false, condition: 'Complete lesson 5AM - 8AM' },
+  
+  // --- Final ---
+  { id: 'market_legend', title: 'Market Legend', description: 'Completed every module', icon: '🏆', unlocked: false, condition: '100% Academy completion' },
 ];
 
 // ═══════════════════════════════════════════

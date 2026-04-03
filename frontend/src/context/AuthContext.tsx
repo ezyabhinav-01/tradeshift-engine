@@ -19,8 +19,10 @@ interface User {
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (credentials: any) => Promise<void>;
+  login: (credentials: any) => Promise<any>;
   register: (data: any) => Promise<void>;
+  verifySignupOtp: (email: string, otp: string) => Promise<void>;
+  finalizeSignupPin: (email: string, pin: string) => Promise<void>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
 }
@@ -56,21 +58,40 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const login = async (credentials: any) => {
     const response = await axios.post('/auth/login', credentials);
-    setUser(response.data);
+    if (!response.data.status) {
+      setUser(response.data);
+    }
+    return response.data;
   };
 
   const register = async (data: any) => {
-    const response = await axios.post('/auth/register', data);
+    await axios.post('/auth/register/request', data);
+  };
+
+  const verifySignupOtp = async (email: string, otp: string) => {
+    await axios.post('/auth/register/verify', { email, otp_code: otp });
+  };
+
+  const finalizeSignupPin = async (email: string, pin: string) => {
+    const response = await axios.post('/auth/register/set-pin', { email, pin });
     setUser(response.data);
   };
 
   const logout = async () => {
-    await axios.post('/auth/logout');
-    setUser(null);
+    try {
+      await axios.post('/auth/logout');
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      // Explicitly redirect to home page on logout
+      // We don't call setUser(null) here to avoid React re-rendering the current protected page 
+      // which might trigger a sub-redirect to /login before the browser can reload the home page.
+      window.location.href = '/';
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, checkAuth }}>
+    <AuthContext.Provider value={{ user, loading, login, register, verifySignupOtp, finalizeSignupPin, logout, checkAuth }}>
       {children}
     </AuthContext.Provider>
   );

@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { 
-  Mail, Lock, User, Target, Shield, Briefcase, 
-  UserPlus, AlertCircle, ArrowLeft, Calendar, 
-  BarChart3, Layers, MapPin, KeyRound, Phone, Eye, EyeOff
+  Mail, Lock, User, Shield, 
+  UserPlus, AlertCircle, 
+  Layers, MapPin, Phone, Eye, EyeOff,
+  Share2, Target
 } from 'lucide-react';
 import { PremiumSelect } from '@/components/ui/PremiumSelect';
 import { PremiumDatePicker } from '@/components/ui/PremiumDatePicker';
+import OtpInput from '@/components/ui/OtpInput';
 
 const EXPERIENCE_OPTIONS = [
   { value: 'Beginner', label: 'Beginner' },
@@ -20,20 +22,20 @@ const GOAL_OPTIONS = [
   { value: 'Income', label: 'Income' },
   { value: 'Speculation', label: 'Speculation' }
 ];
-const RISK_OPTIONS = [
-  { value: 'Low', label: 'Low' },
-  { value: 'Moderate', label: 'Moderate' },
-  { value: 'High', label: 'High' }
-];
-const OCCUPATION_OPTIONS = [
-  { value: 'Student', label: 'Student' },
-  { value: 'Job', label: 'Job' },
-  { value: 'Retired', label: 'Retired' }
+
+const SOURCE_OPTIONS = [
+  { value: 'Social Media', label: 'Social Media' },
+  { value: 'Google Search', label: 'Google Search' },
+  { value: 'Friend/Family', label: 'Friend/Family' },
+  { value: 'Advertisement', label: 'Advertisement' },
+  { value: 'Other', label: 'Other' }
 ];
 
 const Signup: React.FC = () => {
+  const location = useLocation();
+  const [step, setStep] = useState(location.state?.step || 1); // 1: Details, 2: OTP, 3: PIN
   const [formData, setFormData] = useState({
-    email: '',
+    email: location.state?.email || '',
     password: '',
     full_name: '',
     dob: '',
@@ -44,20 +46,20 @@ const Signup: React.FC = () => {
     risk_tolerance: 'Moderate',
     occupation: 'Student',
     city: '',
+    how_heard_about: 'Social Media',
     security_pin: ''
   });
+  const [otp, setOtp] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
-  const { register } = useAuth();
+  const { register, verifySignupOtp, finalizeSignupPin } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-    // Clear field error on change
     if (fieldErrors[name]) {
       setFieldErrors((prev: Record<string, string>) => { const n = { ...prev }; delete n[name]; return n; });
     }
@@ -72,9 +74,6 @@ const Signup: React.FC = () => {
         return { ...prev, preferred_instruments: [...current, instrument] };
       }
     });
-    if (fieldErrors['preferred_instruments']) {
-      setFieldErrors((prev: Record<string, string>) => { const n = { ...prev }; delete n['preferred_instruments']; return n; });
-    }
   };
 
   const calculateAge = (dobString: string) => {
@@ -88,7 +87,7 @@ const Signup: React.FC = () => {
     return age;
   };
 
-  const validate = (): boolean => {
+  const validateStep1 = (): boolean => {
     const errors: Record<string, string> = {};
     if (!formData.full_name.trim()) errors.full_name = 'Full name is required';
     if (!formData.email.trim()) {
@@ -112,20 +111,14 @@ const Signup: React.FC = () => {
       errors.phone_number = 'Please enter a valid 10-digit phone number';
     }
     if (!formData.city.trim()) errors.city = 'City is required';
-    if (!formData.security_pin) {
-      errors.security_pin = 'Security PIN is required';
-    } else if (formData.security_pin.length !== 4 || !/^\d+$/.test(formData.security_pin)) {
-      errors.security_pin = 'PIN must be exactly 4 digits';
-    }
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleRegisterRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-
-    if (!validate()) return;
+    if (!validateStep1()) return;
 
     setLoading(true);
     try {
@@ -135,10 +128,48 @@ const Signup: React.FC = () => {
         preferred_instruments: formData.preferred_instruments.join(', ')
       };
       await register(submissionData);
+      setStep(2);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to initiate signup. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent, overrideOtp?: string) => {
+    e.preventDefault();
+    const finalOtp = overrideOtp || otp;
+    if (finalOtp.length !== 6) {
+      setError('Please enter the 6-digit code');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      await verifySignupOtp(formData.email, finalOtp);
+      setStep(3);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Invalid or expired code.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFinalizePin = async (e: React.FormEvent, overridePin?: string) => {
+    e.preventDefault();
+    const finalPin = overridePin || formData.security_pin;
+    if (finalPin.length !== 4) {
+      setError('PIN must be 4 digits');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      await finalizeSignupPin(formData.email, finalPin);
       const from = location.state?.from || '/trade';
       navigate(from, { replace: true });
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to create account. Please try again.');
+      setError(err.response?.data?.detail || 'Failed to setup PIN.');
     } finally {
       setLoading(false);
     }
@@ -156,296 +187,321 @@ const Signup: React.FC = () => {
 
       <div className="w-full max-w-3xl relative z-10">
         <div className="bg-white/80 dark:bg-[#1E222D]/80 backdrop-blur-xl border border-slate-200 dark:border-white/10 rounded-3xl shadow-2xl p-8 md:p-10 transition-all duration-300">
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2 tracking-tight">
-              Join <span className="text-tv-primary">TradeShift</span>
-            </h1>
-            <p className="text-slate-500 dark:text-gray-400">
-              Start your professional trading journey with AI-powered insights
-            </p>
+          
+          {/* Progress Header */}
+          <div className="mb-10">
+            <div className="flex items-center justify-between mb-4">
+              {[1, 2, 3].map((s) => (
+                <div key={s} className="flex flex-col items-center flex-1 relative">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-all z-10 ${
+                    step === s ? 'bg-tv-primary text-white scale-110 shadow-lg shadow-tv-primary/30' : 
+                    step > s ? 'bg-green-500 text-white' : 'bg-slate-200 dark:bg-white/10 text-slate-500'
+                  }`}>
+                    {step > s ? '✓' : s}
+                  </div>
+                  <span className={`text-[10px] mt-2 font-bold uppercase tracking-wider ${step >= s ? 'text-tv-primary' : 'text-slate-400'}`}>
+                    {s === 1 ? 'Details' : s === 2 ? 'Verify' : 'Security'}
+                  </span>
+                  {s < 3 && (
+                    <div className={`absolute top-5 left-1/2 w-full h-[2px] -z-0Transition-all ${step > s ? 'bg-green-500' : 'bg-slate-200 dark:bg-white/10'}`}></div>
+                  )}
+                </div>
+              ))}
+            </div>
+            
+            <div className="text-center">
+               <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-1 tracking-tight">
+                {step === 1 ? 'Create Your Account' : step === 2 ? 'Verify Your Email' : 'Setup Security PIN'}
+              </h1>
+              <p className="text-sm text-slate-500 dark:text-gray-400">
+                {step === 1 ? 'Start your professional trading journey' : 
+                 step === 2 ? `We've sent a code to ${formData.email}` : 
+                 'Create a 4-digit PIN to protect your account'}
+              </p>
+            </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {error && (
-              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-500/30 text-red-600 dark:text-red-400 p-3 rounded-xl flex items-center gap-3 text-sm animate-shake">
-                <AlertCircle size={18} />
-                <span>{error}</span>
-              </div>
-            )}
+          {error && (
+            <div className="mb-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-500/30 text-red-600 dark:text-red-400 p-3 rounded-xl flex items-center gap-3 text-sm animate-shake">
+              <AlertCircle size={18} />
+              <span>{error}</span>
+            </div>
+          )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
-              {/* --- Section 1: Basic Info --- */}
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1">Full Name</label>
-                  <div className="relative group">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-tv-primary transition-colors">
-                      <User size={18} />
+          {step === 1 && (
+            <form onSubmit={handleRegisterRequest} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
+                {/* --- Section 1: Basic Info --- */}
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1">Full Name</label>
+                    <div className="relative group">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-tv-primary transition-colors">
+                        <User size={18} />
+                      </div>
+                      <input
+                        name="full_name"
+                        type="text"
+                        value={formData.full_name}
+                        onChange={handleChange}
+                        className={`block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white focus:outline-none focus:ring-2 transition-all sm:text-sm ${
+                          fieldErrors.full_name ? 'border-red-500' : 'border-slate-200 dark:border-white/10'
+                        }`}
+                        placeholder="John Doe"
+                      />
                     </div>
-                    <input
-                      name="full_name"
-                      type="text"
-                      onChange={handleChange}
-                      className={`block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 transition-all sm:text-sm ${
-                        fieldErrors.full_name
-                          ? 'border-red-500 focus:ring-red-500/50'
-                          : 'border-slate-200 dark:border-white/10 focus:ring-tv-primary/50 focus:border-tv-primary'
-                      }`}
-                      placeholder="John Doe"
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1">Email Address</label>
+                    <div className="relative group">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-tv-primary transition-colors">
+                        <Mail size={18} />
+                      </div>
+                      <input
+                        name="email"
+                        type="email"
+                        value={formData.email}
+                        onChange={handleChange}
+                        className={`block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white focus:outline-none focus:ring-2 transition-all sm:text-sm ${
+                          fieldErrors.email ? 'border-red-500' : 'border-slate-200 dark:border-white/10'
+                        }`}
+                        placeholder="name@gmail.com"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1">Phone Number</label>
+                    <div className="relative group flex items-center">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-tv-primary transition-colors">
+                        <Phone size={18} />
+                        <span className="ml-2 pl-2 pr-2 border-r border-slate-200 dark:border-white/10 text-sm font-medium">+91</span>
+                      </div>
+                      <input
+                        name="phone_number"
+                        type="tel"
+                        maxLength={10}
+                        value={formData.phone_number}
+                        onChange={handleChange}
+                        className={`block w-full pl-24 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white focus:outline-none focus:ring-2 transition-all sm:text-sm ${
+                          fieldErrors.phone_number ? 'border-red-500' : 'border-slate-200 dark:border-white/10'
+                        }`}
+                        placeholder="9876543210"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1">Date of Birth</label>
+                    <PremiumDatePicker
+                      value={formData.dob}
+                      onChange={(val) => setFormData(prev => ({ ...prev, dob: val }))}
+                      placeholder="Select Date of Birth"
                     />
                   </div>
-                  {fieldErrors.full_name && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle size={12}/>{fieldErrors.full_name}</p>}
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1">Email Address</label>
-                  <div className="relative group">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-tv-primary transition-colors">
-                      <Mail size={18} />
+                <div className="space-y-4">
+                   <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1">City</label>
+                    <div className="relative group">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-tv-primary transition-colors">
+                        <MapPin size={18} />
+                      </div>
+                      <input
+                        name="city"
+                        type="text"
+                        value={formData.city}
+                        onChange={handleChange}
+                        className={`block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white focus:outline-none focus:ring-2 transition-all sm:text-sm ${
+                          fieldErrors.city ? 'border-red-500' : 'border-slate-200 dark:border-white/10'
+                        }`}
+                        placeholder="Mumbai"
+                      />
                     </div>
-                    <input
-                      name="email"
-                      type="email"
-                      onChange={handleChange}
-                      className={`block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 transition-all sm:text-sm ${
-                        fieldErrors.email
-                          ? 'border-red-500 focus:ring-red-500/50'
-                          : 'border-slate-200 dark:border-white/10 focus:ring-tv-primary/50 focus:border-tv-primary'
-                      }`}
-                      placeholder="name@gmail.com"
-                    />
                   </div>
-                  {fieldErrors.email && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle size={12}/>{fieldErrors.email}</p>}
-                </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1">Phone Number</label>
-                  <div className="relative group flex items-center">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-tv-primary transition-colors">
-                      <Phone size={18} />
-                      <span className="ml-2 pl-2 pr-2 border-r border-slate-200 dark:border-white/10 text-sm font-medium text-slate-600 dark:text-slate-300">
-                        +91
-                      </span>
-                    </div>
-                    <input
-                      name="phone_number"
-                      type="tel"
-                      maxLength={10}
-                      onChange={handleChange}
-                      className={`block w-full pl-24 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 transition-all sm:text-sm ${
-                        fieldErrors.phone_number
-                          ? 'border-red-500 focus:ring-red-500/50'
-                          : 'border-slate-200 dark:border-white/10 focus:ring-tv-primary/50 focus:border-tv-primary'
-                      }`}
-                      placeholder="9876543210"
-                    />
-                  </div>
-                  {fieldErrors.phone_number && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle size={12}/>{fieldErrors.phone_number}</p>}
-                </div>
-
-<div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1">Date of Birth</label>
-                  <PremiumDatePicker
-                    value={formData.dob}
-                    onChange={(val) => {
-                      setFormData(prev => ({ ...prev, dob: val }));
-                      if (fieldErrors.dob) setFieldErrors((prev: Record<string, string>) => { const n = { ...prev }; delete n['dob']; return n; });
-                    }}
-                    placeholder="Select Date of Birth"
-                  />
-                  {fieldErrors.dob && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle size={12}/>{fieldErrors.dob}</p>}
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1">City</label>
-                  <div className="relative group">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-tv-primary transition-colors">
-                      <MapPin size={18} />
-                    </div>
-                    <input
-                      name="city"
-                      type="text"
-                      onChange={handleChange}
-                      className={`block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 transition-all sm:text-sm ${
-                        fieldErrors.city
-                          ? 'border-red-500 focus:ring-red-500/50'
-                          : 'border-slate-200 dark:border-white/10 focus:ring-tv-primary/50 focus:border-tv-primary'
-                      }`}
-                      placeholder="Mumbai"
-                    />
-                  </div>
-                  {fieldErrors.city && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle size={12}/>{fieldErrors.city}</p>}
-                </div>
-              </div>
-
-              {/* --- Section 2: Experience & Preferences --- */}
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1">Experience Level</label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                      <BarChart3 size={18} />
-                    </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1 flex items-center gap-2">
+                       <Shield size={18} className="text-slate-400" />
+                       Experience Level
+                    </label>
                     <PremiumSelect
                       value={formData.experience_level}
                       onChange={(value) => setFormData({ ...formData, experience_level: value })}
                       options={EXPERIENCE_OPTIONS}
-                      className="block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-tv-primary/50 focus:border-tv-primary transition-all sm:text-sm"
                     />
                   </div>
-                </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1">Investment Goals</label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                      <Target size={18} />
-                    </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1 flex items-center gap-2">
+                       <Target size={18} className="text-slate-400" />
+                       Investment Goals
+                    </label>
                     <PremiumSelect
                       value={formData.investment_goals}
                       onChange={(value) => setFormData({ ...formData, investment_goals: value })}
                       options={GOAL_OPTIONS}
-                      className="block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-tv-primary/50 focus:border-tv-primary transition-all sm:text-sm"
                     />
                   </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1">Risk Profile</label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                      <Shield size={18} />
+                  
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1">Password</label>
+                    <div className="relative group">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-tv-primary transition-colors">
+                        <Lock size={18} />
+                      </div>
+                      <input
+                        name="password"
+                        type={showPassword ? "text" : "password"}
+                        value={formData.password}
+                        onChange={handleChange}
+                        className={`block w-full pl-11 pr-11 py-2.5 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white focus:outline-none focus:ring-2 transition-all sm:text-sm ${
+                          fieldErrors.password ? 'border-red-500' : 'border-slate-200 dark:border-white/10'
+                        }`}
+                        placeholder="••••••••"
+                      />
+                      <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400">
+                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
                     </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1 flex items-center gap-2">
+                      <Share2 size={18} className="text-slate-400" />
+                      How did you hear about us?
+                    </label>
                     <PremiumSelect
-                      value={formData.risk_tolerance}
-                      onChange={(value) => setFormData({ ...formData, risk_tolerance: value })}
-                      options={RISK_OPTIONS}
-                      className="block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-tv-primary/50 focus:border-tv-primary transition-all sm:text-sm"
+                      value={formData.how_heard_about}
+                      onChange={(value) => setFormData({ ...formData, how_heard_about: value })}
+                      options={SOURCE_OPTIONS}
                     />
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1">Occupation</label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                      <Briefcase size={18} />
-                    </div>
-                    <PremiumSelect
-                      value={formData.occupation}
-                      onChange={(value) => setFormData({ ...formData, occupation: value })}
-                      options={OCCUPATION_OPTIONS}
-                      className="block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-tv-primary/50 focus:border-tv-primary transition-all sm:text-sm"
-                    />
+                <div className="md:col-span-2 space-y-3">
+                  <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1 flex items-center gap-2">
+                    <Layers size={18} className="text-slate-400" />
+                    Preferred Instruments
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {instruments.map(inst => (
+                      <button
+                        key={inst}
+                        type="button"
+                        onClick={() => handleInstrumentChange(inst)}
+                        className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all border ${
+                          formData.preferred_instruments.includes(inst)
+                            ? 'bg-tv-primary border-tv-primary text-white'
+                            : 'bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-600 dark:text-gray-400'
+                        }`}
+                      >
+                        {inst}
+                      </button>
+                    ))}
                   </div>
                 </div>
               </div>
 
-              {/* --- Full Width Field: Preferred Instruments --- */}
-              <div className="md:col-span-2 space-y-3">
-                <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1 flex items-center gap-2">
-                  <Layers size={18} className="text-slate-400" />
-                  Preferred Instruments
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {instruments.map(inst => (
-                    <button
-                      key={inst}
-                      type="button"
-                      onClick={() => handleInstrumentChange(inst)}
-                      className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all border ${
-                        formData.preferred_instruments.includes(inst)
-                          ? 'bg-tv-primary border-tv-primary text-white shadow-lg shadow-tv-primary/20'
-                          : 'bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-600 dark:text-gray-400 hover:border-tv-primary/50'
-                      }`}
-                    >
-                      {inst}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* --- Section 3: Security --- */}
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1">Password</label>
-                  <div className="relative group">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-tv-primary transition-colors">
-                      <Lock size={18} />
-                    </div>
-                    <input
-                      name="password"
-                      type={showPassword ? "text" : "password"}
-                      onChange={handleChange}
-                      className={`block w-full pl-11 pr-11 py-2.5 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 transition-all sm:text-sm ${
-                        fieldErrors.password
-                          ? 'border-red-500 focus:ring-red-500/50'
-                          : 'border-slate-200 dark:border-white/10 focus:ring-tv-primary/50 focus:border-tv-primary'
-                      }`}
-                      placeholder="••••••••"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors focus:outline-none"
-                    >
-                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                    </button>
-                  </div>
-                  {fieldErrors.password && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle size={12}/>{fieldErrors.password}</p>}
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700 dark:text-gray-300 ml-1">Security PIN (4-Digits)</label>
-                  <div className="relative group">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-tv-primary transition-colors">
-                      <KeyRound size={18} />
-                    </div>
-                    <input
-                      name="security_pin"
-                      type="text"
-                      maxLength={4}
-                      onChange={handleChange}
-                      className={`block w-full pl-11 pr-4 py-2.5 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 transition-all sm:text-sm text-center tracking-widest font-mono ${
-                        fieldErrors.security_pin
-                          ? 'border-red-500 focus:ring-red-500/50'
-                          : 'border-slate-200 dark:border-white/10 focus:ring-tv-primary/50 focus:border-tv-primary'
-                      }`}
-                      placeholder="1234"
-                    />
-                  </div>
-                  {fieldErrors.security_pin && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle size={12}/>{fieldErrors.security_pin}</p>}
-                </div>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full flex justify-center items-center gap-2 py-3.5 px-4 border border-transparent rounded-xl shadow-lg text-sm font-bold text-white bg-tv-primary hover:bg-tv-primary-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-tv-primary disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98] mt-6"
-            >
-              {loading ? (
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-              ) : (
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full flex justify-center items-center gap-2 py-4 px-4 border border-transparent rounded-xl shadow-lg text-sm font-bold text-white bg-tv-primary hover:bg-tv-primary-hover disabled:opacity-50 transition-all active:scale-[0.98] mt-4"
+              >
+                {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 
                 <>
                   <UserPlus size={20} />
-                  <span>Create Professional Account</span>
-                </>
-              )}
-            </button>
-          </form>
+                  <span>Create Account & Send OTP</span>
+                </>}
+              </button>
+              
+              <div className="pt-4 border-t border-slate-200 dark:border-white/10 text-center">
+                <p className="text-sm text-slate-500 dark:text-gray-400">
+                  Already verified? <Link to="/login" className="text-tv-primary font-bold">Login here</Link>
+                </p>
+              </div>
+            </form>
+          )}
 
-          <div className="mt-8 pt-6 border-t border-slate-200 dark:border-white/10 text-center">
-            <p className="text-sm text-slate-500 dark:text-gray-400 flex items-center justify-center gap-2">
-              Already have an account?{' '}
-              <Link to="/login" state={{ from: location.state?.from }} className="text-tv-primary font-bold hover:text-tv-primary-hover transition-colors inline-flex items-center gap-1 group">
-                Login here
-                <ArrowLeft size={14} className="group-hover:-translate-x-1 transition-transform rotate-180" />
-              </Link>
-            </p>
-          </div>
+          {step === 2 && (
+            <form onSubmit={handleVerifyOtp} className="space-y-6 max-w-md mx-auto">
+              <div className="space-y-8">
+                <div className="flex justify-center">
+                  <OtpInput 
+                    length={6} 
+                    disabled={loading}
+                    onComplete={(code) => {
+                      setOtp(code);
+                      const submitEvent = { preventDefault: () => {} } as React.FormEvent;
+                      // small timeout for user to see the last digit
+                      setTimeout(() => handleVerifyOtp(submitEvent, code), 100);
+                    }} 
+                  />
+                </div>
+                <p className="text-center text-xs text-slate-500 dark:text-gray-400">
+                  Enter the 6-digit code we sent to your inbox. It might take a minute to arrive.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-4 bg-tv-primary hover:bg-tv-primary-hover text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2"
+                >
+                  {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Verify Email'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStep(1)}
+                  className="w-full py-3 text-slate-500 dark:text-gray-400 font-medium hover:text-slate-700 dark:hover:text-white transition-colors"
+                >
+                  Back to Edit Details
+                </button>
+              </div>
+            </form>
+          )}
+
+          {step === 3 && (
+            <form onSubmit={handleFinalizePin} className="space-y-6 max-w-md mx-auto">
+              <div className="space-y-8">
+                <div className="flex justify-center">
+                  <OtpInput 
+                    length={4} 
+                    type="password"
+                    disabled={loading}
+                    onComplete={(code) => {
+                      setFormData(prev => ({ ...prev, security_pin: code }));
+                      const submitEvent = { preventDefault: () => {} } as React.FormEvent;
+                      setTimeout(() => handleFinalizePin(submitEvent, code), 100);
+                    }} 
+                  />
+                </div>
+                <div className="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-xl border border-blue-100 dark:border-blue-500/20">
+                  <div className="flex gap-3">
+                    <Shield className="text-blue-500 shrink-0" size={18} />
+                    <p className="text-xs text-blue-700 dark:text-blue-300 leading-relaxed">
+                      Your Security PIN is required for every login. Choose a 4-digit combination that only you know. Avoid simple patterns like 1234 or 0000.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-4 bg-tv-primary hover:bg-tv-primary-hover text-white rounded-xl font-bold shadow-lg shadow-tv-primary/20 transition-all flex items-center justify-center gap-2"
+              >
+                {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 
+                <>
+                  <Shield size={20} />
+                  <span>Setup PIN & Complete Signup</span>
+                </>}
+              </button>
+            </form>
+          )}
         </div>
       </div>
     </div>

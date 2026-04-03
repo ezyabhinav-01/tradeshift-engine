@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
-import { Shield, KeyRound, AlertCircle, ArrowLeft, Calendar, Mail, CheckCircle2, Eye, EyeOff } from 'lucide-react';
+import { Shield, AlertCircle, ArrowLeft, Calendar, Mail, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { PremiumDatePicker } from '@/components/ui/PremiumDatePicker';
+import OtpInput from '@/components/ui/OtpInput';
 
 const PinVerification: React.FC = () => {
   const location = useLocation();
@@ -24,7 +25,6 @@ const PinVerification: React.FC = () => {
   const [confirmPin, setConfirmPin] = useState('');
   
   const [error, setError] = useState<string | null>(null);
-  const [showPin, setShowPin] = useState(false);
   const [showNewPin, setShowNewPin] = useState(false);
   const [showConfirmPin, setShowConfirmPin] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -49,22 +49,23 @@ const PinVerification: React.FC = () => {
     }
   }, [initialEmail, mode]);
 
-  const handleVerify = async (e: React.FormEvent) => {
+  const handleVerify = async (e: React.FormEvent, overridePin?: string) => {
     e.preventDefault();
+    const finalPin = overridePin || pin;
     setError(null);
     setSuccess(null);
     const errs: Record<string, string> = {};
     if (!email.trim()) errs.verifyEmail = 'Email is required';
-    if (!pin) {
+    if (!finalPin) {
       errs.pin = 'Security PIN is required';
-    } else if (pin.length !== 4 || !/^\d+$/.test(pin)) {
+    } else if (finalPin.length !== 4 || !/^\d+$/.test(finalPin)) {
       errs.pin = 'PIN must be exactly 4 digits';
     }
     if (Object.keys(errs).length > 0) { setFieldErrors(errs); return; }
     setFieldErrors({});
     setLoading(true);
     try {
-      await axios.post('/auth/verify-pin', { email, pin });
+      await axios.post('/auth/verify-pin', { email, pin: finalPin });
       const from = location.state?.from || '/trade';
       navigate(from, { replace: true });
     } catch (err: any) {
@@ -204,25 +205,17 @@ const PinVerification: React.FC = () => {
                     Forgot PIN?
                   </button>
                 </div>
-                <div className="relative group">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-tv-primary transition-colors">
-                    <KeyRound size={18} />
-                  </div>
-                  <input
-                    type={showPin ? "text" : "password"}
-                    maxLength={4}
-                    value={pin}
-                    onChange={(e) => { setPin(e.target.value); setFieldErrors((p: Record<string, string>) => { const n = {...p}; delete n['pin']; return n; }); }}
-                    className={`block w-full pl-11 pr-11 py-3.5 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 transition-all sm:text-2xl text-center tracking-[1em] font-mono ${ fieldErrors.pin ? 'border-red-500 focus:ring-red-500/50' : 'border-slate-200 dark:border-white/10 focus:ring-tv-primary/50 focus:border-tv-primary' }`}
-                    placeholder="••••"
+                <div className="flex justify-center pt-2">
+                  <OtpInput 
+                    length={4} 
+                    type="password"
+                    disabled={loading}
+                    onComplete={(code) => {
+                      setPin(code);
+                      const submitEvent = { preventDefault: () => {} } as React.FormEvent;
+                      setTimeout(() => handleVerify(submitEvent, code), 100);
+                    }} 
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowPin(!showPin)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors focus:outline-none"
-                  >
-                    {showPin ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
                 </div>
                 {fieldErrors.pin && <p className="text-xs text-red-500 mt-1 ml-1 flex items-center gap-1"><AlertCircle size={12}/>{fieldErrors.pin}</p>}
               </div>

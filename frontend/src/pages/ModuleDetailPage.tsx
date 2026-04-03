@@ -77,7 +77,21 @@ export default function ModuleDetailPage() {
   const progressPct = totalModuleLessons > 0 ? Math.round((completedModuleLessons / totalModuleLessons) * 100) : 0;
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 overflow-y-auto bg-black selection:bg-indigo-500/30">
+    <div className="flex flex-col flex-1 min-h-0 overflow-y-auto bg-[#030303] selection:bg-indigo-500/30 relative">
+      <div className="fixed inset-0 pointer-events-none z-0 mt-16 md:mt-0">
+        <div className="absolute inset-0 opacity-[0.15]" style={{ backgroundImage: 'radial-gradient(circle, #4f46e5 1.5px, transparent 1.5px)', backgroundSize: '32px 32px' }}></div>
+        <motion.div 
+          animate={{ scale: [1, 1.15, 1], opacity: [0.4, 0.8, 0.4] }} 
+          transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute top-[-10%] right-[-10%] w-[600px] h-[600px] bg-indigo-500/15 blur-[150px] rounded-full" 
+        />
+        <motion.div 
+          animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.6, 0.3] }} 
+          transition={{ duration: 10, repeat: Infinity, ease: "easeInOut", delay: 2 }}
+          className="absolute bottom-[-10%] left-[-10%] w-[600px] h-[600px] bg-purple-500/15 blur-[150px] rounded-full" 
+        />
+      </div>
+      <div className="relative z-10 flex flex-col flex-1">
       {/* ══════════════ NAVIGATION BAR ══════════════ */}
       <div className="sticky top-0 z-50 border-b border-white/5 bg-black/60 backdrop-blur-xl">
         <div className="max-w-4xl mx-auto px-6 h-16 flex items-center justify-between">
@@ -104,13 +118,15 @@ export default function ModuleDetailPage() {
                     fill="transparent"
                     className="text-white/5"
                   />
-                  <circle
+                  <motion.circle
                     cx="20" cy="20" r="18"
                     stroke="currentColor" strokeWidth="3"
                     fill="transparent"
                     strokeDasharray={113}
-                    strokeDashoffset={113 - (113 * progressPct) / 100}
-                    className="text-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)] transition-all duration-1000"
+                    initial={{ strokeDashoffset: 113 }}
+                    animate={{ strokeDashoffset: 113 - (113 * progressPct) / 100 }}
+                    transition={{ duration: 2, ease: "easeOut", delay: 0.5 }}
+                    className="text-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]"
                   />
                 </svg>
              </div>
@@ -118,7 +134,12 @@ export default function ModuleDetailPage() {
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto w-full px-6 py-16">
+      <motion.div 
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+        className="max-w-4xl mx-auto w-full px-6 py-16"
+      >
         {/* ══════════════ MODULE HEADER ══════════════ */}
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
@@ -162,9 +183,10 @@ export default function ModuleDetailPage() {
                 return (
                   <motion.button
                     key={sm.id}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.1 }}
+                    initial={{ opacity: 0, x: -30, filter: 'blur(10px)' }}
+                    animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
+                    transition={{ delay: index * 0.15, duration: 0.5, type: 'spring', bounce: 0.4 }}
+                    whileHover={{ x: 15 }}
                     onClick={() => {
                       if (checkAccess()) navigate(`/learn/chapter/${sm.id}`);
                     }}
@@ -204,9 +226,11 @@ export default function ModuleDetailPage() {
                          <div className="flex items-center gap-6 pt-2">
                             <div className="flex items-center gap-2 px-3 py-1 bg-white/[0.03] rounded-full border border-white/5 ring-1 ring-white/5">
                                <div className="w-12 h-1 bg-white/10 rounded-full overflow-hidden">
-                                  <div 
-                                    className={`h-full transition-all duration-1000 ${isMastered ? 'bg-emerald-500' : 'bg-indigo-500'}`}
-                                    style={{ width: `${smProgress}%` }}
+                                  <motion.div 
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${smProgress}%` }}
+                                    transition={{ duration: 1.5, delay: index * 0.15 + 0.5, ease: "easeOut" }}
+                                    className={`h-full ${isMastered ? 'bg-emerald-500' : 'bg-indigo-500'}`}
                                   />
                                </div>
                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{smProgress}%</span>
@@ -230,7 +254,7 @@ export default function ModuleDetailPage() {
             )}
           </div>
         </div>
-      </div>
+      </motion.div>
       
       {/* Decorative footer footer */}
       <div className="mt-auto py-20 px-6 border-t border-white/5 bg-gradient-to-b from-transparent to-indigo-500/5">
@@ -239,6 +263,7 @@ export default function ModuleDetailPage() {
             <h5 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.4em] mb-2">Goal Objective</h5>
             <p className="text-slate-400 text-sm font-medium max-w-xs">Complete all chapters in this group to earn 500 XP and the module completion badge.</p>
          </div>
+      </div>
       </div>
     </div>
   );

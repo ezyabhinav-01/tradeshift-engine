@@ -198,7 +198,22 @@ export default function SubModuleDetailPage() {
   const isChapterComplete = completedCount === data.lessons.length;
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 bg-[#030303] selection:bg-indigo-500/30">
+    <div className="flex flex-col flex-1 min-h-0 bg-[#030303] selection:bg-indigo-500/30 relative">
+      <div className="fixed inset-0 pointer-events-none z-0 mt-16 md:mt-0">
+        <div className="absolute inset-0 bg-[#030303]" />
+        <div className="absolute inset-0 opacity-[0.15]" style={{ backgroundImage: 'radial-gradient(circle, #4f46e5 1.5px, transparent 1.5px)', backgroundSize: '32px 32px' }}></div>
+        <motion.div 
+          animate={{ scale: [1, 1.15, 1], opacity: [0.4, 0.8, 0.4] }} 
+          transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute top-[-10%] right-[-10%] w-[600px] h-[600px] bg-indigo-500/15 blur-[150px] rounded-full" 
+        />
+        <motion.div 
+          animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.6, 0.3] }} 
+          transition={{ duration: 10, repeat: Infinity, ease: "easeInOut", delay: 2 }}
+          className="absolute bottom-[-10%] left-[-10%] w-[600px] h-[600px] bg-purple-500/15 blur-[150px] rounded-full" 
+        />
+      </div>
+      <div className="relative z-10 flex flex-col flex-1">
       {/* ───── STICKY CHAPTER NAV ───── */}
       <motion.div 
         initial={{ y: -100 }}
@@ -749,6 +764,7 @@ export default function SubModuleDetailPage() {
           50% { box-shadow: 0 0 12px -3px rgba(99,102,241,0.15); }
         }
       `}</style>
+      </div>
     </div>
   );
 }

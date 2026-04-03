@@ -51,6 +51,15 @@ export interface Badge {
   condition: string;
 }
 
+export interface MarketSecret {
+  id: number;
+  question: string;
+  iconEmoji: string;
+  xpReward: number;
+  isRevealed: boolean;
+  answerHtml?: string;
+}
+
 // ═══════════════════════════════════════════
 // MOCK DATA — Rich 4-Level Hierarchy
 // ═══════════════════════════════════════════
@@ -107,6 +116,7 @@ interface LearnState {
   // Data
   tracks: Track[];
   badges: Badge[];
+  secrets: MarketSecret[];
 
   // User progress
   completedLessons: string[]; // lesson IDs
@@ -119,6 +129,8 @@ interface LearnState {
   quizzesCompleted: number;
   tracksStarted: string[]; // track IDs
   learningMinutes: number; // dynamically tracked DB minutes
+  secretsRevealed: number;
+  secretsTotal: number;
 
   // UI state
   activeTrackId: string | null;
@@ -127,6 +139,8 @@ interface LearnState {
   // Actions
   fetchTracks: () => Promise<void>;
   fetchUserStats: () => Promise<void>;
+  fetchSecrets: () => Promise<void>;
+  revealSecret: (id: number) => Promise<{ xpEarned: number; answerHtml: string } | null>;
   completeLesson: (lessonId: string, trackId: string) => Promise<void>;
   setActiveTrack: (trackId: string | null) => void;
   setActiveModule: (moduleId: string | null) => void;
@@ -143,6 +157,7 @@ export function getXPForLevel(level: number): number {
 export const useLearnStore = create<LearnState>((set, get) => ({
   tracks: [],
   badges: DEFAULT_BADGES,
+  secrets: [],
 
   // Progress defaults (overwritten by fetchUserStats)
   completedLessons: [],
@@ -155,6 +170,8 @@ export const useLearnStore = create<LearnState>((set, get) => ({
   quizzesCompleted: 0,
   tracksStarted: [],
   learningMinutes: 0,
+  secretsRevealed: 0,
+  secretsTotal: 0,
 
   // UI
   activeTrackId: null,
@@ -228,6 +245,50 @@ export const useLearnStore = create<LearnState>((set, get) => ({
     } catch (e) {
       console.error("Failed to fetch tracks", e);
     }
+  },
+
+  fetchSecrets: async () => {
+    try {
+      const res = await fetch('/api/learn/secrets');
+      if (res.ok) {
+        const data = await res.json();
+        const secrets = data.secrets || [];
+        set({
+          secrets,
+          secretsTotal: secrets.length,
+          secretsRevealed: secrets.filter((s: MarketSecret) => s.isRevealed).length,
+        });
+      }
+    } catch (e) {
+      console.error("Failed to fetch secrets", e);
+    }
+  },
+
+  revealSecret: async (id: number) => {
+    try {
+      const res = await fetch(`/api/learn/secrets/${id}/reveal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        // Update the secret in local state
+        set(state => ({
+          secrets: state.secrets.map(s =>
+            s.id === id ? { ...s, isRevealed: true, answerHtml: data.answerHtml } : s
+          ),
+          secretsRevealed: state.secretsRevealed + (data.status === 'revealed' ? 1 : 0),
+        }));
+        // Refresh stats to update XP
+        if (data.status === 'revealed') {
+          await get().fetchUserStats();
+        }
+        return { xpEarned: data.xpEarned, answerHtml: data.answerHtml };
+      }
+    } catch (e) {
+      console.error("Failed to reveal secret", e);
+    }
+    return null;
   },
 
   completeLesson: async (lessonId: string, trackId: string) => {

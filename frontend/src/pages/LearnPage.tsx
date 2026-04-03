@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   TrendingUp, BarChart3, Calculator, Layers, PieChart, Brain,
   GraduationCap, Flame, Trophy, Star, ChevronRight,
   Clock, BookOpen, Play, Lock, Target,
-  ArrowRight, Sparkles
+  ArrowRight, Sparkles, KeyRound, Unlock
 } from 'lucide-react';
 import { useLearnStore, getXPForLevel } from '../store/useLearnStore';
 import type { Track, Badge } from '../store/useLearnStore';
@@ -125,6 +125,133 @@ const BadgeCard: React.FC<{ badge: Badge }> = ({ badge }) => (
 );
 
 // ═══════════════════════════════════════════
+// SECRET CARD
+// ═══════════════════════════════════════════
+const SecretCard: React.FC<{
+  secret: { id: number; question: string; iconEmoji: string; xpReward: number; isRevealed: boolean; answerHtml?: string };
+  index: number;
+  onReveal: (e: React.MouseEvent) => void;
+}> = ({ secret, index, onReveal }) => {
+  const navigate = useNavigate();
+  const [isFlipping, setIsFlipping] = useState(false);
+  const [showAnswer, setShowAnswer] = useState(secret.isRevealed);
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isFlipping || !cardRef.current) return;
+    const rect = cardRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    const rotateX = ((y - centerY) / centerY) * -10; 
+    const rotateY = ((x - centerX) / centerX) * 10;
+    
+    cardRef.current.style.setProperty('--rot-x', `${rotateX}deg`);
+    cardRef.current.style.setProperty('--rot-y', `${rotateY}deg`);
+  };
+
+  const handleMouseLeave = () => {
+    if (cardRef.current) {
+      cardRef.current.style.setProperty('--rot-x', `0deg`);
+      cardRef.current.style.setProperty('--rot-y', `0deg`);
+    }
+  };
+
+  const handleReveal = async (e: React.MouseEvent) => {
+    if (secret.isRevealed || isFlipping) return;
+    setIsFlipping(true);
+    onReveal(e);
+    // Wait for flip animation
+    setTimeout(() => {
+      setShowAnswer(true);
+      setIsFlipping(false);
+    }, 600);
+  };
+
+  // Sync showAnswer with prop
+  useEffect(() => {
+    if (secret.isRevealed) setShowAnswer(true);
+  }, [secret.isRevealed]);
+
+  return (
+    <div className="w-[85vw] sm:w-[340px] shrink-0 snap-start transform-gpu">
+      <div
+        ref={cardRef}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
+        className={`secret-card magnetic-tilt h-full flex flex-col learn-stagger-enter relative overflow-hidden rounded-2xl border p-5 cursor-pointer group ${
+          showAnswer
+            ? 'bg-white dark:bg-[#0a0a0a] border-purple-300 dark:border-purple-500/20'
+            : 'bg-white dark:bg-[#0a0a0a] border-slate-200 dark:border-white/5 secret-glow-pulse'
+        } ${isFlipping ? 'secret-flip' : 'hover:border-purple-400/30 dark:hover:border-purple-500/20'}`}
+        style={{ animationDelay: `${index * 0.06}s` }}
+        onClick={handleReveal}
+      >
+        {/* Ambient glow for unrevealed */}
+      {!showAnswer && (
+        <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full bg-purple-500/10 blur-2xl group-hover:bg-purple-500/20 transition-all" />
+      )}
+
+      {/* Header */}
+      <div className="flex items-start justify-between mb-3 relative z-10">
+        <span className="text-2xl">{secret.iconEmoji}</span>
+        <div className="flex items-center gap-2">
+          <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md bg-purple-500/10 text-purple-500 dark:text-purple-400 border border-purple-500/20">
+            +{secret.xpReward} XP
+          </span>
+          {showAnswer ? (
+            <Unlock size={14} className="text-emerald-500" />
+          ) : (
+            <Lock size={14} className="text-slate-400 dark:text-slate-500 group-hover:text-purple-400 transition-colors" />
+          )}
+        </div>
+      </div>
+
+      {/* Question */}
+      <h4 className="text-sm font-bold text-slate-800 dark:text-white mb-3 leading-snug pr-4 relative z-10">
+        {secret.question}
+      </h4>
+
+      {/* Answer or Reveal Prompt */}
+      {showAnswer ? (
+        <div className="secret-answer-enter flex flex-col flex-1">
+          <div className="w-full h-px bg-gradient-to-r from-transparent via-purple-500/20 to-transparent my-3 shrink-0" />
+          <div
+            className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed cms-content line-clamp-2"
+            style={{ fontSize: '0.75rem' }}
+            dangerouslySetInnerHTML={{ __html: secret.answerHtml || '<p class="text-slate-400 dark:text-slate-500 italic">No answer content yet.</p>' }}
+          />
+          <div className="flex items-center justify-between mt-auto pt-4">
+            <div className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              <span className="text-[9px] font-bold text-emerald-500/70 uppercase tracking-wider">Revealed</span>
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate(`/learn/secret/${secret.id}`);
+              }}
+              className="text-[10px] font-bold text-purple-500 hover:text-purple-400 uppercase tracking-widest flex items-center gap-1 transition"
+            >
+              Explore &rarr;
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="relative z-10 mt-auto pt-2">
+          <div className="flex items-center gap-2 text-[10px] text-purple-500 dark:text-purple-400 font-bold uppercase tracking-wider group-hover:text-purple-400 transition-colors">
+            <KeyRound size={12} className="secret-key-bounce" />
+            Tap to Reveal
+          </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════
 // TRACK CARD
 // ═══════════════════════════════════════════
 const TrackCard: React.FC<{
@@ -139,11 +266,37 @@ const TrackCard: React.FC<{
     return allLessons.filter(lid => s.completedLessons.includes(lid)).length;
   });
 
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!cardRef.current) return;
+    const rect = cardRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    const rotateX = ((y - centerY) / centerY) * -6; 
+    const rotateY = ((x - centerX) / centerX) * 6;
+    
+    cardRef.current.style.setProperty('--rot-x', `${rotateX}deg`);
+    cardRef.current.style.setProperty('--rot-y', `${rotateY}deg`);
+  };
+
+  const handleMouseLeave = () => {
+    if (cardRef.current) {
+      cardRef.current.style.setProperty('--rot-x', `0deg`);
+      cardRef.current.style.setProperty('--rot-y', `0deg`);
+    }
+  };
+
   return (
     <div
+      ref={cardRef}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
       onClick={onClick}
-      className={`track-card learn-stagger-enter cursor-pointer relative overflow-hidden rounded-2xl border p-6 group 
-        bg-white dark:bg-[#0a0a0a] border-slate-200 dark:border-white/5 shadow-sm hover:shadow-lg dark:hover:shadow-2xl hover:border-slate-300 dark:hover:border-white/10 transition-all`}
+      className={`track-card magnetic-tilt learn-stagger-enter cursor-pointer relative overflow-hidden rounded-2xl border p-6 group 
+        bg-white dark:bg-[#0a0a0a] border-slate-200 dark:border-white/5 shadow-sm hover:shadow-xl dark:hover:shadow-2xl hover:border-slate-300 dark:hover:border-white/10`}
       style={{ animationDelay: `${index * 0.05}s` }}
     >
       {/* Gradient accent line on top */}
@@ -216,10 +369,11 @@ const TrackCard: React.FC<{
 // ═══════════════════════════════════════════
 export default function LearnPage() {
   const {
-    tracks, badges, completedLessons, totalXP, level,
+    tracks, badges, secrets, completedLessons, totalXP, level,
     currentStreak, longestStreak, lastActiveDate, learningMinutes,
+    secretsRevealed, secretsTotal,
     getTrackProgress,
-    fetchUserStats, fetchTracks
+    fetchUserStats, fetchTracks, fetchSecrets, revealSecret
   } = useLearnStore();
 
   const navigate = useNavigate();
@@ -227,10 +381,11 @@ export default function LearnPage() {
   const { checkAccess } = useAccessControl();
   const isGuest = !user;
   const [isLoading, setIsLoading] = useState(true);
+  const [xpPopups, setXpPopups] = useState<{ id: number; xp: number; x: number; y: number }[]>([]);
 
   // Check streak and fetch tracks on mount
   useEffect(() => {
-    Promise.all([fetchUserStats(), fetchTracks()]).finally(() => setIsLoading(false));
+    Promise.all([fetchUserStats(), fetchTracks(), fetchSecrets()]).finally(() => setIsLoading(false));
   }, []);
 
   const unlockedBadges = badges.filter(b => b.unlocked);
@@ -398,6 +553,70 @@ export default function LearnPage() {
             </div>
           </div>
         </div>
+
+        {/* ══════════════ MARKET SECRETS ══════════════ */}
+        {secrets.length > 0 && (
+          <div className="market-secrets-section">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-purple-500/10 rounded-xl border border-purple-500/20">
+                  <KeyRound size={20} className="text-purple-400" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+                    Market Secrets
+                    <Sparkles size={16} className="text-purple-400" />
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Tap to reveal hidden market insights and earn XP</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="px-3 py-1.5 bg-purple-500/10 rounded-xl border border-purple-500/20 text-purple-400 text-xs font-bold flex items-center gap-1.5">
+                  <Unlock size={12} />
+                  {secretsRevealed}/{secretsTotal} Unlocked
+                </div>
+              </div>
+            </div>
+
+            <div className="flex overflow-x-auto gap-4 pb-4 snap-x hide-scrollbar -mx-4 px-4 lg:-mx-8 lg:px-8">
+              {secrets.map((secret, idx) => (
+                <SecretCard
+                  key={secret.id}
+                  secret={secret}
+                  index={idx}
+                  onReveal={async (e) => {
+                    if (isGuest) { checkAccess(); return; }
+                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    const result = await revealSecret(secret.id);
+                    if (result && result.xpEarned > 0) {
+                      const popup = {
+                        id: Date.now(),
+                        xp: result.xpEarned,
+                        x: rect.left + rect.width / 2,
+                        y: rect.top,
+                      };
+                      setXpPopups(prev => [...prev, popup]);
+                      setTimeout(() => {
+                        setXpPopups(prev => prev.filter(p => p.id !== popup.id));
+                      }, 1500);
+                    }
+                  }}
+                />
+              ))}
+            </div>
+
+            {/* XP Pop Animations */}
+            {xpPopups.map(popup => (
+              <div
+                key={popup.id}
+                className="xp-popup fixed pointer-events-none z-50 font-black text-lg text-purple-400"
+                style={{ left: popup.x, top: popup.y }}
+              >
+                +{popup.xp} XP ⚡
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* ══════════════ CONTINUE LEARNING ══════════════ */}
         {continueSuggestion && completedLessons.length > 0 && (

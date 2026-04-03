@@ -10,7 +10,7 @@ from typing import Optional, List
 
 from sqlalchemy.orm import joinedload
 from app.database import get_db
-from app.models import LearningProgress, UserStreak, UserBadge, Track, Module, SubModule, Lesson
+from app.models import LearningProgress, UserStreak, UserBadge, Track, Module, SubModule, Lesson, MarketSecret, UserSecretReveal
 from app.services.badge_service import check_and_grant_badges
 
 router = APIRouter(prefix="/api/learn", tags=["learn"])
@@ -829,3 +829,158 @@ def calculate_level(xp: int) -> int:
         if xp >= thresholds[i]:
             return i + 1
     return 1
+
+
+# ═══════════════════════════════════════════
+# MARKET SECRETS — Gamified Learning
+# ═══════════════════════════════════════════
+
+@router.get("/secrets")
+async def get_secrets(user_id: int = 1, db: AsyncSession = Depends(get_db)):
+    """
+    Get all published secrets, marking which ones the current user has revealed.
+    """
+    try:
+        # Fetch all published secrets
+        result = await db.execute(
+            select(MarketSecret)
+            .where(MarketSecret.is_published == True)
+            .order_by(MarketSecret.sort_order.asc(), MarketSecret.id.asc())
+        )
+        secrets = result.scalars().all()
+
+        # Fetch user's reveals
+        reveals_result = await db.execute(
+            select(UserSecretReveal).where(UserSecretReveal.user_id == user_id)
+        )
+        reveals = reveals_result.scalars().all()
+        revealed_ids = {r.secret_id for r in reveals}
+
+        secrets_data = []
+        for s in secrets:
+            is_revealed = s.id in revealed_ids
+            secret_data = {
+                "id": s.id,
+                "question": s.question,
+                "iconEmoji": s.icon_emoji,
+                "xpReward": s.xp_reward,
+                "isRevealed": is_revealed,
+            }
+            # Only send answer if revealed
+            if is_revealed:
+                secret_data["answerHtml"] = s.answer_html or ""
+            secrets_data.append(secret_data)
+
+        return {"secrets": secrets_data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch secrets: {str(e)}")
+
+
+@router.get("/secrets/stats")
+async def get_secrets_stats(user_id: int = 1, db: AsyncSession = Depends(get_db)):
+    """
+    Get secret stats for the user: total available, total revealed, XP earned from secrets.
+    """
+    try:
+        # Total published
+        total_result = await db.execute(
+            select(MarketSecret).where(MarketSecret.is_published == True)
+        )
+        total_secrets = len(total_result.scalars().all())
+
+        # User reveals
+        reveals_result = await db.execute(
+            select(UserSecretReveal).where(UserSecretReveal.user_id == user_id)
+        )
+        reveals = reveals_result.scalars().all()
+
+        return {
+            "totalSecrets": total_secrets,
+            "totalRevealed": len(reveals),
+            "xpFromSecrets": sum(r.xp_earned for r in reveals)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch secrets stats: {str(e)}")
+
+
+@router.post("/secrets/{secret_id}/reveal")
+async def reveal_secret(
+    secret_id: int,
+    background_tasks: BackgroundTasks,
+    user_id: int = 1,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Reveal a market secret. Awards XP once per user per secret.
+    Returns the answer HTML on success.
+    """
+    try:
+        # Check if already revealed
+        existing = await db.execute(
+            select(UserSecretReveal).where(
+                UserSecretReveal.user_id == user_id,
+                UserSecretReveal.secret_id == secret_id
+            )
+        )
+        if existing.scalar_one_or_none():
+            # Already revealed — return the answer anyway
+            secret_result = await db.execute(
+                select(MarketSecret).where(MarketSecret.id == secret_id)
+            )
+            secret = secret_result.scalar_one_or_none()
+            return {
+                "status": "already_revealed",
+                "xpEarned": 0,
+                "answerHtml": secret.answer_html if secret else ""
+            }
+
+        # Fetch the secret
+        secret_result = await db.execute(
+            select(MarketSecret).where(
+                MarketSecret.id == secret_id,
+                MarketSecret.is_published == True
+            )
+        )
+        secret = secret_result.scalar_one_or_none()
+        if not secret:
+            raise HTTPException(status_code=404, detail="Secret not found or not published")
+
+        xp = secret.xp_reward or 25
+
+        # Create reveal record
+        reveal = UserSecretReveal(
+            user_id=user_id,
+            secret_id=secret_id,
+            xp_earned=xp,
+            revealed_at=datetime.utcnow()
+        )
+        db.add(reveal)
+
+        # Also create a learning progress entry for XP tracking (so it shows in total XP)
+        progress = LearningProgress(
+            user_id=user_id,
+            lesson_id=f"secret_{secret_id}",
+            track_id="secrets",
+            xp_earned=xp,
+            completed_at=datetime.utcnow()
+        )
+        db.add(progress)
+
+        # Update streak
+        await update_streak(db, user_id)
+
+        await db.commit()
+
+        # Check badges in background
+        background_tasks.add_task(check_and_grant_badges, user_id)
+
+        return {
+            "status": "revealed",
+            "xpEarned": xp,
+            "answerHtml": secret.answer_html or ""
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to reveal secret: {str(e)}")

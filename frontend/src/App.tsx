@@ -25,6 +25,7 @@ import LessonViewerPage from './pages/LessonViewerPage';
 import ModuleDetailPage from './pages/ModuleDetailPage';
 import SubModuleDetailPage from './pages/SubModuleDetailPage';
 import TrackDetailPage from './pages/TrackDetailPage';
+import SecretDetailPage from './pages/SecretDetailPage';
 import NewsPage from './pages/NewsPage';
 import CommunityPage from './pages/CommunityPage';
 import NotificationsPage from './pages/NotificationsPage';
@@ -60,6 +61,7 @@ function AppContent() {
           <Route path="learn/track/:trackId" element={<TrackDetailPage />} />
           <Route path="learn/module/:moduleId" element={<ModuleDetailPage />} />
           <Route path="learn/chapter/:subModuleId" element={<SubModuleDetailPage />} />
+          <Route path="learn/secret/:secretId" element={<SecretDetailPage />} />
           <Route path="learn/:trackId/:lessonId" element={<LessonViewerPage />} />
           <Route path="news" element={<NewsPage />} />
           <Route path="community" element={<CommunityPage />} />

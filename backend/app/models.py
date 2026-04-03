@@ -472,3 +472,40 @@ class UserEvent(Base):
     event_name = Column(String, index=True)
     event_data = Column(JSON, nullable=True) # Dict of arbitrary event metadata
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# ═══════════════════════════════════════════
+# MARKET SECRETS — Gamified Learning
+# ═══════════════════════════════════════════
+
+class MarketSecret(Base):
+    """
+    A hidden market insight that users can reveal for XP.
+    Managed by admin CMS, displayed as interactive cards on the Learn page.
+    """
+    __tablename__ = "market_secrets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    question = Column(Text, nullable=False)
+    answer_content = Column(JSON, default=dict)       # TipTap JSON (same as lessons)
+    answer_html = Column(Text, nullable=True)          # Pre-rendered HTML
+    icon_emoji = Column(String(10), default='🔮')
+    xp_reward = Column(Integer, default=25)
+    sort_order = Column(Integer, default=0)
+    is_published = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class UserSecretReveal(Base):
+    """
+    Tracks which user has revealed which secret.
+    Each reveal awards XP once (unique user_id + secret_id).
+    """
+    __tablename__ = "user_secret_reveals"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    secret_id = Column(Integer, ForeignKey("market_secrets.id", ondelete="CASCADE"), nullable=False, index=True)
+    revealed_at = Column(DateTime, default=datetime.utcnow)
+    xp_earned = Column(Integer, default=0)

@@ -35,10 +35,12 @@ export function PremiumSelect({ value, onChange, options, className = '', dropdo
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className={`flex items-center justify-between w-full appearance-none outline-none cursor-pointer transition-colors ${className}`}
+        className={`flex items-center justify-between w-full h-[42px] px-4 bg-slate-100 dark:bg-white/5 border rounded-xl leading-5 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-tv-primary/50 transition-all sm:text-sm ${
+          isOpen ? 'border-tv-primary ring-2 ring-tv-primary/20' : 'border-slate-200 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/20'
+        } ${className}`}
       >
-        <span className="truncate mr-2">{selectedOption?.label || ''}</span>
-        <ChevronDown size={14} className={`shrink-0 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+        <span className="truncate mr-2 font-medium">{selectedOption?.label || ''}</span>
+        <ChevronDown size={16} className={`shrink-0 text-slate-400 group-hover:text-slate-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {isOpen && (

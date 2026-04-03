@@ -8,7 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { useGame } from '../context/GameContext';
 import { useMultiChartStore } from '../store/useMultiChartStore';
 import { SymbolSearch } from '../components/features/SymbolSearch';
-import { LogOut, ChevronLeft, ChevronRight, ChevronDown, UserCircle, BarChart2, Globe, Search, PieChart, BookOpen, Activity, MoreHorizontal, CheckCircle2 } from 'lucide-react';
+import { LogOut, ChevronLeft, ChevronRight, ChevronDown, UserCircle, BarChart3, BarChart2, Globe, Search, PieChart, BookOpen, Activity, MoreHorizontal, CheckCircle2, Newspaper, HelpCircle, LayoutDashboard } from 'lucide-react';
 import './LandingPage.css';
 
 gsap.registerPlugin(ScrollTrigger);
@@ -1348,6 +1348,20 @@ export default function LandingPage() {
     }
   }, [searchParams]);
 
+  const [isLandingMoreOpen, setIsLandingMoreOpen] = useState(false);
+  const moreDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close 'More' dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (moreDropdownRef.current && !moreDropdownRef.current.contains(event.target as Node)) {
+        setIsLandingMoreOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const handleLogout = async () => {
     await logout();
     setIsUserMenuOpen(false);
@@ -1442,15 +1456,66 @@ export default function LandingPage() {
               <Link to="/screener">Screener</Link>
               <Link to="/portfolio" className="nav-link-btn" title="View Portfolio Overview">Portfolio</Link>
               <Link to="/learn" className="nav-link-btn" title="View Academy Curriculum">Learn</Link>
-              <div className="nav-more-dropdown relative group">
-                <button className="flex items-center gap-1 hover:text-accent-secondary transition-colors" style={{ background: 'none', border: 'none', color: 'inherit', font: 'inherit', cursor: 'pointer', padding: 0 }}>
-                  More <ChevronDown size={14} />
+              <div className="nav-more-dropdown relative" ref={moreDropdownRef}>
+                <button 
+                  onClick={() => setIsLandingMoreOpen(!isLandingMoreOpen)}
+                  className={`flex items-center gap-1 text-[14px] font-semibold transition-colors outline-none cursor-pointer ${isLandingMoreOpen ? 'text-accent-secondary' : 'hover:text-accent-secondary'}`} 
+                  style={{ background: 'none', border: 'none', color: 'inherit', font: 'inherit', padding: 0 }}
+                >
+                  More <ChevronDown size={14} className={`transition-transform duration-200 ${isLandingMoreOpen ? 'rotate-180' : ''}`} />
                 </button>
-                <div className="absolute top-full right-0 mt-2 w-48 bg-[#0a0f1d] border border-white/10 rounded-xl shadow-2xl py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
-                  <Link to="/news" className="block px-4 py-2 hover:bg-white/5 text-sm">FinNews Hub</Link>
-                  <Link to="/community" className="block px-4 py-2 hover:bg-white/5 text-sm">Community</Link>
-                  <Link to="/help" className="block px-4 py-2 hover:bg-white/5 text-sm">Help Center</Link>
-                </div>
+                
+                {isLandingMoreOpen && (
+                  <div className={`absolute right-0 top-full mt-2 z-[100] min-w-[190px] rounded-2xl p-2 shadow-2xl border ${
+                    isLightMode 
+                      ? 'bg-white border-slate-200' 
+                      : 'bg-[#1e222d] border-[#2a2e39]'
+                  } animate-in fade-in zoom-in-95 duration-200`}>
+                    <Link
+                        to="/news"
+                        onClick={() => setIsLandingMoreOpen(false)}
+                        className={`flex items-center gap-3 px-3 py-2.5 text-[15px] font-medium rounded-xl transition-colors outline-none cursor-pointer ${
+                          isLightMode ? 'text-[#1e222d] hover:bg-slate-50' : 'text-slate-100 hover:bg-white/5'
+                        }`}
+                        style={{ textDecoration: 'none' }}
+                    >
+                        <Newspaper size={18} className="text-[#2962ff]" />
+                        News & AI Insights
+                    </Link>
+
+                    <Link
+                        to="/community"
+                        onClick={() => setIsLandingMoreOpen(false)}
+                        className={`flex items-center gap-3 px-3 py-2.5 text-[15px] font-medium rounded-xl transition-colors outline-none cursor-pointer ${
+                          isLightMode ? 'text-[#1e222d] hover:bg-slate-50' : 'text-slate-100 hover:bg-white/5'
+                        }`}
+                        style={{ textDecoration: 'none' }}
+                    >
+                        <LayoutDashboard size={18} className="text-[#2962ff]" />
+                        Community
+                    </Link>
+
+                    <Link
+                        to="/help"
+                        onClick={() => setIsLandingMoreOpen(false)}
+                        className={`flex items-center gap-3 px-3 py-2.5 text-[15px] font-medium rounded-xl transition-colors outline-none cursor-pointer ${
+                          isLightMode ? 'text-[#1e222d] hover:bg-slate-50' : 'text-slate-100 hover:bg-white/5'
+                        }`}
+                        style={{ textDecoration: 'none' }}
+                    >
+                        <HelpCircle size={18} className="text-[#2962ff]" />
+                        Help & Support
+                    </Link>
+
+                    <div className={`h-[1px] my-1.5 ${isLightMode ? 'bg-slate-100' : 'bg-white/5'}`} />
+
+                    <div className={`flex items-center gap-3 px-3 py-2.5 text-[15px] font-medium rounded-xl cursor-not-allowed ${
+                      isLightMode ? 'text-[#787b86]' : 'text-slate-500'
+                    }`}>
+                        Technical Analysis (Soon)
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -1,7 +1,7 @@
 # File: backend/app/routers/learn.py
 # Learning Progress API Router
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks,Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from pydantic import BaseModel
@@ -257,71 +257,66 @@ async def get_tracks(db: AsyncSession = Depends(get_db)):
                     "title": module.title,
                     "description": module.description,
                     "estimatedMinutes": 0,
-                    "subModules": []
+                    "subModules": [],
+                    "lessons": [] # Direct lessons if any
                 }
                 
-                sorted_subs = sorted(module.sub_modules, key=lambda s: (getattr(s, 'sort_order', 0), s.id))
-                for sub in sorted_subs:
-                    s_data = {
-                        "id": str(sub.id),
-                        "title": sub.title,
+                # 1. Process SubModules (Chapters)
+                sorted_sub_modules = sorted(module.sub_modules, key=lambda sm: (getattr(sm, 'sort_order', 0), sm.id))
+                for sm in sorted_sub_modules:
+                    sm_data = {
+                        "id": str(sm.id),
+                        "title": sm.title,
+                        "description": sm.description,
+                        "subModuleNumber": sm.sub_module_number,
                         "lessons": []
                     }
                     
-                    # Sort lessons by sort_order
-                    sorted_lessons = sorted(sub.lessons, key=lambda l: (getattr(l, 'sort_order', 0), l.id))
-                    for lesson in sorted_lessons:
-                        # Only return published lessons
-                        if not lesson.is_published:
-                            continue
-                            
-                        duration = 5 # default duration representation
-                        l_data = {
-                            "id": str(lesson.id),
-                            "title": lesson.title,
-                            "duration": duration,
-                            # Guess type based on content existance, just 'article' for now
-                            "type": "quiz" if lesson.quiz_questions else "article",
-                            "xpReward": lesson.xp_reward
-                        }
-                        s_data["lessons"].append(l_data)
-                        m_data["estimatedMinutes"] += duration
-                        t_data["totalLessons"] += 1
-                        
-                    m_data["subModules"].append(s_data)
-                
-                # Check for direct lessons on the module (no submodule)
-                direct_lessons = [l for l in module.lessons if getattr(l, 'sub_module_id', None) is None and l.is_published]
-                if direct_lessons:
-                    virtual_sub = {
-                        "id": f"virtual-{module.id}",
-                        "title": module.title,
-                        "lessons": []
-                    }
-                    sorted_direct = sorted(direct_lessons, key=lambda l: (getattr(l, 'sort_order', 0), l.id))
-                    for lesson in sorted_direct:
-                        duration = 5 # default duration
-                        
+                    # Lessons in this sub-module
+                    published_sm_lessons = [l for l in sm.lessons if l.is_published]
+                    sorted_sm_lessons = sorted(published_sm_lessons, key=lambda l: (getattr(l, 'sort_order', 0), l.id))
+                    
+                    for lesson in sorted_sm_lessons:
+                        duration = lesson.read_time or 5
                         lesson_data = {
                             "id": str(lesson.id),
                             "title": lesson.title,
                             "duration": duration,
                             "type": "article",
-                            "xpReward": lesson.xp_reward or 15
+                            "xpReward": lesson.xp_reward or 50
                         }
-                        # basic content type detection
-                        if "quiz" in str(lesson.title).lower() or (lesson.quiz_questions and len(lesson.quiz_questions) > 0):
+                        if lesson.quiz_questions:
                             lesson_data["type"] = "quiz"
-                            
-                        # interactive marker
-                        if lesson.practice_scene_id and lesson.practice_scene_id != "None":
+                        if getattr(lesson, 'practice_scene_id', None) and lesson.practice_scene_id != "None":
                             lesson_data["type"] = "interactive"
                             
-                        virtual_sub["lessons"].append(lesson_data)
+                        sm_data["lessons"].append(lesson_data)
                         t_data["totalLessons"] += 1
                         m_data["estimatedMinutes"] += duration
                         
-                    m_data["subModules"].insert(0, virtual_sub) # Add at the top
+                    m_data["subModules"].append(sm_data)
+                
+                # 2. Check for direct lessons on the module (fallback or special items)
+                direct_lessons = [l for l in module.lessons if getattr(l, 'sub_module_id', None) is None and l.is_published]
+                sorted_direct = sorted(direct_lessons, key=lambda l: (getattr(l, 'sort_order', 0), l.id))
+                for lesson in sorted_direct:
+                    duration = lesson.read_time or 5
+                    
+                    lesson_data = {
+                        "id": str(lesson.id),
+                        "title": lesson.title,
+                        "duration": duration,
+                        "type": "article",
+                        "xpReward": lesson.xp_reward or 50
+                    }
+                    if lesson.quiz_questions:
+                        lesson_data["type"] = "quiz"
+                    if getattr(lesson, 'practice_scene_id', None) and lesson.practice_scene_id != "None":
+                        lesson_data["type"] = "interactive"
+                        
+                    m_data["lessons"].append(lesson_data)
+                    t_data["totalLessons"] += 1
+                    m_data["estimatedMinutes"] += duration
                     
                 t_data["modules"].append(m_data)
                 
@@ -331,6 +326,114 @@ async def get_tracks(db: AsyncSession = Depends(get_db)):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch tracks: {str(e)}")
+
+# ═══════════════════════════════════════════
+# TOPIC TAGS (#TopicRef Knowledge Graph)
+# ═══════════════════════════════════════════
+
+@router.get("/tags")
+async def get_all_tags(db: AsyncSession = Depends(get_db)):
+    """Returns all registered topic tags for client-side matching."""
+    try:
+        result = await db.execute(select(TopicTag).order_by(TopicTag.usage_count.desc()))
+        tags = result.scalars().all()
+        return [
+            {
+                "id": t.id,
+                "tagName": t.tag_name,
+                "displayName": t.display_name,
+                "shortSummary": t.short_summary,
+                "targetType": t.target_type,
+                "targetId": str(t.target_id),
+                "iconEmoji": t.icon_emoji,
+                "usageCount": t.usage_count
+            }
+            for t in tags
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch tags: {str(e)}")
+
+
+@router.get("/tags/{tag_name}")
+async def get_tag_detail(tag_name: str, db: AsyncSession = Depends(get_db)):
+    """Returns a single tag with full resolution (target title, breadcrumb, navigate URL)."""
+    try:
+        result = await db.execute(
+            select(TopicTag).where(TopicTag.tag_name == tag_name.lower())
+        )
+        tag = result.scalar_one_or_none()
+        if not tag:
+            raise HTTPException(status_code=404, detail="Tag not found")
+        
+        # Resolve target title and build navigation URL
+        target_title = ""
+        navigate_to = "/learn"
+        breadcrumb = ""
+        
+        if tag.target_type == 'track':
+            res = await db.execute(select(Track).where(Track.id == tag.target_id))
+            t = res.scalar_one_or_none()
+            if t:
+                target_title = t.title
+                navigate_to = f"/learn/track/{t.id}"
+                breadcrumb = t.title
+        elif tag.target_type == 'module':
+            res = await db.execute(select(Module).options(joinedload(Module.track)).where(Module.id == tag.target_id))
+            m = res.scalar_one_or_none()
+            if m:
+                target_title = m.title
+                navigate_to = f"/learn/module/{m.id}"
+                breadcrumb = f"{m.track.title} > {m.title}" if m.track else m.title
+        elif tag.target_type == 'chapter':
+            res = await db.execute(
+                select(SubModule).options(joinedload(SubModule.module).joinedload(Module.track))
+                .where(SubModule.id == tag.target_id)
+            )
+            sm = res.scalar_one_or_none()
+            if sm:
+                target_title = sm.title
+                navigate_to = f"/learn/chapter/{sm.id}"
+                breadcrumb = f"{sm.module.track.title} > {sm.module.title} > {sm.title}" if sm.module and sm.module.track else sm.title
+        elif tag.target_type == 'lesson':
+            res = await db.execute(
+                select(Lesson).options(joinedload(Lesson.module).joinedload(Module.track))
+                .where(Lesson.id == tag.target_id)
+            )
+            l = res.scalar_one_or_none()
+            if l:
+                target_title = l.title
+                navigate_to = f"/learn/chapter/{l.sub_module_id}" if l.sub_module_id else f"/learn/module/{l.module_id}"
+                breadcrumb = f"{l.module.track.title} > {l.module.title} > {l.title}" if l.module and l.module.track else l.title
+        
+        return {
+            "tagName": tag.tag_name,
+            "displayName": tag.display_name,
+            "shortSummary": tag.short_summary,
+            "targetType": tag.target_type,
+            "targetId": str(tag.target_id),
+            "targetTitle": target_title,
+            "breadcrumb": breadcrumb,
+            "navigateTo": navigate_to,
+            "iconEmoji": tag.icon_emoji
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to resolve tag: {str(e)}")
+
+
+@router.post("/tags/{tag_id}/click")
+async def record_tag_click(tag_id: int, db: AsyncSession = Depends(get_db)):
+    """Increment usage count for analytics (fire-and-forget)."""
+    try:
+        await db.execute(
+            update(TopicTag).where(TopicTag.id == tag_id).values(usage_count=TopicTag.usage_count + 1)
+        )
+        await db.commit()
+        return {"status": "ok"}
+    except Exception:
+        return {"status": "ok"}  # Don't fail the UX for analytics
+
 
 # ═══════════════════════════════════════════
 # TIPTAP JSON → HTML CONVERTER
@@ -400,6 +503,10 @@ def _render_node(node: dict) -> str:
         return "<br />"
     elif node_type == "horizontalRule":
         return "<hr />"
+    elif node_type == "topicTag":
+        tag_name = attrs.get("tagName", "")
+        display = attrs.get("displayName", tag_name)
+        return f'<span class="topic-tag" data-tag="{_escape_html(tag_name)}" data-display="{_escape_html(display)}">#{_escape_html(display)}</span>'
     elif node_type == "doc":
         return inner
     else:
@@ -435,37 +542,48 @@ async def get_module_detail(module_id: int, db: AsyncSession = Depends(get_db)):
         if not module:
             raise HTTPException(status_code=404, detail="Module not found")
         
-        # Collect all published lessons in order
-        all_lessons = []
+        # Collect sub-modules and their lessons
+        sub_modules_data = []
+        sorted_sms = sorted(module.sub_modules, key=lambda x: (getattr(x, 'sort_order', 0), x.id))
         
-        sorted_subs = sorted(module.sub_modules, key=lambda s: (getattr(s, 'sort_order', 0), s.id))
-        for sub in sorted_subs:
-            sorted_lessons = sorted(sub.lessons, key=lambda l: (getattr(l, 'sort_order', 0), l.id))
-            for lesson in sorted_lessons:
-                if lesson.is_published:
-                    all_lessons.append({
-                        "id": str(lesson.id),
-                        "title": lesson.title,
-                        "lessonNumber": lesson.lesson_number,
-                        "description": _get_lesson_preview(lesson),
-                        "subModuleTitle": sub.title,
-                        "duration": 5,
-                        "type": "quiz" if lesson.quiz_questions else "article"
-                    })
-        
+        total_lessons_count = 0
+        for sm in sorted_sms:
+            sm_lessons = []
+            published_lessons = [l for l in sm.lessons if l.is_published]
+            for lesson in sorted(published_lessons, key=lambda x: (getattr(x, 'sort_order', 0), x.id)):
+                sm_lessons.append({
+                    "id": str(lesson.id),
+                    "title": lesson.title,
+                    "lessonNumber": lesson.lesson_number,
+                    "description": _get_lesson_preview(lesson),
+                    "duration": lesson.read_time or 5,
+                    "xpReward": lesson.xp_reward or 50,
+                    "type": "quiz" if lesson.quiz_questions else "article"
+                })
+                total_lessons_count += 1
+            
+            sub_modules_data.append({
+                "id": str(sm.id),
+                "title": sm.title,
+                "description": sm.description,
+                "lessons": sm_lessons
+            })
+
         # Also check direct lessons
+        direct_lessons_data = []
         direct_lessons = [l for l in module.lessons if getattr(l, 'sub_module_id', None) is None and l.is_published]
         sorted_direct = sorted(direct_lessons, key=lambda l: (getattr(l, 'sort_order', 0), l.id))
         for lesson in sorted_direct:
-            all_lessons.insert(0, {
+            direct_lessons_data.append({
                 "id": str(lesson.id),
                 "title": lesson.title,
                 "lessonNumber": lesson.lesson_number,
                 "description": _get_lesson_preview(lesson),
-                "subModuleTitle": None,
-                "duration": 5,
+                "duration": lesson.read_time or 5,
+                "xpReward": lesson.xp_reward or 50,
                 "type": "quiz" if lesson.quiz_questions else "article"
             })
+            total_lessons_count += 1
         
         return {
             "id": str(module.id),
@@ -474,8 +592,9 @@ async def get_module_detail(module_id: int, db: AsyncSession = Depends(get_db)):
             "moduleNumber": module.module_number,
             "trackId": str(module.track_id),
             "trackTitle": module.track.title if module.track else "",
-            "lessons": all_lessons,
-            "totalLessons": len(all_lessons)
+            "subModules": sub_modules_data,
+            "directLessons": direct_lessons_data,
+            "totalLessons": total_lessons_count
         }
     except HTTPException:
         raise
@@ -503,6 +622,89 @@ def _get_lesson_preview(lesson) -> str:
 # ═══════════════════════════════════════════
 # LESSON DETAIL ENDPOINT
 # ═══════════════════════════════════════════
+
+@router.get("/sub-modules/{sub_module_id}")
+async def get_sub_module_detail(sub_module_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    Returns full detail of a sub-module (chapter) including all lessons with their content.
+    This is for the 'long-scrolling' chapter page.
+    """
+    try:
+        result = await db.execute(
+            select(SubModule)
+            .options(
+                joinedload(SubModule.lessons),
+                joinedload(SubModule.module).joinedload(Module.track)
+            )
+            .where(SubModule.id == sub_module_id)
+        )
+        sub_module = result.unique().scalar_one_or_none()
+        
+        if not sub_module:
+            raise HTTPException(status_code=404, detail="Chapter not found")
+        
+        lessons_data = []
+        published_lessons = [l for l in sub_module.lessons if l.is_published]
+        for lesson in sorted(published_lessons, key=lambda x: (getattr(x, 'sort_order', 0), x.id)):
+            # Convert TipTap JSON to HTML
+            content_html = tiptap_to_html(lesson.content) if lesson.content else ""
+            if not content_html:
+                parts = []
+                if lesson.opening_hook: parts.append(f"<p>{lesson.opening_hook}</p>")
+                if lesson.core_explanation: parts.append(lesson.core_explanation)
+                if lesson.real_life_application: parts.append(f"<h3>Application</h3>{lesson.real_life_application}")
+                content_html = "".join(parts)
+
+            lessons_data.append({
+                "id": str(lesson.id),
+                "title": lesson.title,
+                "lessonNumber": lesson.lesson_number,
+                "contentHtml": content_html,
+                "duration": lesson.read_time or 5,
+                "xpReward": lesson.xp_reward or 50,
+                "type": "quiz" if lesson.quiz_questions else "article",
+                "quizQuestions": lesson.quiz_questions if lesson.quiz_questions else [],
+                "practiceSceneId": getattr(lesson, 'practice_scene_id', None)
+            })
+            
+        # ═══════════════════════════════════════════
+        # CALCULATE PREV/NEXT CHAPTER NAVIGATION
+        # ═══════════════════════════════════════════
+        # We find all sub-modules in the same track to allow crossing module boundaries
+        track_id = sub_module.module.track_id
+        all_sm_result = await db.execute(
+            select(SubModule)
+            .join(Module)
+            .where(Module.track_id == track_id)
+            .options(joinedload(SubModule.module))
+            .order_by(Module.sort_order, Module.id, SubModule.sort_order, SubModule.id)
+        )
+        all_track_sms = all_sm_result.scalars().all()
+        
+        sm_ids = [sm.id for sm in all_track_sms]
+        current_idx = sm_ids.index(sub_module.id)
+        
+        prev_id = str(sm_ids[current_idx - 1]) if current_idx > 0 else None
+        next_id = str(sm_ids[current_idx + 1]) if current_idx < len(sm_ids) - 1 else None
+
+        return {
+            "id": str(sub_module.id),
+            "title": sub_module.title,
+            "description": sub_module.description,
+            "subModuleNumber": sub_module.sub_module_number,
+            "moduleId": str(sub_module.module_id),
+            "moduleTitle": sub_module.module.title,
+            "trackId": str(sub_module.module.track_id),
+            "trackTitle": sub_module.module.track.title,
+            "prev_id": prev_id,
+            "next_id": next_id,
+            "lessons": lessons_data
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch chapter: {str(e)}")
+
 
 @router.get("/lessons/{lesson_id}")
 async def get_lesson(lesson_id: int, db: AsyncSession = Depends(get_db)):
@@ -553,15 +755,10 @@ async def get_lesson(lesson_id: int, db: AsyncSession = Depends(get_db)):
                 
                 # Gather all published lessons in this module in order
                 all_mod_lessons = []
-                sorted_subs = sorted(module.sub_modules, key=lambda s: (getattr(s, 'sort_order', 0), s.id))
-                for sub in sorted_subs:
-                    for l in sorted(sub.lessons, key=lambda x: (getattr(x, 'sort_order', 0), x.id)):
-                        if l.is_published:
-                            all_mod_lessons.append({"id": str(l.id), "title": l.title})
                 
                 direct = [l for l in module.lessons if getattr(l, 'sub_module_id', None) is None and l.is_published]
                 for l in sorted(direct, key=lambda x: (getattr(x, 'sort_order', 0), x.id)):
-                    all_mod_lessons.insert(0, {"id": str(l.id), "title": l.title})
+                    all_mod_lessons.append({"id": str(l.id), "title": l.title})
                 
                 siblings = all_mod_lessons
         
@@ -573,7 +770,8 @@ async def get_lesson(lesson_id: int, db: AsyncSession = Depends(get_db)):
             "moduleId": str(lesson.module_id) if lesson.module_id else None,
             "moduleTitle": module_title,
             "trackId": track_id,
-            "xpReward": lesson.xp_reward or 15,
+            "duration": lesson.read_time or 5,
+            "xpReward": lesson.xp_reward or 50,
             "type": "quiz" if lesson.quiz_questions else "article",
             "quizQuestions": lesson.quiz_questions if lesson.quiz_questions else [],
             "practiceSceneId": getattr(lesson, 'practice_scene_id', None),

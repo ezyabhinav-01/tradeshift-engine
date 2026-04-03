@@ -432,3 +432,22 @@ class AlertTriggerRequest(BaseModel):
     current_price: float
     side: str
     message: Optional[str] = None
+
+
+# ─── Chapter Discussion Schemas ──────────────────────────────────
+
+class ChapterCommentBase(BaseModel):
+    content: str
+
+class ChapterCommentCreate(ChapterCommentBase):
+    pass
+
+class ChapterCommentResponse(ChapterCommentBase):
+    id: int
+    user_id: int
+    user_full_name: Optional[str] = None
+    sub_module_id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

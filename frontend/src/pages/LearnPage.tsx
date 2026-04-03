@@ -135,7 +135,7 @@ const TrackCard: React.FC<{
   index: number;
 }> = ({ track, progress, onClick, index }) => {
   const completedLessons = useLearnStore(s => {
-    const allLessons = track.modules.flatMap(m => m.subModules.flatMap(sub => sub.lessons.map(l => l.id)));
+    const allLessons = track.modules.flatMap(m => m.lessons.map(l => l.id));
     return allLessons.filter(lid => s.completedLessons.includes(lid)).length;
   });
 
@@ -173,7 +173,7 @@ const TrackCard: React.FC<{
       <div className="flex items-center gap-4 mb-4 text-[11px] text-slate-400 dark:text-slate-500 font-medium">
         <span className="flex items-center gap-1">
           <BookOpen size={12} />
-          {track.modules.length} Modules
+          {track.modules.length} Chapters
         </span>
         <span className="flex items-center gap-1">
           <Target size={12} />
@@ -181,7 +181,12 @@ const TrackCard: React.FC<{
         </span>
         <span className="flex items-center gap-1">
           <Clock size={12} />
-          {track.totalLessons * 5} min
+          {track.modules.reduce((acc, m) => {
+            const directLessonsDuration = m.lessons.reduce((lacc, l) => lacc + (l.duration || 5), 0);
+            const subModulesLessonsDuration = m.subModules?.reduce((smacc, sm) => 
+              smacc + (sm.lessons?.reduce((lacc, l) => lacc + (l.duration || 5), 0) || 0), 0) || 0;
+            return acc + directLessonsDuration + subModulesLessonsDuration;
+          }, 0)} min
         </span>
       </div>
 
@@ -243,11 +248,9 @@ export default function LearnPage() {
   const continueSuggestion = useMemo(() => {
     for (const track of tracks) {
       for (const mod of track.modules) {
-        for (const sub of mod.subModules) {
-          const nextLesson = sub.lessons.find(l => !completedLessons.includes(l.id));
-          if (nextLesson) {
-            return { track, module: mod, subModule: sub, lesson: nextLesson };
-          }
+        const nextLesson = mod.lessons.find(l => !completedLessons.includes(l.id));
+        if (nextLesson) {
+          return { track, module: mod, lesson: nextLesson };
         }
       }
     }
@@ -288,8 +291,8 @@ export default function LearnPage() {
                   Financial Education Hub
                 </span>
               </div>
-              <h1 className="text-4xl lg:text-5xl font-black tracking-tighter text-slate-900 dark:text-white leading-none">
-                TradeShift <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-purple-600 italic">Academy</span>
+              <h1 className="text-4xl lg:text-5xl font-black tracking-tighter text-slate-900 dark:text-white leading-[1.15] py-1">
+                TradeShift <span className="inline-block text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-purple-600 italic px-2 pb-2">Academy</span>
               </h1>
               <p className="text-slate-500 dark:text-slate-400 max-w-lg text-sm leading-relaxed">
                 Master the markets with structured courses. From stock basics to advanced options —
@@ -431,8 +434,8 @@ export default function LearnPage() {
         <div>
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Learning Tracks</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Choose a track and start mastering finance</p>
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Learning Modules</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Choose a module and start mastering finance</p>
             </div>
             {isGuest ? (
                <button 
@@ -444,7 +447,7 @@ export default function LearnPage() {
             ) : (
               <div className="flex items-center gap-2 text-[11px] text-slate-400 dark:text-slate-500 font-medium">
                 <BookOpen size={14} />
-                {tracks.length} Tracks · {totalLessons} Total Lessons
+                {tracks.length} Modules · {totalLessons} Total Lessons
               </div>
             )}
           </div>
@@ -477,7 +480,7 @@ export default function LearnPage() {
             <h4 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-wider">Structured for Success</h4>
             <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed max-w-3xl">
               Our curriculum follows the Varsity model — designed by market practitioners, structured as
-              Tracks → Modules → Sub-modules → Lessons. Each concept builds on the last. Complete quizzes
+              Modules → Chapters → Lessons. Each concept builds on the last. Complete quizzes
               and interactive exercises to cement your understanding and earn bonus XP.
             </p>
           </div>

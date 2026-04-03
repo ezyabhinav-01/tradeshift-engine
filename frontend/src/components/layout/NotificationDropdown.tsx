@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Bell, Check, Info, AlertTriangle, AlertCircle, X, CheckCheck } from 'lucide-react';
+import { Bell, Check, Info, AlertTriangle, AlertCircle, CheckCheck } from 'lucide-react';
 import { getNotifications, markAsRead, markAllAsRead, type Notification } from '../../services/NotificationService';
 import { useAuth } from '../../context/AuthContext';
 
@@ -10,7 +10,7 @@ interface NotificationDropdownProps {
 
 export function NotificationDropdown({ isOpen, onClose }: NotificationDropdownProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const { user } = useAuth();
 
   useEffect(() => {
@@ -124,7 +124,7 @@ export function NotificationDropdown({ isOpen, onClose }: NotificationDropdownPr
                       {notification.title}
                     </p>
                     <p className="text-xs text-slate-500 dark:text-gray-400 mt-1 line-clamp-2">
-                      {notification.message}
+                      {notification.content}
                     </p>
                     <span className="text-[10px] text-slate-400 dark:text-gray-500 mt-2 block">
                       {formatTime(notification.created_at)}

@@ -155,16 +155,7 @@ export const ProChart: React.FC<ProChartProps> = ({
     applyTemplate
   } = useChartIndicators(chartInstance, seriesInstance);
 
-  // Fast O(1) lookup for candles during hover
-  const indexedData = useMemo(() => {
-    const map = new Map<number, any>();
-    data.forEach(d => {
-      if (d && typeof d.time === 'number') {
-        map.set(d.time, d);
-      }
-    });
-    return map;
-  }, [data]);
+
 
   const displayCandle = hoveredCandle || currentCandle || 
     (myIndexData ? { 
@@ -506,12 +497,20 @@ export const ProChart: React.FC<ProChartProps> = ({
     if (!chartInstance) return;
 
     const handleCrosshairMove = (param: any) => {
-      if (param.time) {
+      if (param.time && seriesInstance) {
         updateHoverValues(param.time);
-        // Sync OHLC with crosshair
-        const candle = indexedData.get(param.time as number);
+        
+        // Use seriesData.get to get the exact aggregated candle on the chart
+        const candle = param.seriesData.get(seriesInstance);
         if (candle) {
-          setHoveredCandle(candle);
+          setHoveredCandle({
+            ...candle,
+            // Ensure values are numbers for legend processing
+            open: Number(candle.open),
+            high: Number(candle.high),
+            low: Number(candle.low),
+            close: Number(candle.close),
+          });
         } else {
           setHoveredCandle(null);
         }
@@ -926,15 +925,15 @@ export const ProChart: React.FC<ProChartProps> = ({
           <div className="flex items-center gap-2.5 text-[11px] font-medium ml-2">
             <div className="flex gap-0.5">
               <span className="text-slate-500 dark:text-[#d1d4dc]/40">O</span>
-              <span className={(displayCandle?.open ?? 0) >= (displayCandle?.close ?? 0) ? 'text-[#089981]' : 'text-[#f23645]'}>{displayCandle?.open?.toFixed(2) || '0.00'}</span>
+              <span className={(displayCandle?.close ?? 0) >= (displayCandle?.open ?? 0) ? 'text-[#089981]' : 'text-[#f23645]'}>{displayCandle?.open?.toFixed(2) || '0.00'}</span>
             </div>
             <div className="flex gap-0.5">
               <span className="text-slate-500 dark:text-[#d1d4dc]/40">H</span>
-              <span className={(displayCandle?.high ?? 0) >= (displayCandle?.close ?? 0) ? 'text-[#089981]' : 'text-[#f23645]'}>{displayCandle?.high?.toFixed(2) || '0.00'}</span>
+              <span className={(displayCandle?.close ?? 0) >= (displayCandle?.open ?? 0) ? 'text-[#089981]' : 'text-[#f23645]'}>{displayCandle?.high?.toFixed(2) || '0.00'}</span>
             </div>
             <div className="flex gap-0.5">
               <span className="text-slate-500 dark:text-[#d1d4dc]/40">L</span>
-              <span className={(displayCandle?.low ?? 0) >= (displayCandle?.close ?? 0) ? 'text-[#089981]' : 'text-[#f23645]'}>{displayCandle?.low?.toFixed(2) || '0.00'}</span>
+              <span className={(displayCandle?.close ?? 0) >= (displayCandle?.open ?? 0) ? 'text-[#089981]' : 'text-[#f23645]'}>{displayCandle?.low?.toFixed(2) || '0.00'}</span>
             </div>
             <div className="flex gap-0.5">
               <span className="text-slate-500 dark:text-[#d1d4dc]/40">C</span>

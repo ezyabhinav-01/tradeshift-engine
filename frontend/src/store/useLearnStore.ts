@@ -8,12 +8,15 @@ export interface Lesson {
   id: string;
   title: string;
   duration: number; // minutes
+  xpReward: number;
   type: 'article' | 'video' | 'quiz' | 'interactive';
 }
 
 export interface SubModule {
   id: string;
   title: string;
+  description?: string;
+  subModuleNumber: string | null;
   lessons: Lesson[];
 }
 
@@ -23,6 +26,7 @@ export interface Module {
   description: string;
   estimatedMinutes: number;
   subModules: SubModule[];
+  lessons: Lesson[]; // Direct lessons
 }
 
 export interface Track {
@@ -261,7 +265,16 @@ export const useLearnStore = create<LearnState>((set, get) => ({
     const state = get();
     const track = state.tracks.find(t => t.id === trackId);
     if (!track) return 0;
-    const allLessons = track.modules.flatMap(m => m.subModules.flatMap(s => s.lessons.map(l => l.id)));
+    
+    // Flatten all possible lessons (direct in modules + inside submodules)
+    const allLessons: string[] = [];
+    track.modules.forEach(m => {
+      m.lessons.forEach(l => allLessons.push(l.id));
+      m.subModules.forEach(sm => {
+        sm.lessons.forEach(l => allLessons.push(l.id));
+      });
+    });
+
     if (allLessons.length === 0) return 0;
     const completed = allLessons.filter(lid => state.completedLessons.includes(lid)).length;
     return Math.round((completed / allLessons.length) * 100);
@@ -272,7 +285,12 @@ export const useLearnStore = create<LearnState>((set, get) => ({
     for (const track of state.tracks) {
       const mod = track.modules.find(m => m.id === moduleId);
       if (mod) {
-        const allLessons = mod.subModules.flatMap(s => s.lessons.map(l => l.id));
+        const allLessons: string[] = [];
+        mod.lessons.forEach(l => allLessons.push(l.id));
+        mod.subModules.forEach(sm => {
+          sm.lessons.forEach(l => allLessons.push(l.id));
+        });
+
         if (allLessons.length === 0) return 0;
         const completed = allLessons.filter(lid => state.completedLessons.includes(lid)).length;
         return Math.round((completed / allLessons.length) * 100);

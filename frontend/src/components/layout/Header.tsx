@@ -30,9 +30,9 @@ const Topbar = () => {
 
   return (
     <header className={`sticky top-0 h-14 min-h-[56px] flex items-center justify-between px-4 lg:px-6 transition-all duration-300 z-50 bg-white dark:bg-[#121212] border-b border-slate-200 dark:border-white/10 backdrop-blur-sm shadow-sm`}>
-      <SymbolSearch 
-        open={isSearchOpen} 
-        onOpenChange={setIsSearchOpen} 
+      <SymbolSearch
+        open={isSearchOpen}
+        onOpenChange={setIsSearchOpen}
         onSelect={(symbol, token) => {
           setSymbol(symbol, token);
           if (activeChartId) {
@@ -56,7 +56,7 @@ const Topbar = () => {
       {/* Center Section - Search & Nav */}
       <div className="flex-1 flex items-center justify-center gap-8">
         {/* Search Bar - Modal Trigger */}
-        <div 
+        <div
           onClick={() => setIsSearchOpen(true)}
           className="hidden md:flex items-center bg-slate-100 dark:bg-[#2a2e39] hover:bg-slate-200 dark:hover:bg-[#2a2e39]/80 border border-slate-200 dark:border-[#2a2e39] hover:border-tv-primary/40 dark:hover:border-tv-primary/40 rounded-full px-4 py-1.5 transition-all cursor-pointer group shrink-0"
         >
@@ -67,7 +67,7 @@ const Topbar = () => {
         </div>
 
         {/* Mobile Search Icon */}
-        <button 
+        <button
           onClick={() => setIsSearchOpen(true)}
           className="md:hidden p-2 rounded-full text-tv-text-secondary hover:text-tv-text-primary transition-colors duration-300"
           title="Search"
@@ -94,9 +94,9 @@ const Topbar = () => {
         <div className="h-6 w-[1px] bg-tv-border"></div>
 
         <div className="relative">
-          <button 
+          <button
             onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
-            className={`p-2 rounded-full transition-colors duration-300 relative ${isNotificationsOpen ? 'text-tv-primary bg-tv-primary/10' : 'text-tv-text-secondary hover:text-tv-text-primary hover:bg-tv-text-primary/10'}`} 
+            className={`p-2 rounded-full transition-colors duration-300 relative ${isNotificationsOpen ? 'text-tv-primary bg-tv-primary/10' : 'text-tv-text-secondary hover:text-tv-text-primary hover:bg-tv-text-primary/10'}`}
             title="Notifications"
           >
             <Bell size={20} />
@@ -107,9 +107,9 @@ const Topbar = () => {
             )}
           </button>
           {isNotificationsOpen && (
-            <NotificationDropdown 
-              isOpen={isNotificationsOpen} 
-              onClose={() => setIsNotificationsOpen(false)} 
+            <NotificationDropdown
+              isOpen={isNotificationsOpen}
+              onClose={() => setIsNotificationsOpen(false)}
             />
           )}
         </div>
@@ -124,7 +124,7 @@ const Topbar = () => {
           </div>
         ) : user ? (
           <div className="relative">
-            <button 
+            <button
               onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
               className="flex items-center gap-2 p-1 pl-2 rounded-full hover:bg-slate-100 dark:hover:bg-white/5 transition-all border border-transparent hover:border-slate-200 dark:hover:border-white/10"
             >
@@ -136,8 +136,8 @@ const Topbar = () => {
 
             {isUserMenuOpen && (
               <>
-                <div 
-                  className="fixed inset-0 z-40" 
+                <div
+                  className="fixed inset-0 z-40"
                   onClick={() => setIsUserMenuOpen(false)}
                 ></div>
                 <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-[#1E222D] border border-slate-200 dark:border-white/10 rounded-xl shadow-2xl py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
@@ -145,16 +145,16 @@ const Topbar = () => {
                     <p className="text-base font-bold dark:text-white mt-0.5 tracking-tight">{user.demat_id || 'N/A'}</p>
                     <p className="text-[11px] text-slate-500 dark:text-gray-400 font-medium truncate">{user.email}</p>
                   </div>
-                  
-                  <Link 
-                    to="/settings" 
+
+                  <Link
+                    to="/settings"
                     className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors"
                     onClick={() => setIsUserMenuOpen(false)}
                   >
                     <UserCircle size={18} />
                     Profile Settings
                   </Link>
-                  
+
                   <button
                     onClick={handleLogout}
                     className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
@@ -168,15 +168,15 @@ const Topbar = () => {
           </div>
         ) : (
           <div className="flex items-center gap-3">
-            <Link 
-              to="/login" 
+            <Link
+              to="/login"
               state={{ from: location.pathname }}
               className="text-sm font-medium whitespace-nowrap text-slate-600 dark:text-gray-300 hover:text-tv-primary dark:hover:text-tv-primary transition-colors"
             >
               Log In
             </Link>
-            <Link 
-              to="/signup" 
+            <Link
+              to="/signup"
               state={{ from: location.pathname }}
               className="bg-tv-primary hover:bg-tv-primary-hover whitespace-nowrap text-white px-4 py-1.5 rounded-full text-sm font-semibold shadow-md transition-all active:scale-[0.98]"
             >
@@ -187,7 +187,7 @@ const Topbar = () => {
       </div>
 
       {/* Hamburger icon for mobile/tablet */}
-      <button 
+      <button
         className="lg:hidden p-2 rounded-md text-tv-text-secondary hover:text-tv-text-primary transition-colors ml-2"
         onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
       >
@@ -209,7 +209,7 @@ const Topbar = () => {
               {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
             </button>
           </div>
-          
+
           <div className="flex justify-between items-center px-1 mb-2">
             <span className="text-sm font-medium text-slate-600 dark:text-gray-300">Notifications</span>
             <Link to="/notifications" onClick={() => setIsMobileMenuOpen(false)} className="p-2 rounded-full text-tv-text-secondary hover:text-tv-text-primary bg-slate-100 dark:bg-white/5 transition-colors relative">
@@ -229,8 +229,8 @@ const Topbar = () => {
                   {(user.full_name || user.email || "U").charAt(0).toUpperCase()}
                 </div>
                 <div className="flex flex-col overflow-hidden">
-                   <p className="text-sm font-bold dark:text-white text-slate-900 tracking-tight">{user.demat_id || 'N/A'}</p>
-                   <p className="text-[11px] font-medium text-slate-400 truncate">{user.email}</p>
+                  <p className="text-sm font-bold dark:text-white text-slate-900 tracking-tight">{user.demat_id || 'N/A'}</p>
+                  <p className="text-[11px] font-medium text-slate-400 truncate">{user.email}</p>
                 </div>
               </div>
               <Link to="/settings" onClick={() => setIsMobileMenuOpen(false)} className="px-2 py-2 text-sm flex items-center gap-2 text-slate-700 dark:text-gray-300">
@@ -242,16 +242,16 @@ const Topbar = () => {
             </div>
           ) : (
             <div className="flex gap-3 justify-center mt-2 pb-2">
-              <Link 
-                to="/login" 
+              <Link
+                to="/login"
                 state={{ from: location.pathname }}
                 onClick={() => setIsMobileMenuOpen(false)}
                 className="flex-1 py-2 text-center rounded-lg border border-slate-300 dark:border-[#2a2e39] text-sm font-medium text-slate-700 dark:text-gray-300"
               >
                 Log In
               </Link>
-              <Link 
-                to="/signup" 
+              <Link
+                to="/signup"
                 state={{ from: location.pathname }}
                 onClick={() => setIsMobileMenuOpen(false)}
                 className="flex-1 py-2 text-center rounded-lg bg-tv-primary text-white text-sm font-semibold"

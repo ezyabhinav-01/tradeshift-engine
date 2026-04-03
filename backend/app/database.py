@@ -1,7 +1,7 @@
-
 import os
 import time
 import asyncio
+import ssl
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
@@ -29,9 +29,19 @@ def get_database_url():
 
 def get_database_url_async():
     url = get_database_url()
-    if "postgresql://" in url and "+asyncpg" not in url:
-        url = url.replace("postgresql://", "postgresql+asyncpg://")
+    # Supabase might provide postgres://, but SQLAlchemy 1.4+ and asyncpg need postgresql+asyncpg://
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif url.startswith("postgresql://") and "+asyncpg" not in url:
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        
+    # Fix for asyncpg: remove sslmode=require query string as asyncpg connect() doesn't accept it
+    if "?sslmode=require" in url:
+        url = url.replace("?sslmode=require", "")
+    elif "&sslmode=require" in url:
+        url = url.replace("&sslmode=require", "")
     return url
+
 
 async def connect_to_database():
     """
@@ -50,11 +60,17 @@ async def connect_to_database():
         db_url = get_database_url_async()
         
         # Create Async Engine
+        # use relaxed SSL context for Supabase to bypass self-signed cert verification issues in slim images
+        ssl_ctx = ssl.create_default_context()
+        ssl_ctx.check_hostname = False
+        ssl_ctx.verify_mode = ssl.CERT_NONE
+        
         engine = create_async_engine(
             db_url, 
             pool_pre_ping=True,
             pool_size=20,
-            max_overflow=10
+            max_overflow=10,
+            connect_args={"ssl": ssl_ctx}
         )
         
         # Test Connection
@@ -109,7 +125,8 @@ def connect_to_database_sync():
         url = url.replace("+asyncpg", "")
         
     logger.info("🔄 Establishing new sync database connection...")
-    engine = create_engine(url, pool_pre_ping=True)
+    # Explicitly require SSL for psycopg2 connections to Supabase
+    engine = create_engine(url, pool_pre_ping=True, connect_args={"sslmode": "require"})
     _db_cache["engine_sync"] = engine
     _db_cache["session_maker_sync"] = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     return engine

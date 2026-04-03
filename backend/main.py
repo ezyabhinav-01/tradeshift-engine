@@ -191,8 +191,6 @@ async def log_user_activity(request: Request, call_next):
                     # 3. Log activity in background to avoid blocking request
                     async def record_activity(user_email: str, path: str):
                         try:
-                            # Use sync connection for quick updates if async session is tricky in background
-                            # Actually, sticking to async but with proper error handling
                             async with await get_session() as db:
                                 # Update User timestamp
                                 await db.execute(
@@ -200,7 +198,10 @@ async def log_user_activity(request: Request, call_next):
                                     .where(User.email == user_email)
                                     .values(last_active_at=text("CURRENT_TIMESTAMP"))
                                 )
-                                # Log discrete event
+                                await db.commit()
+                            
+                            # Log discrete event
+                            async with await get_session() as db:
                                 await db.execute(
                                     insert(UserEvent).values(
                                         user_id=select(User.id).where(User.email == user_email).scalar_subquery(),

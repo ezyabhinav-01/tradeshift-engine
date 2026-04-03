@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useImperativeHandle, forwardRef } from 'react';
 
 interface OtpInputProps {
   length: number;
@@ -7,9 +7,28 @@ interface OtpInputProps {
   type?: 'text' | 'password';
 }
 
-const OtpInput: React.FC<OtpInputProps> = ({ length, onComplete, disabled, type = 'text' }) => {
+export interface OtpInputRef {
+  reset: () => void;
+  focus: () => void;
+}
+
+const OtpInput = forwardRef<OtpInputRef, OtpInputProps>(({ length, onComplete, disabled, type = 'text' }, ref) => {
   const [otp, setOtp] = useState<string[]>(new Array(length).fill(''));
   const inputs = useRef<(HTMLInputElement | null)[]>([]);
+
+  useImperativeHandle(ref, () => ({
+    reset: () => {
+      setOtp(new Array(length).fill(''));
+      if (inputs.current[0]) {
+        inputs.current[0].focus();
+      }
+    },
+    focus: () => {
+      if (inputs.current[0]) {
+        inputs.current[0].focus();
+      }
+    }
+  }));
 
   useEffect(() => {
     if (inputs.current[0]) {
@@ -86,6 +105,8 @@ const OtpInput: React.FC<OtpInputProps> = ({ length, onComplete, disabled, type 
       ))}
     </div>
   );
-};
+});
+
+OtpInput.displayName = 'OtpInput';
 
 export default OtpInput;

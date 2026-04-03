@@ -19,8 +19,8 @@ const Layout = () => {
                     {/* 3. Dark gradient overlay (dark mode only) */}
                     <div className="absolute inset-0 bg-gradient-to-br from-transparent via-transparent to-black/50 pointer-events-none hidden dark:block"></div>
 
-                    {/* 4. Dot Grid (dark mode only) */}
-                    <div className="absolute inset-0 h-full w-full bg-[radial-gradient(#ffffff10_1px,transparent_1px)] [background-size:20px_20px] pointer-events-none hidden dark:block"></div>
+                    {/* 4. Dot Grid (Global) */}
+                    <div className="ambient-dot-grid"></div>
                 </>
             )}
 

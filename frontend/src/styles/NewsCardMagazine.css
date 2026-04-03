@@ -1,0 +1,172 @@
+/* Magazine News Card Style - Visual Dominance & Depth */
+
+.news-card-magazine {
+    transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    transform-origin: center center;
+    position: relative;
+    cursor: pointer;
+}
+
+.news-card-magazine:hover {
+    transform: translateY(-12px) scale(1.02);
+    /* 1. Sharp Grounding Black Shadow */
+    /* 2. Wide Ambient Black Shadow */
+    /* 3. Subtle White Light Bloom (Crucial for Dark Mode Float) */
+    box-shadow:
+        0 40px 80px -15px rgba(0, 0, 0, 0.7),
+        0 20px 40px -20px rgba(0, 0, 0, 0.5),
+        0 0 50px -10px rgba(255, 255, 255, 0.08);
+    z-index: 10;
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+.dark .news-card-magazine:hover .news-content-section {
+    background: #161b22;
+}
+
+/* Sentiment Hover Dynamics - Layered on top of base float */
+.news-card-magazine.bullish:hover {
+    border-color: rgba(16, 185, 129, 0.5);
+    box-shadow:
+        0 40px 80px -15px rgba(16, 185, 129, 0.2),
+        0 20px 40px -20px rgba(0, 0, 0, 1),
+        0 0 60px -5px rgba(16, 185, 129, 0.1);
+}
+
+.news-card-magazine.bearish:hover {
+    border-color: rgba(244, 63, 94, 0.5);
+    box-shadow:
+        0 40px 80px -15px rgba(244, 63, 94, 0.2),
+        0 20px 40px -20px rgba(0, 0, 0, 1),
+        0 0 60px -5px rgba(244, 63, 94, 0.1);
+}
+
+.news-card-magazine:active {
+    transform: scale(0.97) translateY(-4px);
+    transition-duration: 0.2s;
+}
+
+/* Metallic Light Sweep */
+.news-card-magazine::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -150%;
+    width: 150%;
+    height: 100%;
+    background: linear-gradient(to right,
+            transparent,
+            rgba(255, 255, 255, 0.05) 45%,
+            rgba(255, 255, 255, 0.15) 50%,
+            rgba(255, 255, 255, 0.05) 55%,
+            transparent);
+    transform: skewX(-25deg);
+    transition: none;
+    z-index: 30;
+    pointer-events: none;
+}
+
+.news-card-magazine:hover::after {
+    left: 150%;
+    transition: left 0.8s ease-in-out;
+}
+
+/* 1. Standardizing Image (Magazine Header) */
+.magazine-image-wrap {
+    height: 220px;
+    overflow: hidden;
+    position: relative;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0891b2 100%);
+    background-size: 400% 400%;
+    animation: meshGradient 15s ease infinite;
+}
+
+@keyframes meshGradient {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+.light .magazine-image-wrap {
+    background: linear-gradient(135deg, #f1f5f9 0%, #cbd5e1 50%, #06b6d4 100%);
+}
+
+.magazine-image-wrap img {
+    transition: transform 1.5s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.news-card-magazine:hover .magazine-image-wrap img {
+    transform: scale(1.05);
+}
+
+/* 2. Simplified Overlay (Metadata only) */
+.magazine-metadata-bar {
+    position: absolute;
+    top: 1rem;
+    left: 1rem;
+    right: 1rem;
+    z-index: 20;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* 3. High-Contrast Content Section (Relative) */
+.news-content-section {
+    position: relative;
+    padding: 1.5rem;
+    z-index: 10;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.news-card-magazine:hover .news-content-section {
+    opacity: 0.98;
+}
+
+/* 3. Narrative Reveal (1-line insight) */
+.narrative-insight {
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition: max-height 0.4s ease, opacity 0.4s ease, margin-top 0.4s ease;
+    font-weight: 500;
+    font-size: 0.8rem;
+}
+
+.news-card-magazine:hover .narrative-insight {
+    max-height: 40px;
+    opacity: 0.85;
+    margin-top: 0.75rem;
+}
+
+/* 4. Click Pulse Animation */
+.click-zoom-effect {
+    animation: clickPulse 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes clickPulse {
+    0% {
+        transform: scale(1) translateY(-8px);
+    }
+
+    40% {
+        transform: scale(1.08) translateY(-12px);
+        box-shadow: 0 40px 80px rgba(0, 85, 255, 0.2);
+    }
+
+    100% {
+        transform: scale(1.02) translateY(-8px);
+    }
+}
+
+/* Content Positioning Over Mesh */
+.news-title-overlay {
+    position: absolute;
+    bottom: 2rem;
+    left: 1.5rem;
+    right: 1.5rem;
+    z-index: 10;
+}

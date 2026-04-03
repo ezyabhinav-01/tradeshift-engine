@@ -1589,7 +1589,14 @@ export default function LandingPage() {
       <header className="hero">
         <div className="hero-content">
           <Reveal type="reveal" delay={100} when={line2Done}>
-            <div className="badge">🎓 The Ultimate Trading Simulator</div>
+            <div className="hero-badge">
+              <span className="hero-badge-pulse" />
+              <span className="hero-badge-text">Live Markets</span>
+              <span className="hero-badge-separator">·</span>
+              <span className="hero-badge-text">Zero Risk</span>
+              <span className="hero-badge-separator">·</span>
+              <span className="hero-badge-text">Unlimited Practice</span>
+            </div>
           </Reveal>
           <Reveal type="reveal" delay={200}>
             <div className="hero-typing-title">

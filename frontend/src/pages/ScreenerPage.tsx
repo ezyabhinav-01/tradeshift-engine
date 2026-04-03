@@ -1,5 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+import gsap from 'gsap';
+import { useGSAP } from '@gsap/react';
+import '@/styles/ScreenerCard.css';
 import { useNavigate } from 'react-router-dom';
 import {
   TrendingUp,
@@ -45,6 +48,94 @@ const ScreenerPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const navigate = useNavigate();
   const { checkAccess } = useAccessControl();
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Staggered Entrance Animation
+  useGSAP(() => {
+    if (filteredCandidates.length > 0) {
+      gsap.fromTo(
+        '.screener-card',
+        {
+          y: 30,
+          opacity: 0,
+          scale: 0.95
+        },
+        {
+          y: 0,
+          opacity: 1,
+          scale: 1,
+          duration: 0.6,
+          stagger: 0.08,
+          ease: "back.out(1.4)",
+          clearProps: "all"
+        }
+      );
+    }
+  }, [filteredCandidates.length, category]);
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const card = e.currentTarget;
+    const rect = card.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+
+    const rotateX = (y - centerY) / 20;
+    const rotateY = (centerX - x) / 20;
+
+    card.style.setProperty('--mouse-x', `${x}px`);
+    card.style.setProperty('--mouse-y', `${y}px`);
+    card.style.setProperty('--rotate-x', `${rotateX}deg`);
+    card.style.setProperty('--rotate-y', `${rotateY}deg`);
+  };
+
+  const handleMouseLeave = (e: React.MouseEvent<HTMLDivElement>) => {
+    const card = e.currentTarget;
+    card.style.setProperty('--rotate-x', `0deg`);
+    card.style.setProperty('--rotate-y', `0deg`);
+  };
+
+  const triggerParticleBurst = (e: React.MouseEvent<HTMLDivElement>, conviction: number) => {
+    if (conviction <= 90) return;
+
+    const card = e.currentTarget;
+    const rect = card.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    // Create 15 tiny particles
+    for (let i = 0; i < 15; i++) {
+      const p = document.createElement('div');
+      p.className = 'particle';
+      card.appendChild(p);
+
+      const angle = Math.random() * Math.PI * 2;
+      const velocity = 40 + Math.random() * 80;
+      const tx = Math.cos(angle) * velocity;
+      const ty = Math.sin(angle) * velocity;
+
+      // GSAP Explosion
+      gsap.fromTo(p,
+        {
+          x: mouseX,
+          y: mouseY,
+          opacity: 1,
+          scale: 1
+        },
+        {
+          x: mouseX + tx,
+          y: mouseY + ty,
+          opacity: 0,
+          scale: 0.2,
+          duration: 0.8 + Math.random() * 0.5,
+          ease: "power3.out",
+          onComplete: () => p.remove()
+        }
+      );
+    }
+  };
 
   useEffect(() => {
     const fetchCandidates = async () => {
@@ -103,9 +194,9 @@ const ScreenerPage: React.FC = () => {
   }
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20 px-4 lg:px-6">
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20 px-4 lg:px-6 bg-transparent">
       {/* Header Banner */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary/10 via-blue-500/5 to-slate-100 dark:to-[#050505] border border-slate-200 dark:border-white/5 p-8 shadow-sm dark:shadow-2xl">
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary/10 via-blue-500/5 to-transparent border border-slate-200 dark:border-white/5 p-8 shadow-sm dark:shadow-2xl">
         <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8">
           <div className="space-y-4 text-center md:text-left">
             <div className="flex items-center justify-center md:justify-start gap-2">
@@ -118,7 +209,7 @@ const ScreenerPage: React.FC = () => {
               </span>
             </div>
             <h1 className="text-5xl font-black tracking-tighter text-slate-900 dark:text-white leading-none">
-              Multibagger <span className="text-primary italic">Academy</span>
+              <span className="shimmer-text inline-block">Multibagger</span> <span className="text-primary italic">Academy</span>
             </h1>
             <p className="text-slate-500 dark:text-gray-400 max-w-xl text-sm leading-relaxed">
               Unlock potential 10x picks with our AI-driven fundamental scanner.
@@ -161,7 +252,7 @@ const ScreenerPage: React.FC = () => {
 
         <TabsContent value="multibagger" className="space-y-8 mt-0">
           {/* Filters, Search & Sorting */}
-          <div className="flex flex-col lg:flex-row gap-6 items-center justify-between bg-slate-50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 p-4 rounded-md">
+          <div className="flex flex-col lg:flex-row gap-6 items-center justify-between bg-white/30 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 p-4 rounded-md backdrop-blur-sm">
             <div className="flex flex-wrap gap-2 w-full lg:w-auto">
               {['All', 'Banking', 'Energy', 'IT', 'Consumer', 'FMCG'].map(cat => (
                 <Button
@@ -205,13 +296,30 @@ const ScreenerPage: React.FC = () => {
           </div>
 
           {/* Grid of Potential Multi-baggers */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 m-3">
-            {filteredCandidates.map((stock, idx) => (
+          <div ref={containerRef} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 m-3 screener-grid-group">
+            {filteredCandidates.map((stock) => (
               <div
                 key={stock.symbol}
-                className="group relative bg-white dark:bg-[#0a0a0a] border border-slate-200 dark:border-white/5 rounded-md p-6 hover:border-primary/50 transition-all duration-500 hover:shadow-[0_0_30px_-10px_rgba(59,130,246,0.2)] dark:hover:shadow-[0_0_30px_-10px_rgba(59,130,246,0.3)] flex flex-col justify-between shadow-sm"
-                style={{ animationDelay: `${idx * 100}ms` }}
+                onMouseEnter={(e) => triggerParticleBurst(e, stock.conviction_score)}
+                onMouseMove={handleMouseMove}
+                onMouseLeave={handleMouseLeave}
+                className={`screener-card group relative bg-white dark:bg-[#0a0a0a] border border-slate-200 dark:border-white/5 rounded-2xl p-6 screener-card-hover ${stock.conviction_score > 85 ? 'high-conviction-aura ring-1 ring-primary/20' : ''} flex flex-col justify-between shadow-sm`}
+                style={{
+                  '--mouse-x': '50%',
+                  '--mouse-y': '50%',
+                  '--rotate-x': '0deg',
+                  '--rotate-y': '0deg',
+                } as React.CSSProperties}
               >
+                <div className="liquid-bg"></div>
+                <div className="liquid-ripple"></div>
+
+                {/* Border Beam for high conviction stocks */}
+                {stock.conviction_score > 90 && (
+                  <div className="border-beam-container">
+                    <div className="border-beam"></div>
+                  </div>
+                )}
                 <div className="space-y-4">
                   <div className="flex justify-between items-start">
                     <div>
@@ -252,35 +360,35 @@ const ScreenerPage: React.FC = () => {
 
                   {/* Main Metrics */}
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-y-4 gap-x-2 pt-2">
-                    <div className="space-y-1">
+                    <div className="space-y-1 metric-item">
                       <div className="text-[10px] text-slate-400 dark:text-gray-500 flex items-center gap-1 uppercase font-bold tracking-wider">
                         <Zap className="w-3 h-3 text-amber-400" />
                         ROCE
                       </div>
                       <div className="text-lg font-black text-slate-800 dark:text-white">{stock.roce}%</div>
                     </div>
-                    <div className="space-y-1">
+                    <div className="space-y-1 metric-item">
                       <div className="text-[10px] text-slate-400 dark:text-gray-500 flex items-center gap-1 uppercase font-bold tracking-wider">
                         <Target className="w-3 h-3 text-emerald-400" />
                         ROE
                       </div>
                       <div className="text-lg font-black text-slate-800 dark:text-white">{stock.roe || (stock.roce > 0 ? (stock.roce - 2).toFixed(1) : 0)}%</div>
                     </div>
-                    <div className="space-y-1">
+                    <div className="space-y-1 metric-item">
                       <div className="text-[10px] text-slate-400 dark:text-gray-500 flex items-center gap-1 uppercase font-bold tracking-wider">
                         <ArrowUpRight className="w-3 h-3 text-blue-400" />
                         Rev Growth
                       </div>
                       <div className="text-lg font-black text-slate-800 dark:text-white">{stock.revenue_growth}%</div>
                     </div>
-                    <div className="space-y-1">
+                    <div className="space-y-1 metric-item">
                       <div className="text-[10px] text-slate-400 dark:text-gray-500 flex items-center gap-1 uppercase font-bold tracking-wider">
                         <Target className="w-3 h-3 text-primary" />
                         PE Ratio
                       </div>
                       <div className="text-lg font-black text-slate-800 dark:text-white">{stock.pe_ratio}x</div>
                     </div>
-                    <div className="space-y-1 md:col-span-2">
+                    <div className="space-y-1 md:col-span-2 metric-item">
                       <div className="text-[10px] text-slate-400 dark:text-gray-500 flex items-center gap-1 uppercase font-bold tracking-wider">
                         <BarChart3 className="w-3 h-3 text-purple-400" />
                         Market Cap

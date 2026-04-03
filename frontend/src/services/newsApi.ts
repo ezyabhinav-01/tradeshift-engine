@@ -11,6 +11,7 @@ export interface NewsItem {
   publishedAt: string;
   sentiment?: string;
   category: string;
+  imageUrl?: string;
 }
 
 export interface ExplainResponse {

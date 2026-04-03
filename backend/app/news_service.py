@@ -4,10 +4,12 @@ import json
 import asyncio
 import aiohttp
 import hashlib
+import urllib.parse
 from datetime import datetime, timedelta
 from redis import Redis
 import html
 import feedparser
+import random
 from .nlp_engine import is_market_relevant, generate_news_explanation
 
 # Environment Variables
@@ -43,6 +45,8 @@ def _set_cache(key: str, value: any, expire: int = 3600):
     else:
         _IN_MEMORY_CACHE[key] = value
 
+
+
 async def fetch_indian_news_rss(limit: int = 50) -> list[dict]:
     """Fetch high-quality Indian financial news from RSS feeds."""
     rss_urls = [
@@ -63,13 +67,47 @@ async def fetch_indian_news_rss(limit: int = 50) -> list[dict]:
                         content = await resp.text()
                         feed = feedparser.parse(content)
                         for entry in feed.entries:
-                            # Basic cleanup
-                            title = html.unescape(entry.get("title", ""))
-                            summary = html.unescape(entry.get("summary", entry.get("description", "")))
-                            summary = re.sub(r'<[^>]+>', '', summary) # Remove HTML tags
+                            # 1. RAW CONTENT EXTRACTION (Save for image regex before cleaning)
+                            raw_desc = entry.get("description", entry.get("summary", ""))
+                            raw_content = ""
+                            if 'content' in entry:
+                                raw_content = entry.content[0].get('value', '')
                             
+                            # Combine and unescape for regex
+                            full_html = html.unescape(raw_desc + " " + raw_content)
+                            
+                            # 2. IMAGE EXTRACTION (Primary)
+                            image_url = None
+                            
+                            # - Check media:content
+                            if 'media_content' in entry:
+                                image_url = entry.media_content[0].get('url')
+                            # - Check enclosure
+                            if not image_url and 'enclosures' in entry:
+                                for enc in entry.enclosures:
+                                    if 'image' in enc.get('type', ''):
+                                        image_url = enc.get('href')
+                                        break
+                            # - Extract <img> from RAW HTML (Crucial for Moneycontrol & ET)
+                            if not image_url:
+                                # Look for data-src or src in <img> tags
+                                img_match = re.search(r'<img[^>]+(?:src|data-src)=["\']([^"\']+\.(?:jpg|png|jpeg|webp))["\']', full_html, re.IGNORECASE)
+                                if img_match:
+                                    image_url = img_match.group(1)
+                            
+                            # - Check for RSS enclosure (Standard)
+                            if not image_url and 'links' in entry:
+                                for l in entry.links:
+                                    if 'image' in l.get('type', ''):
+                                        image_url = l.get('href')
+                                        break
+                            
+                            # 3. TEXT CLEANUP (Displayed to user)
+                            title = html.unescape(entry.get("title", ""))
+                            summary = re.sub(r'<[^>]+>', '', html.unescape(raw_desc))
                             published_at = entry.get("published", entry.get("updated", datetime.now().isoformat()))
                             
+
                             all_articles.append({
                                 "id": hashlib.md5(entry.get("link", "").encode()).hexdigest(),
                                 "title": title,
@@ -77,7 +115,8 @@ async def fetch_indian_news_rss(limit: int = 50) -> list[dict]:
                                 "source": feed.feed.get("title", "Indian Market News"),
                                 "url": entry.get("link"),
                                 "publishedAt": published_at,
-                                "category": "indian"
+                                "category": "indian",
+                                "imageUrl": image_url
                             })
             except Exception as e:
                 print(f"⚠️ RSS Fetch Error for {url}: {e}")
@@ -129,7 +168,8 @@ async def fetch_newsapi(category: str, limit: int = 50) -> list[dict]:
                             "source": a.get("source", {}).get("name", "NewsAPI"),
                             "url": a.get("url"),
                             "publishedAt": a.get("publishedAt"),
-                            "category": category
+                            "category": category,
+                            "imageUrl": a.get("urlToImage")
                         }
                         for a in articles if a.get("title")
                     ]
@@ -161,7 +201,8 @@ async def fetch_alpha_vantage_sentiment() -> list[dict]:
                             "url": item.get("url"),
                             "publishedAt": item.get("time_published"),
                             "sentiment": item.get("overall_sentiment_label"),
-                            "category": "global"
+                            "category": "global",
+                            "imageUrl": item.get("banner_image")
                         }
                         for item in feed
                     ]
@@ -178,18 +219,21 @@ async def get_news(category: str = "all", limit: int = 50) -> list[dict]:
 
     # Fetch tasks
     tasks = []
+    # Increase the base limit to ensure we reach 3-day history
+    fetch_limit = limit * 2 
+    
     if category == "indian":
         # Prioritize RSS for India
-        tasks.append(fetch_indian_news_rss(limit))
+        tasks.append(fetch_indian_news_rss(fetch_limit))
         if NEWSAPI_KEY:
-            tasks.append(fetch_newsapi(category, limit))
+            tasks.append(fetch_newsapi(category, fetch_limit))
     elif category == "global":
-        tasks.append(fetch_newsapi(category, limit))
+        tasks.append(fetch_newsapi(category, fetch_limit))
         if ALPHA_VANTAGE_KEY:
             tasks.append(fetch_alpha_vantage_sentiment())
     else: # "all"
-        tasks.append(fetch_indian_news_rss(limit // 2))
-        tasks.append(fetch_newsapi("all", limit // 2))
+        tasks.append(fetch_indian_news_rss(fetch_limit))
+        tasks.append(fetch_newsapi("all", fetch_limit))
         if ALPHA_VANTAGE_KEY:
             tasks.append(fetch_alpha_vantage_sentiment())
     
@@ -208,6 +252,42 @@ async def get_news(category: str = "all", limit: int = 50) -> list[dict]:
     
     # Take limit
     final_news = merged[:limit]
+
+    # Dynamically fetch image from Reddit / Pollinations AI based on article content/title
+    async with aiohttp.ClientSession() as session:
+        async def enrich_image(article):
+            if article.get("imageUrl"):
+                return  # Use primary source image
+                
+            clean_title = article.get("title", "").replace('"', '').replace("'", "").strip()
+            if not clean_title:
+                return
+
+            safe_title = urllib.parse.quote(clean_title)
+            
+            # Step 1: Scrape relevant image from Reddit
+            reddit_url = f"https://www.reddit.com/search.json?q={safe_title}&type=link&sort=relevance"
+            try:
+                headers = {'User-Agent': 'Tradeshift-News-Service/1.0'}
+                async with session.get(reddit_url, headers=headers, timeout=5) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        for child in data.get("data", {}).get("children", []):
+                            post = child.get("data", {})
+                            if "preview" in post and "images" in post["preview"]:
+                                article["imageUrl"] = html.unescape(post["preview"]["images"][0]["source"]["url"])
+                                return
+                            elif post.get("url", "").endswith((".jpg", ".png", ".jpeg")):
+                                article["imageUrl"] = post["url"]
+                                return
+            except Exception:
+                pass
+                
+            # Step 2: Use Pollinations AI image generator based on article content
+            article["imageUrl"] = f"https://image.pollinations.ai/prompt/{safe_title}?nologo=true&width=800&height=500"
+            
+        await asyncio.gather(*(enrich_image(a) for a in final_news))
+
     _set_cache(cache_key, final_news, expire=120) # 2 min high-frequency cache
     return final_news
 
@@ -281,11 +361,13 @@ async def fetch_news_for_date(symbol: str, target_date: str) -> list[dict]:
                 "timestamp": trigger_time,
                 "time_str": trigger_time.strftime("%H:%M:%S"),
                 "is_simulated": True,
-                "original_date": item.get("publishedAt", "Real-time")
+                "original_date": item.get("publishedAt", "Real-time"),
+                "imageUrl": item.get("imageUrl") or get_fallback_image(item.get("title", ""), item.get("category", "all"))
             })
 
         # 5. ALWAYS Add "Synthetic/Classic" news events to guarantee flashes
         # These are mission-critical for the replay UX
+        base_sym_safe = urllib.parse.quote(base_sym)
         synthetic = [
             {
                 "id": f"syn_open_{target_date}",
@@ -296,7 +378,8 @@ async def fetch_news_for_date(symbol: str, target_date: str) -> list[dict]:
                 "timestamp": market_open + timedelta(minutes=5),
                 "time_str": "09:20:00",
                 "is_simulated": True,
-                "category": "indian"
+                "category": "indian",
+                "imageUrl": f"https://image.pollinations.ai/prompt/Market+Opening+Analysis+{base_sym_safe}?nologo=true&width=800&height=500"
             },
             {
                 "id": f"syn_mid_{target_date}",
@@ -307,7 +390,8 @@ async def fetch_news_for_date(symbol: str, target_date: str) -> list[dict]:
                 "timestamp": market_open + timedelta(hours=1),
                 "time_str": "10:15:00",
                 "is_simulated": True,
-                "category": "indian"
+                "category": "indian",
+                "imageUrl": f"https://image.pollinations.ai/prompt/Institutional+Buying+Spree+{base_sym_safe}?nologo=true&width=800&height=500"
             },
             {
                 "id": f"syn_global_{target_date}",
@@ -318,9 +402,17 @@ async def fetch_news_for_date(symbol: str, target_date: str) -> list[dict]:
                 "timestamp": market_open + timedelta(hours=4),
                 "time_str": "13:15:00",
                 "is_simulated": True,
-                "category": "global"
+                "category": "global",
+                "imageUrl": f"https://image.pollinations.ai/prompt/Global+Markets+Rally+on+Fed+Optimism?nologo=true&width=800&height=500"
             }
         ]
+
+        # Ensure synthetic items have images initially resolved via pollinations AI
+        for synth in synthetic:
+            if not synth.get("imageUrl"):
+                safe_title = urllib.parse.quote(synth.get("title", ""))
+                synth["imageUrl"] = f"https://image.pollinations.ai/prompt/{safe_title}?nologo=true&width=800&height=500"
+        
         shifted_news.extend(synthetic)
 
         # Sort by timestamp to ensure chronological triggering in simulation loop

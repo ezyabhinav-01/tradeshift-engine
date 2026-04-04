@@ -8,8 +8,8 @@ import { toast } from 'sonner';
 const CATEGORIES = ['all', 'indian', 'global'];
 
 // Using Bing proxy to reliably resolve dynamic market imagery
-// Using Pollinations AI for highly reliable dynamic market imagery
-const FALLBACK_HERO = `https://image.pollinations.ai/prompt/${encodeURIComponent("global financial market news trading floor professional cinematic 4k")}&width=1600&height=900&nologo=true&seed=42`;
+// Using Bing Image Search for highly reliable, realistic market imagery
+const FALLBACK_HERO = `https://tse1.mm.bing.net/th?q=${encodeURIComponent("global financial market news trading floor")}&w=1600&h=900&c=7&rs=1&p=0`;
 
 // Evergreen Market Narratives (Self-Healing Fallback)
 const MOCK_MARKET_NARRATIVES: Partial<NewsItem>[] = [
@@ -69,7 +69,7 @@ const NewsPage: React.FC = () => {
             url: "#",
             publishedAt: mockDate.toISOString(),
             category: mock.category || 'all',
-            imageUrl: `https://image.pollinations.ai/prompt/${encodeURIComponent(mock.title!)}?nologo=true&width=800&height=500&seed=${i}`
+            imageUrl: `https://tse1.mm.bing.net/th?q=${encodeURIComponent(mock.title!)}&w=800&h=500&c=7&rs=1&p=0`
           });
         }
       }
@@ -86,10 +86,10 @@ const NewsPage: React.FC = () => {
   useEffect(() => {
     fetchNews(activeCategory);
 
-    // Auto-refresh every 2 minutes
+    // Auto-refresh every 20 minutes
     const interval = setInterval(() => {
       fetchNews(activeCategory);
-    }, 120000);
+    }, 1200000);
 
     return () => clearInterval(interval);
   }, [activeCategory, fetchNews]);
@@ -153,7 +153,7 @@ const NewsPage: React.FC = () => {
           url: "#",
           publishedAt: date.toISOString(),
           category: mock.category || 'all',
-          imageUrl: `https://image.pollinations.ai/prompt/${encodeURIComponent(mock.title!)}?nologo=true&width=800&height=500&seed=${sectionOffsetDays}-${i}`
+          imageUrl: `https://tse1.mm.bing.net/th?q=${encodeURIComponent(mock.title!)}&w=800&h=500&c=7&rs=1&p=0`
         });
       }
       return padded;

@@ -283,8 +283,8 @@ async def get_news(category: str = "all", limit: int = 50) -> list[dict]:
             except Exception:
                 pass
                 
-            # Step 2: Use Pollinations AI image generator based on article content
-            article["imageUrl"] = f"https://image.pollinations.ai/prompt/{safe_title}?nologo=true&width=800&height=500"
+            # Step 2: Use Bing Thumbnail Search based on article content
+            article["imageUrl"] = f"https://tse1.mm.bing.net/th?q={safe_title}+news&w=800&h=500&c=7&rs=1&p=0"
             
         await asyncio.gather(*(enrich_image(a) for a in final_news))
 
@@ -379,7 +379,7 @@ async def fetch_news_for_date(symbol: str, target_date: str) -> list[dict]:
                 "time_str": "09:20:00",
                 "is_simulated": True,
                 "category": "indian",
-                "imageUrl": f"https://image.pollinations.ai/prompt/Market+Opening+Analysis+{base_sym_safe}?nologo=true&width=800&height=500"
+                "imageUrl": f"https://tse1.mm.bing.net/th?q=Market+Opening+Analysis+{base_sym_safe}&w=800&h=500&c=7&rs=1&p=0"
             },
             {
                 "id": f"syn_mid_{target_date}",
@@ -391,7 +391,7 @@ async def fetch_news_for_date(symbol: str, target_date: str) -> list[dict]:
                 "time_str": "10:15:00",
                 "is_simulated": True,
                 "category": "indian",
-                "imageUrl": f"https://image.pollinations.ai/prompt/Institutional+Buying+Spree+{base_sym_safe}?nologo=true&width=800&height=500"
+                "imageUrl": f"https://tse1.mm.bing.net/th?q=Institutional+Buying+Spree+{base_sym_safe}&w=800&h=500&c=7&rs=1&p=0"
             },
             {
                 "id": f"syn_global_{target_date}",
@@ -403,7 +403,7 @@ async def fetch_news_for_date(symbol: str, target_date: str) -> list[dict]:
                 "time_str": "13:15:00",
                 "is_simulated": True,
                 "category": "global",
-                "imageUrl": f"https://image.pollinations.ai/prompt/Global+Markets+Rally+on+Fed+Optimism?nologo=true&width=800&height=500"
+                "imageUrl": f"https://tse1.mm.bing.net/th?q=Global+Markets+Rally+on+Fed+Optimism&w=800&h=500&c=7&rs=1&p=0"
             }
         ]
 
@@ -411,7 +411,7 @@ async def fetch_news_for_date(symbol: str, target_date: str) -> list[dict]:
         for synth in synthetic:
             if not synth.get("imageUrl"):
                 safe_title = urllib.parse.quote(synth.get("title", ""))
-                synth["imageUrl"] = f"https://image.pollinations.ai/prompt/{safe_title}?nologo=true&width=800&height=500"
+                synth["imageUrl"] = f"https://tse1.mm.bing.net/th?q={safe_title}+news&w=800&h=500&c=7&rs=1&p=0"
         
         shifted_news.extend(synthetic)
 

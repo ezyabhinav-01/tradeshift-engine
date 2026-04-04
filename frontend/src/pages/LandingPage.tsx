@@ -1288,13 +1288,17 @@ export default function LandingPage() {
   const activeChartId = useMultiChartStore(state => state.activeChartId);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [showWelcome, setShowWelcome] = useState(true);
+  const [showWelcome, setShowWelcome] = useState(() => {
+    return !sessionStorage.getItem('welcomeIntroPlayed');
+  });
   const [showFlash, setShowFlash] = useState(false);
   const [line1Done, setLine1Done] = useState(false);
   const [line2Done, setLine2Done] = useState(false);
 
   // Auto-dismiss the welcome intro
   useEffect(() => {
+    if (!showWelcome) return;
+
     const timer = window.setTimeout(() => {
       // Primary GSAP Dismissal
       if (document.querySelector('.welcome-overlay')) {
@@ -1302,16 +1306,21 @@ export default function LandingPage() {
           autoAlpha: 0,
           duration: 1,
           ease: 'power2.inOut',
-          onComplete: () => setShowWelcome(false)
+          onComplete: () => {
+             setShowWelcome(false);
+             sessionStorage.setItem('welcomeIntroPlayed', 'true');
+          }
         });
       } else {
         setShowWelcome(false);
+        sessionStorage.setItem('welcomeIntroPlayed', 'true');
       }
     }, 3700);
 
     // CRITICAL SAFETY FALLBACK: Forces the landing page to load even if GSAP or API stutters
     const safetyTimeout = window.setTimeout(() => {
       setShowWelcome(false);
+      sessionStorage.setItem('welcomeIntroPlayed', 'true');
     }, 6000); 
 
     return () => {

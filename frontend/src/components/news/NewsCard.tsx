@@ -13,7 +13,7 @@ interface NewsCardProps {
 import '@/styles/NewsCardMagazine.css';
 
 export const NewsCard: React.FC<NewsCardProps> = ({ news, onExplain, explaining }) => {
-  const [imgSrc, setImgSrc] = useState(news.imageUrl || `https://image.pollinations.ai/prompt/${encodeURIComponent(news.title + " global stock market trading professional 4k")}&width=800&height=500&nologo=true`);
+  const [imgSrc, setImgSrc] = useState((news.imageUrl && news.imageUrl !== "#") ? news.imageUrl : `https://tse1.mm.bing.net/th?q=${encodeURIComponent(news.title + " news")}&w=800&h=500&c=7&rs=1&p=0`);
   const [errorStage, setErrorStage] = useState(0); 
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
@@ -26,7 +26,7 @@ export const NewsCard: React.FC<NewsCardProps> = ({ news, onExplain, explaining 
 
   // Sync state if news item changes
   useEffect(() => {
-    setImgSrc(news.imageUrl || `https://image.pollinations.ai/prompt/${encodeURIComponent(news.title + " financial news trading professional cinematic")}&width=800&height=500&nologo=true`);
+    setImgSrc((news.imageUrl && news.imageUrl !== "#") ? news.imageUrl : `https://tse1.mm.bing.net/th?q=${encodeURIComponent(news.title + " news")}&w=800&h=500&c=7&rs=1&p=0`);
     setErrorStage(0);
     setHasError(false);
     setIsLoading(true);
@@ -72,7 +72,7 @@ export const NewsCard: React.FC<NewsCardProps> = ({ news, onExplain, explaining 
   const handleImageError = () => {
     if (errorStage === 0) {
       setErrorStage(1);
-      setImgSrc(`https://image.pollinations.ai/prompt/${encodeURIComponent(news.title + " global stock market trading professional 4k")}&width=800&height=500&nologo=true&seed=${news.id}`);
+      setImgSrc(`https://tse1.mm.bing.net/th?q=${encodeURIComponent(news.title + " market")}&w=800&h=500&c=7&rs=1&p=0`);
     } else if (errorStage === 1) {
       setErrorStage(2);
       setImgSrc(`https://images.unsplash.com/photo-1611974717482-482bc9eeaf43?auto=format&fit=crop&w=800&q=80`);

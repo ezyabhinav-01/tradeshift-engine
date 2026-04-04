@@ -60,17 +60,12 @@ async def connect_to_database():
         db_url = get_database_url_async()
         
         # Create Async Engine
-        # use relaxed SSL context for Supabase to bypass self-signed cert verification issues in slim images
-        ssl_ctx = ssl.create_default_context()
-        ssl_ctx.check_hostname = False
-        ssl_ctx.verify_mode = ssl.CERT_NONE
-        
         engine = create_async_engine(
             db_url, 
             pool_pre_ping=True,
             pool_size=20,
             max_overflow=10,
-            connect_args={"ssl": ssl_ctx}
+            # Let asyncpg handle SSL negotiation natively, removing forced ssl_ctx
         )
         
         # Test Connection

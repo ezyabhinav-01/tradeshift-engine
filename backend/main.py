@@ -16,6 +16,7 @@ import asyncio
 import datetime
 import time
 import glob
+import random
 from redis import Redis
 from prometheus_fastapi_instrumentator import Instrumentator
 from app.oms import OrderManager
@@ -1017,28 +1018,15 @@ async def websocket_endpoint(websocket: WebSocket):
                     # Fetch today's news for alignment with simulation ticks
                     try:
                         raw_news = await fetch_news_for_date(primary_symbol, target_date)
-                        # Convert publishedAt → timestamp (datetime) for simulation time comparison
                         active_news = []
                         for n in raw_news:
-                            try:
-                                pub = n.get("publishedAt") or n.get("timestamp")
-                                if pub and isinstance(pub, str):
-                                    ts = pd.to_datetime(pub, errors="coerce")
-                                    if pd.notna(ts):
-                                        n["timestamp"] = ts.to_pydatetime()
-                                    else:
-                                        # Fallback: schedule at market open + random offset
-                                        n["timestamp"] = base_time if 'base_time' in dir() else datetime.datetime.now()
-                                elif pub and isinstance(pub, datetime.datetime):
-                                    n["timestamp"] = pub
-                                else:
-                                    n["timestamp"] = datetime.datetime.now()
-                                n["triggered"] = False
-                                active_news.append(n)
-                            except Exception:
-                                pass  # Skip malformed news items
+                            # Reset trigger state for replay and ensure naive timestamp
+                            n["triggered"] = False
+                             # Trust n["timestamp"] is already a naive datetime from news_service.py
+                            active_news.append(n)
+                        print(f"✅ Simulation Ready: Prepared {len(active_news)} shifted news items for {target_date}")
                     except Exception as e:
-                        print(f"⚠️ Failed to fetch news for {target_date}: {e}")
+                        print(f"⚠️ Failed to prepare news for simulation on {target_date}: {e}")
                         active_news = []
 
                 elif command == "BUY":
@@ -1136,6 +1124,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     datetime.datetime.now()
                 )
                 base_time = pd.to_datetime(date_val) if not isinstance(date_val, datetime.datetime) else date_val
+                # CRITICAL: Ensure base_time is naive for comparison with news timestamps
+                if hasattr(base_time, "tzinfo") and base_time.tzinfo is not None:
+                    base_time = base_time.replace(tzinfo=None)
             except Exception as e:
                 print(f"❌ Ref row parse error: {e}")
                 continue
@@ -1245,9 +1236,23 @@ async def websocket_endpoint(websocket: WebSocket):
                             await websocket.send_json({ "type": "STATS", "data": { "tick": i, "speed": speed } })
                         except Exception: pass
 
-                    # ─── Smooth Sub-Tick Interpolation (10 steps) ───
-                    # Split the 5s delay into 10 x 500ms chunks with interpolated prices
-                    sub_steps = 10
+                    # ─── Smooth Sub-Tick Brownian Bridge Simulation ───
+                    sub_steps = 60
+                    # Standard deviation (approx 0.005% of current price as volatility per tick)
+                    vol_scale = last_tick_price * 0.00005 if last_tick_price > 0 else 0.1
+                    
+                    # Generate raw Brownian components
+                    raw_walk = [random.gauss(0, vol_scale) for _ in range(sub_steps)]
+                    # Cumulative sum to get Brownian Motion
+                    bm = []
+                    curr_sum = 0
+                    for r in raw_walk:
+                        curr_sum += r
+                        bm.append(curr_sum)
+                    bm_final = bm[-1]
+                    # Convert to Bridge (so it ends exactly at 0 to match historical data)
+                    bridge_noise = [bm[s] - ((s + 1) / sub_steps) * bm_final for s in range(sub_steps)]
+
                     for step in range(sub_steps):
                         # Command Check (Inner - run in each sub-step)
                         trigger_next = False
@@ -1279,7 +1284,12 @@ async def websocket_endpoint(websocket: WebSocket):
                         if primary_symbol and primary_symbol in all_symbol_ticks and i + 1 < len(all_symbol_ticks[primary_symbol]):
                             curr_val = float(all_symbol_ticks[primary_symbol][i])
                             next_val = float(all_symbol_ticks[primary_symbol][i+1])
-                            interp_price = curr_val + (next_val - curr_val) * factor
+                            
+                            # Linear path
+                            linear_price = curr_val + (next_val - curr_val) * factor
+                            # Add Brownian noise
+                            interp_price = linear_price + bridge_noise[step]
+
                             
                             try:
                                 # Send TICK
@@ -1304,83 +1314,84 @@ async def websocket_endpoint(websocket: WebSocket):
                                 await websocket.send_json({ "type": "INDICES_TICK", "data": interp_indices })
                             except Exception: break
 
-                        # ── Sleep for 1/10th of the interval ──
-                        actual_delay = 5.0 / (speed * sub_steps) if speed > 0 else 1.0 / sub_steps
-                        await asyncio.sleep(actual_delay)
+                        # --- NEW: Synchronized News Injection (Second-Precision) ---
+                        sub_tick_time = tick_time + datetime.timedelta(seconds=step)
+                        for idx, n_item in enumerate(list(active_news)):
+                            if not isinstance(n_item, dict): continue
+                            n_timestamp = n_item.get("timestamp")
+                            if not n_timestamp: continue
+                            
+                            if not n_item.get("triggered") and sub_tick_time >= n_timestamp:
+                                active_news[idx]["triggered"] = True
+                                print(f"📰 FLASHING NEWS: {n_item['title']} at simulated time {sub_tick_time.strftime('%H:%M:%S')}", flush=True)
+                                
+                                # Ensure time_str matches the EXACT trigger time for visual sync
+                                display_time = sub_tick_time.strftime("%H:%M:%S")
+
+                                asyncio.create_task(websocket.send_json({
+                                    "type": "NEWS_FLASH",
+                                    "data": {
+                                        "id": idx,
+                                        "symbol": primary_symbol,
+                                        "title": n_item["title"],
+                                        "description": n_item["description"],
+                                        "time_str": display_time,
+                                        "source": n_item["source"],
+                                        "url": n_item["url"],
+                                        "is_simulated": n_item.get("is_simulated", False)
+                                    }
+                                }))
+                                
+                                async def perform_analysis(item, item_idx, sym):
+                                    try:
+                                        impact_task = analyze_news_impact(item["title"], item["description"], sym)
+                                        explainer_task = generate_news_explainer(item["title"], item["description"], sym)
+                                        impact_res, explainer_res = await asyncio.gather(impact_task, explainer_task)
+                                        await websocket.send_json({
+                                            "type": "NEWS_ANALYSIS",
+                                            "data": {
+                                                "id": item_idx,
+                                                "analysis": impact_res["analysis"],
+                                                "sentiment": impact_res["sentiment"],
+                                                "predicted_impact": impact_res.get("predicted_impact", "Unknown")
+                                            }
+                                        })
+                                        await websocket.send_json({
+                                            "type": "NEWS_EXPLAINER",
+                                            "data": { "id": item_idx, "explainer": explainer_res }
+                                        })
+                                    except Exception as ex:
+                                        print(f"⚠️ Error in News AI: {ex}", flush=True)
+                                        
+                                asyncio.create_task(perform_analysis(n_item, idx, primary_symbol))
+
+                                active_impact_observers.append({
+                                    "news_id": idx,
+                                    "baseline_price": interp_price,
+                                    "target_time": sub_tick_time + datetime.timedelta(minutes=15)
+                                })
+                        
+                        # --- PROCESS IMPACT OBSERVERS ---
+                        for obs in list(active_impact_observers):
+                            if sub_tick_time >= obs["target_time"] and primary_symbol in all_symbol_ticks:
+                                # Use current interpolated price for impact calc
+                                pct_change = ((interp_price - obs["baseline_price"]) / obs["baseline_price"]) * 100 if obs["baseline_price"] > 0 else 0
+                                asyncio.create_task(websocket.send_json({
+                                    "type": "NEWS_IMPACT_RESULT",
+                                    "data": {
+                                        "id": obs["news_id"],
+                                        "actual_impact": f"{pct_change:+.2f}% in 15m",
+                                        "price_start": obs["baseline_price"],
+                                        "price_end": interp_price
+                                    }
+                                }))
+                                active_impact_observers.remove(obs)
+
+                        # ── Precise Speed Scaling (60 seconds per candle / speed) ──
+                        actual_delay = 60.0 / (speed * sub_steps) if speed > 0 else 1.0 / sub_steps
+                        await asyncio.sleep(min(actual_delay, 1.0)) # Safety cap
                     
                     last_tick_sent_at = time.time()
-
-                    # --- NEW: Synchronized News Injection ---
-                    for idx, n_item in enumerate(list(active_news)):
-                        if not isinstance(n_item, dict): continue
-                        n_timestamp = n_item.get("timestamp")
-                        if not n_timestamp: continue
-                        
-                        if not n_item.get("triggered") and tick_time >= n_timestamp:
-                            active_news[idx]["triggered"] = True
-                            print(f"📰 FLASHING NEWS: {n_item['title']} at simulated time {tick_time.strftime('%H:%M:%S')}", flush=True)
-                            
-                            # Ensure time_str matches the EXACT trigger time for visual sync
-                            display_time = tick_time.strftime("%H:%M:%S")
-
-                            asyncio.create_task(websocket.send_json({
-                                "type": "NEWS_FLASH",
-                                "data": {
-                                    "id": idx,
-                                    "symbol": primary_symbol,
-                                    "title": n_item["title"],
-                                    "description": n_item["description"],
-                                    "time_str": display_time,
-                                    "source": n_item["source"],
-                                    "url": n_item["url"],
-                                    "is_simulated": n_item.get("is_simulated", False)
-                                }
-                            }))
-                            
-                            async def perform_analysis(item, item_idx, sym):
-                                try:
-                                    impact_task = analyze_news_impact(item["title"], item["description"], sym)
-                                    explainer_task = generate_news_explainer(item["title"], item["description"], sym)
-                                    impact_res, explainer_res = await asyncio.gather(impact_task, explainer_task)
-                                    await websocket.send_json({
-                                        "type": "NEWS_ANALYSIS",
-                                        "data": {
-                                            "id": item_idx,
-                                            "analysis": impact_res["analysis"],
-                                            "sentiment": impact_res["sentiment"],
-                                            "predicted_impact": impact_res.get("predicted_impact", "Unknown")
-                                        }
-                                    })
-                                    await websocket.send_json({
-                                        "type": "NEWS_EXPLAINER",
-                                        "data": { "id": item_idx, "explainer": explainer_res }
-                                    })
-                                except Exception as ex:
-                                    print(f"⚠️ Error in News AI: {ex}", flush=True)
-                                    
-                            asyncio.create_task(perform_analysis(n_item, idx, primary_symbol))
-
-                            active_impact_observers.append({
-                                "news_id": idx,
-                                "baseline_price": all_symbol_ticks[primary_symbol][i] if primary_symbol in all_symbol_ticks else 0,
-                                "target_time": tick_time + datetime.timedelta(minutes=15)
-                            })
-                    
-                    # --- PROCESS IMPACT OBSERVERS ---
-                    for obs in list(active_impact_observers):
-                        if tick_time >= obs["target_time"] and primary_symbol in all_symbol_ticks:
-                            curr_p = all_symbol_ticks[primary_symbol][i]
-                            pct_change = ((curr_p - obs["baseline_price"]) / obs["baseline_price"]) * 100 if obs["baseline_price"] > 0 else 0
-                            asyncio.create_task(websocket.send_json({
-                                "type": "NEWS_IMPACT_RESULT",
-                                "data": {
-                                    "id": obs["news_id"],
-                                    "actual_impact": f"{pct_change:+.2f}% in 15m",
-                                    "price_start": obs["baseline_price"],
-                                    "price_end": curr_p
-                                }
-                            }))
-                            active_impact_observers.remove(obs)
                 
                 if not is_running:
                     break

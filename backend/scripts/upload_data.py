@@ -23,7 +23,7 @@ BUCKET_NAME = os.getenv("MINIO_BUCKET", "market-data")
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5432/tradeshift")
 
 # Local path where parquet files are stored (mount this volume in docker-compose)
-DATA_PATH = "/data"  # This will be mounted from host to container
+DATA_PATH = "/app/data"  # This will be mounted from host to container
 
 def initialize_minio_client():
     """Initialize MinIO client"""
@@ -94,6 +94,15 @@ def upload_parquet_file(client, file_path, engine):
         # Read metadata from parquet file
         df = pd.read_parquet(file_path)
         
+        # Find time column
+        time_col = next((c for c in ['date', 'datetime', 'time', 'timestamp'] if c in df.columns), None)
+        if time_col is None:
+            print(f"❌ Error: Cannot find time column in {file_name}")
+            return False
+            
+        start_date = df[time_col].min() if len(df) > 0 else datetime.now()
+        end_date = df[time_col].max() if len(df) > 0 else datetime.now()
+        
         # Insert metadata into database
         with engine.connect() as conn:
             # Delete existing entry if exists
@@ -111,8 +120,8 @@ def upload_parquet_file(client, file_path, engine):
                         :parquet_path, :bucket_name, :object_name)
             """), {
                 'instrument': instrument,
-                'start_date': df['date'].min(),
-                'end_date': df['date'].max(),
+                'start_date': start_date,
+                'end_date': end_date,
                 'rows_count': len(df),
                 'parquet_path': object_name,
                 'bucket_name': BUCKET_NAME,

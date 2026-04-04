@@ -1,8 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Response, BackgroundTasks, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from .models import User, UserSession
 import uuid
+import random
+import bcrypt
+import jwt
+import os
+import logging
+from datetime import datetime, timedelta
+from typing import Optional
+
 from .database import get_db
 from .schemas import (
     UserCreate, UserLogin, Token, User as UserSchema, 
@@ -11,23 +19,23 @@ from .schemas import (
     ForgotPasswordRequest, OtpVerifyRequest, ResetPasswordRequest,
     UserProfileUpdate
 )
-import bcrypt
-from datetime import datetime, timedelta
-import jwt
-import os
-import logging
 from .config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
 from .services.email_service import (
     send_login_alert_email,
     send_pin_created_email,
     send_signup_otp_email,
     send_welcome_email,
+    send_otp_email,
+    send_pin_reset_otp_email,
+    send_password_reset_success_email,
+    send_pin_reset_email
 )
+from .dependencies import get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# --- AUTH LOGIC ---
+# --- AUTH HELPER LOGIC ---
 
 def verify_password(plain_password, hashed_password):
     if isinstance(hashed_password, str):
@@ -63,8 +71,6 @@ async def create_session(db: AsyncSession, user_id: int, request: Request, respo
     )
     return session_token
 
-from typing import Optional
-
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     expire = datetime.utcnow() + (expires_delta or timedelta(minutes=15))
@@ -72,12 +78,38 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-import random
 def generate_demat_id() -> str:
     categories = ["Bull", "Edge", "Bear", "Tick", "Yolo"]
     category = random.choice(categories)
     random_code = f"{random.randint(0, 9999):04d}"
     return f"RS-{category}-{random_code}"
+
+async def generate_and_set_otp(db: AsyncSession, user: User) -> str:
+    otp = str(random.randint(100000, 999999))
+    user.otp_code = otp
+    user.otp_expiry = datetime.utcnow() + timedelta(minutes=10)
+    await db.commit()
+    return otp
+
+async def verify_otp_logic(db: AsyncSession, email: str, otp_code: str) -> User:
+    result = await db.execute(select(User).filter(User.email == email))
+    user = result.scalars().first()
+    
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid request. User not found.")
+    if user.otp_code != otp_code:
+        raise HTTPException(status_code=400, detail="Invalid verification code.")
+    if not user.otp_expiry or datetime.utcnow() > user.otp_expiry:
+        raise HTTPException(status_code=400, detail="Verification code has expired.")
+        
+    return user
+
+async def clear_otp(db: AsyncSession, user: User):
+    user.otp_code = None
+    user.otp_expiry = None
+    await db.commit()
+
+# --- ROUTES ---
 
 @router.post("/register/request")
 async def register_request(
@@ -85,7 +117,6 @@ async def register_request(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db)
 ):
-    # 1. Check if user exists
     result = await db.execute(select(User).filter(User.email == user.email))
     db_user = result.scalars().first()
     
@@ -105,7 +136,7 @@ async def register_request(
         db_user.city = user.city
         db_user.how_heard_about = user.how_heard_about
     else:
-        # 2. Create Pending User
+        # Create Pending User
         hashed_password = get_password_hash(user.password)
         db_user = User(
             email=user.email, 
@@ -126,16 +157,8 @@ async def register_request(
         )
         db.add(db_user)
     
-    # 3. Generate OTP
-    otp = str(random.randint(100000, 999999))
-    db_user.otp_code = otp
-    db_user.otp_expiry = datetime.utcnow() + timedelta(minutes=10)
-    
-    await db.commit()
-    
-    # 4. Send OTP Email
+    otp = await generate_and_set_otp(db, db_user)
     background_tasks.add_task(send_signup_otp_email, db_user.email, otp)
-    
     return {"message": "Verification code sent to your email."}
 
 @router.post("/register/verify")
@@ -143,23 +166,13 @@ async def register_verify(
     request: SignupVerifyRequest,
     db: AsyncSession = Depends(get_db)
 ):
-    result = await db.execute(select(User).filter(User.email == request.email))
-    user = result.scalars().first()
+    user = await verify_otp_logic(db, request.email, request.otp_code)
     
-    if not user or user.is_verified:
-        raise HTTPException(status_code=400, detail="Invalid verification request.")
-        
-    if user.otp_code != request.otp_code:
-        raise HTTPException(status_code=400, detail="Invalid verification code.")
-    
-    if datetime.utcnow() > user.otp_expiry:
-        raise HTTPException(status_code=400, detail="Verification code has expired.")
+    if user.is_verified:
+        raise HTTPException(status_code=400, detail="User already verified.")
     
     user.is_verified = True
-    user.otp_code = None
-    user.otp_expiry = None
-    await db.commit()
-    
+    await clear_otp(db, user)
     return {"message": "Email verified successfully. Please set your security PIN."}
 
 @router.post("/register/set-pin", response_model=UserSchema)
@@ -175,7 +188,6 @@ async def register_set_pin(
     
     if not user or not user.is_verified:
         raise HTTPException(status_code=400, detail="Account must be verified before setting a PIN.")
-        
     if user.security_pin is not None:
          raise HTTPException(status_code=400, detail="Security PIN already set.")
 
@@ -190,9 +202,7 @@ async def register_set_pin(
     await db.refresh(user)
 
     await create_session(db, user.id, request, response)
-
     background_tasks.add_task(send_welcome_email, user.email, user.full_name or "Trader", user.demat_id)
-    
     return user
 
 @router.post("/login")
@@ -209,13 +219,8 @@ async def login(
     if not db_user or not verify_password(user.password, db_user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password")
     
-    # Check if verified
     if not db_user.is_verified:
-        # Resend OTP if unverified
-        otp = str(random.randint(100000, 999999))
-        db_user.otp_code = otp
-        db_user.otp_expiry = datetime.utcnow() + timedelta(minutes=10)
-        await db.commit()
+        otp = await generate_and_set_otp(db, db_user)
         background_tasks.add_task(send_signup_otp_email, db_user.email, otp)
         return {
             "status": "REQUIRES_VERIFICATION",
@@ -223,7 +228,6 @@ async def login(
             "email": db_user.email
         }
 
-    # Check if PIN is set
     if db_user.security_pin is None:
         return {
             "status": "REQUIRES_PIN_SETUP",
@@ -231,24 +235,11 @@ async def login(
             "email": db_user.email
         }
     
-    # Create persistent session
     await create_session(db, db_user.id, request, response)
-    
-    # Trigger New Login Alert
-    current_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
-    ip_address = request.client.host if request.client else "Unknown"
-    # background_tasks.add_task(
-    #     send_login_alert_email,
-    #     email=db_user.email,
-    #     name=db_user.full_name or "Trader",
-    #     login_time=current_time,
-    #     ip_address=ip_address
-    # )
-    
+    # Trigger New Login Alert disabled per user request
     return db_user
 
 # --- FORGOT PASSWORD FLOW ---
-import random
 
 @router.post("/forgot-password")
 async def forgot_password(
@@ -262,33 +253,13 @@ async def forgot_password(
     if not user or user.phone_number != request.phone_number:
         raise HTTPException(status_code=404, detail="No matching account found with these details.")
     
-    # Generate 6-digit OTP
-    otp = str(random.randint(100000, 999999))
-    user.otp_code = otp
-    user.otp_expiry = datetime.utcnow() + timedelta(minutes=10)
-    await db.commit()
-    
-    from app.services.email_service import send_otp_email
-    background_tasks.add_task(
-        send_otp_email,
-        email=user.email,
-        name=user.full_name,
-        otp_code=otp
-    )
-    
+    otp = await generate_and_set_otp(db, user)
+    background_tasks.add_task(send_otp_email, email=user.email, name=user.full_name, otp_code=otp)
     return {"message": "Verification code sent to your email."}
 
 @router.post("/verify-otp")
 async def verify_otp(request: OtpVerifyRequest, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).filter(User.email == request.email))
-    user = result.scalars().first()
-    
-    if not user or user.otp_code != request.otp_code:
-        raise HTTPException(status_code=400, detail="Invalid verification code.")
-    
-    if datetime.utcnow() > user.otp_expiry:
-        raise HTTPException(status_code=400, detail="Verification code has expired.")
-        
+    await verify_otp_logic(db, request.email, request.otp_code)
     return {"message": "Code verified successfully."}
 
 @router.post("/reset-password")
@@ -297,39 +268,17 @@ async def reset_password(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db)
 ):
-    result = await db.execute(select(User).filter(User.email == request.email))
-    user = result.scalars().first()
-    
-    if not user or user.otp_code != request.otp_code:
-        raise HTTPException(status_code=400, detail="Invalid request.")
-        
-    if datetime.utcnow() > user.otp_expiry:
-        raise HTTPException(status_code=400, detail="Verification code has expired.")
-        
+    user = await verify_otp_logic(db, request.email, request.otp_code)
     user.hashed_password = get_password_hash(request.new_password)
-    user.otp_code = None # Clear OTP after use
-    user.otp_expiry = None
-    await db.commit()
+    await clear_otp(db, user)
     
-    from app.services.email_service import send_password_reset_success_email
-    background_tasks.add_task(
-        send_password_reset_success_email,
-        email=user.email,
-        name=user.full_name
-    )
-    
+    background_tasks.add_task(send_password_reset_success_email, email=user.email, name=user.full_name)
     return {"message": "Password updated successfully."}
 
 @router.post("/logout")
 async def logout(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
     session_token = request.cookies.get("session_id")
     if session_token:
-        # Delete session from DB
-        await db.execute(
-            select(UserSession).filter(UserSession.session_token == session_token)
-        )
-        # Note: Using execute + delete for async
-        from sqlalchemy import delete
         await db.execute(delete(UserSession).where(UserSession.session_token == session_token))
         await db.commit()
         
@@ -357,26 +306,11 @@ async def verify_pin(
         logger.warning(f"PIN Verification failed for {request_data.email}: Incorrect PIN")
         raise HTTPException(status_code=400, detail="Please enter correct security pin")
     
-    # Create persistent session on successful PIN verification
     await create_session(db, db_user.id, request, response)
-
-    # Send PIN verified email in background
-    verified_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
-    from app.services.email_service import send_pin_verified_email
-    background_tasks.add_task(
-        send_pin_verified_email,
-        db_user.email,
-        db_user.full_name or "Trader",
-        verified_at
-    )
-    
     return {"message": "PIN verified successfully"}
 
 @router.post("/refresh")
 async def refresh_session(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
-    """
-    Silent refresh: Uses refresh_token from cookies to issue a new access_token.
-    """
     token = request.cookies.get("refresh_token")
     if not token:
         raise HTTPException(status_code=401, detail="Refresh token missing")
@@ -388,11 +322,9 @@ async def refresh_session(request: Request, response: Response, db: AsyncSession
         
         if email is None or token_type != "refresh":
             raise HTTPException(status_code=401, detail="Invalid refresh token type")
-            
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
-    # Verify user and token in DB
     result = await db.execute(select(User).filter(User.email == email))
     user = result.scalars().first()
     
@@ -400,11 +332,8 @@ async def refresh_session(request: Request, response: Response, db: AsyncSession
         logger.warning(f"Refresh attempt failed for {email}: Token mismatch or user not found")
         raise HTTPException(status_code=401, detail="Refresh token revoked or invalid")
 
-    # Issue new Access Token
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    new_access_token = create_access_token(
-        data={"sub": user.email}, expires_delta=access_token_expires
-    )
+    new_access_token = create_access_token(data={"sub": user.email}, expires_delta=access_token_expires)
 
     response.set_cookie(
         key="access_token",
@@ -414,7 +343,6 @@ async def refresh_session(request: Request, response: Response, db: AsyncSession
         samesite="lax",
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
     )
-
     return {"status": "success"}
 
 @router.post("/pin-reset/request")
@@ -429,33 +357,13 @@ async def request_pin_reset_otp(
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
     
-    # Generate 6-digit OTP
-    otp = str(random.randint(100000, 999999))
-    user.otp_code = otp
-    user.otp_expiry = datetime.utcnow() + timedelta(minutes=10)
-    await db.commit()
-    
-    from app.services.email_service import send_pin_reset_otp_email
-    background_tasks.add_task(
-        send_pin_reset_otp_email,
-        email=user.email,
-        name=user.full_name,
-        otp_code=otp
-    )
-    
+    otp = await generate_and_set_otp(db, user)
+    background_tasks.add_task(send_pin_reset_otp_email, email=user.email, name=user.full_name, otp_code=otp)
     return {"message": "Verification code sent to your email."}
 
 @router.post("/pin-reset/verify")
 async def verify_pin_reset_otp(request: PinResetVerifyRequest, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).filter(User.email == request.email))
-    user = result.scalars().first()
-    
-    if not user or user.otp_code != request.otp_code:
-        raise HTTPException(status_code=400, detail="Invalid verification code.")
-    
-    if datetime.utcnow() > user.otp_expiry:
-        raise HTTPException(status_code=400, detail="Verification code has expired.")
-        
+    await verify_otp_logic(db, request.email, request.otp_code)
     return {"message": "Code verified successfully."}
 
 @router.post("/pin-reset/confirm")
@@ -464,33 +372,13 @@ async def confirm_pin_reset(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db)
 ):
-    result = await db.execute(select(User).filter(User.email == request.email))
-    user = result.scalars().first()
-    
-    if not user or user.otp_code != request.otp_code:
-        raise HTTPException(status_code=400, detail="Invalid request.")
-        
-    if datetime.utcnow() > user.otp_expiry:
-        raise HTTPException(status_code=400, detail="Verification code has expired.")
-        
+    user = await verify_otp_logic(db, request.email, request.otp_code)
     user.security_pin = request.new_pin
-    user.otp_code = None # Clear OTP after use
-    user.otp_expiry = None
-    await db.commit()
+    await clear_otp(db, user)
     
-    from app.services.email_service import send_pin_reset_email
     reset_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
-    background_tasks.add_task(
-        send_pin_reset_email,
-        email=user.email,
-        name=user.full_name,
-        reset_at=reset_at
-    )
-    
+    background_tasks.add_task(send_pin_reset_email, email=user.email, name=user.full_name, reset_at=reset_at)
     return {"message": "Security PIN updated successfully."}
-
-# Import dependencies inside function/module to avoid circular import issues if placed at top
-from .dependencies import get_current_user
 
 @router.patch("/update-profile", response_model=UserSchema)
 async def update_profile(
@@ -505,7 +393,6 @@ async def update_profile(
     await db.commit()
     await db.refresh(current_user)
     return current_user
-
 
 @router.get("/me", response_model=UserSchema)
 async def read_users_me(current_user: User = Depends(get_current_user)):

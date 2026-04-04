@@ -82,6 +82,12 @@ const TradePanel = ({ price, onExecute, onClose }: TradePanelProps) => {
       return `Quantity exceeds your maximum allowed limit of ${userSettings.max_order_quantity} lots.`;
     }
     
+    // Balance Check
+    const requiredFunds = qty * price;
+    if (user && requiredFunds > user.balance) {
+      return `Insufficient balance. Required: ₹${requiredFunds.toLocaleString()}, Available: ₹${user.balance.toLocaleString()}`;
+    }
+    
     const slValue = stopLoss ? parseFloat(stopLoss) : null;
     const tpValue = takeProfit ? parseFloat(takeProfit) : null;
     const entryPrice = orderType === 'MARKET' ? price : limitPrice;
@@ -174,6 +180,10 @@ const TradePanel = ({ price, onExecute, onClose }: TradePanelProps) => {
                       <span className="text-sm font-mono font-bold text-tv-primary">{user.demat_id}</span>
                     </div>
                   )}
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-mono text-white/50">Available:</span>
+                    <span className="text-sm font-mono font-bold text-sidebar-primary">₹{user?.balance?.toLocaleString('en-IN') || '0'}</span>
+                  </div>
                 </div>
               </div>
               <button 

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Response, BackgroundTasks, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional, List
+from typing import Optional, List, Any, Union, Dict
 from sqlalchemy import select
 from .models import User, UserSession
 import uuid
@@ -135,6 +135,7 @@ async def register_request(
             how_heard_about=user.how_heard_about,
             security_pin=None,
             is_verified=False,
+            balance=100000.0,
             demat_id=generate_demat_id()
         )
         db.add(db_user)

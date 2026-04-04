@@ -404,6 +404,27 @@ export const ProChart: React.FC<ProChartProps> = ({
         secondsVisible: false, 
         borderColor: isDark ? 'rgba(42, 46, 57, 0.5)' : '#E0E3EB',
         kineticScroll: true,
+        tickMarkFormatter: (time: number) => {
+          const d = new Date(time * 1000);
+          return d.toLocaleTimeString('en-IN', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+            timeZone: 'Asia/Kolkata'
+          });
+        },
+      },
+      localization: {
+        timeFormatter: (time: number) => {
+          const d = new Date(time * 1000);
+          return d.toLocaleTimeString('en-IN', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false,
+            timeZone: 'Asia/Kolkata'
+          });
+        },
       },
       handleScroll: {
         mouseWheel: true,

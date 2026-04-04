@@ -90,6 +90,7 @@ class User(Base):
     
     refresh_token = Column(String, nullable=True, index=True)
     is_verified = Column(Boolean, default=False)
+    balance = Column(Float, default=100000.0)
     last_active_at = Column(DateTime, default=datetime.utcnow, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 

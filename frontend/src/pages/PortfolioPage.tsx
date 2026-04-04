@@ -46,6 +46,7 @@ export default function PortfolioPage() {
   const fallback = {
     current_value: 0, total_invested: 0, total_pnl: 0,
     pnl_percent: 0, xirr_percent: 0, is_positive: true, equity_curve: [],
+    cash_balance: 100000.0, total_value: 100000.0
   };
 
   const fetchAll = async () => {
@@ -139,6 +140,29 @@ export default function PortfolioPage() {
                  </div>
                  <span className={`text-xs font-bold ${s.is_positive ? 'text-green-500/80' : 'text-red-500/80'}`}>{s.pnl_percent}% absolute</span>
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Cash Balance Card */}
+        <div className="lg:col-span-1 border border-gray-200 dark:border-white/10 bg-white dark:bg-[#121212] rounded-md p-8 flex flex-col justify-between overflow-hidden relative group">
+          <div className="absolute -right-4 -top-4 opacity-[0.03] group-hover:opacity-[0.05] transition-opacity">
+            <Zap size={140} />
+          </div>
+          <div className="space-y-1 z-10">
+            <p className="text-[10px] uppercase font-black tracking-widest text-gray-500 dark:text-muted-foreground">Available Cash</p>
+            <h3 className="text-4xl font-black text-slate-800 dark:text-white font-mono tracking-tighter">
+              ₹{s.cash_balance?.toLocaleString('en-IN') || '0'}
+            </h3>
+          </div>
+          <div className="mt-8 space-y-4 z-10">
+            <div className="flex justify-between items-end border-b border-sidebar-border/30 pb-3">
+              <span className="text-xs text-gray-500 dark:text-muted-foreground">Bonus Amount</span>
+              <span className="font-bold text-slate-900 dark:text-white font-mono">₹100,000</span>
+            </div>
+            <div className="flex justify-between items-end">
+              <span className="text-xs text-gray-500 dark:text-muted-foreground">Total Equity</span>
+              <span className="font-black text-sidebar-primary font-mono text-lg">₹{s.total_value?.toLocaleString('en-IN') || '0'}</span>
             </div>
           </div>
         </div>

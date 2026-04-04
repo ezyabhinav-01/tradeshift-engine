@@ -94,6 +94,17 @@ class RiskEngine:
             if daily_loss >= max_daily_loss:
                 raise ValueError(f"Daily realized loss limit reached (Current: ₹{daily_loss:.2f}, Limit: ₹{max_daily_loss:.2f}).")
 
+        # 3. Balance Check
+        from app.models import User
+        result = await db.execute(select(User.balance).filter(User.id == user_id))
+        balance = result.scalars().first() or 0.0
+        
+        price = order_data.get("price", 0.0)
+        required_funds = qty * price
+        
+        if required_funds > balance:
+            raise ValueError(f"Insufficient balance. Required: ₹{required_funds:,.2f}, Available: ₹{balance:,.2f}")
+
         logger.info(f"✅ Risk check passed for User {user_id}: {qty} lots of {order_data.get('symbol')}")
 
     def get_daily_loss(self, user_id: int) -> float:

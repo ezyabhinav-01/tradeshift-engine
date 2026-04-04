@@ -124,9 +124,10 @@ export async function fetchHistoricalCandles(
     symbol: string,
     limit = 500,
     date?: string,
-    interval: string = '1min'
+    interval: string = '1min',
+    lookbackDays: number = 0
 ): Promise<CandleData[]> {
-    let url = `${API_BASE}/api/historical/${encodeURIComponent(symbol)}?limit=${limit}&interval=${encodeURIComponent(interval)}`;
+    let url = `${API_BASE}/api/historical/${encodeURIComponent(symbol)}?limit=${limit}&interval=${encodeURIComponent(interval)}&lookback_days=${lookbackDays}`;
     if (date) {
         url += `&date=${date}`;
     }

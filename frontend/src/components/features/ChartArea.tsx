@@ -74,9 +74,12 @@ const ChartArea = ({ onPriceClick, onEntryLineClick, previewPrice, positions: pr
         barSpacing: 5,
         tickMarkFormatter: (time: number) => {
           const d = new Date(time * 1000);
-          const hh = d.getUTCHours().toString().padStart(2, '0');
-          const mm = d.getUTCMinutes().toString().padStart(2, '0');
-          return `${hh}:${mm}`;
+          return d.toLocaleTimeString('en-IN', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+            timeZone: 'Asia/Kolkata'
+          });
         },
       },
       rightPriceScale: {
@@ -86,10 +89,13 @@ const ChartArea = ({ onPriceClick, onEntryLineClick, previewPrice, positions: pr
       localization: {
         timeFormatter: (time: number) => {
           const d = new Date(time * 1000);
-          const hh = d.getUTCHours().toString().padStart(2, '0');
-          const mm = d.getUTCMinutes().toString().padStart(2, '0');
-          const ss = d.getUTCSeconds().toString().padStart(2, '0');
-          return `${hh}:${mm}:${ss}`;
+          return d.toLocaleTimeString('en-IN', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false,
+            timeZone: 'Asia/Kolkata'
+          });
         },
       },
     });

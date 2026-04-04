@@ -460,18 +460,32 @@ async def get_available_symbols():
         seen_symbols = set()
         for f in parquet_files:
             basename = os.path.basename(f)
-            symbol_part = basename.split('_')[0]
-            if basename.startswith('NIFTY_50'): symbol_part = 'NIFTY_50'
-            elif basename.startswith('NIFTY_BANK'): symbol_part = 'BANKNIFTY'
-            elif basename.startswith('HDFCBANK'): symbol_part = 'HDFCBANK'
-            elif basename.startswith('BANKNIFTY'): symbol_part = 'BANKNIFTY'
+            # Explicitly name the 5 major instruments in the database
+            if basename.startswith('NIFTY_') and not basename.startswith('NIFTY_BANK'): 
+                symbol_part = 'NIFTY'
+                name = 'NIFTY 50'
+            elif basename.startswith('BANKNIFTY') or basename.startswith('NIFTY_BANK'): 
+                symbol_part = 'BANKNIFTY'
+                name = 'BANKNIFTY'
+            elif basename.startswith('SENSEX'): 
+                symbol_part = 'SENSEX'
+                name = 'SENSEX'
+            elif basename.startswith('HDFCBANK'): 
+                symbol_part = 'HDFCBANK'
+                name = 'HDFC BANK'
+            elif basename.startswith('RELIANCE'): 
+                symbol_part = 'RELIANCE'
+                name = 'RELIANCE'
+            else:
+                symbol_part = basename.split('_')[0]
+                name = symbol_part.replace('_', ' ')
             
             if symbol_part not in seen_symbols:
                 available_symbols.append({
                     "symbol": symbol_part,
                     "token": "0",  # Default token
-                    "name": symbol_part.replace('_', ' '),
-                    "instrument_type": "INDEX" if "NIFTY" in symbol_part or "BANK" in symbol_part else "EQUITY"
+                    "name": name,
+                    "instrument_type": "INDEX" if symbol_part in ["NIFTY", "BANKNIFTY", "SENSEX"] else "EQUITY"
                 })
                 seen_symbols.add(symbol_part)
         
@@ -519,17 +533,26 @@ async def get_available_dates(symbol: str):
 
 
 @app.get("/api/historical/{symbol}")
-async def get_historical_candles(symbol: str, limit: int = 500, date: str = None, interval: str = "1min"):
+async def get_historical_candles(
+    symbol: str, 
+    limit: int = 500, 
+    date: str = None, 
+    interval: str = "1min",
+    lookback_days: int = 0
+):
     """
     Return historical OHLC candles for a given symbol from its Parquet file.
      Optionally filtered by a specific YYYY-MM-DD date.
      Supports resampling via interval parameter.
+     Supports lookback_days to fetch data for preceding dates.
 
     Args:
         symbol: Symbol name (e.g. 'NIFTY', 'BANKNIFTY')
         limit:  Max candles to return (default 500, most recent)
         date:   Optional date filter (YYYY-MM-DD)
         interval: Candle interval - '1min', '3min', '5min', '15min', '30min', '1hr' (default '1min')
+        lookback_days: Number of preceding trading days to include. 
+                       If -1, returns ALL available data for the symbol in the database.
 
     Returns:
         JSON list of {time, open, high, low, close, volume} objects
@@ -550,57 +573,106 @@ async def get_historical_candles(symbol: str, limit: int = 500, date: str = None
 
     try:
         base_symbol = symbol.split('-')[0] if '-' in symbol else symbol
-        df, _, _ = load_parquet_for_symbol(base_symbol, date, allow_fallback=True)
+        
+        # 1. Handle Lookback / All-Data Logic
+        target_dates = []
+        if lookback_days == -1:
+            # Fetch ALL available dates
+            res = await get_available_dates(base_symbol)
+            target_dates = res.get("dates", [])
+        elif date and lookback_days > 0:
+            # Find the target date and N preceding dates
+            res = await get_available_dates(base_symbol)
+            available_dates = res.get("dates", []) # Sorted newest -> oldest
+            if date in available_dates:
+                idx = available_dates.index(date)
+                # Preceding days are at indices idx+1, idx+2, etc.
+                target_dates = available_dates[idx+1 : idx+1 + lookback_days]
+            else:
+                target_dates = []
+        elif date:
+            # Default behavior: exactly this date
+            target_dates = [date]
+        
+        # 2. Fetch Data
+        all_dfs = []
+        if not target_dates and not date:
+            # Fallback to most recent data
+            df, _, _ = load_parquet_for_symbol(base_symbol, None, allow_fallback=True)
+            all_dfs.append(df)
+        else:
+            # Load multiple dates (oldest first for concatenation)
+            for d in reversed(target_dates):
+                try:
+                    df, _, _ = load_parquet_for_symbol(base_symbol, d, allow_fallback=False)
+                    all_dfs.append(df)
+                except FileNotFoundError:
+                    continue
+            
+            # If still nothing and a date was provided (but lookback failed), try the date itself
+            if not all_dfs and date and lookback_days == 0:
+                 try:
+                    df, _, _ = load_parquet_for_symbol(base_symbol, date, allow_fallback=True)
+                    all_dfs.append(df)
+                 except: pass
 
+        if not all_dfs:
+            # If no data found for lookback, at least try to return something if possible
+            if date:
+                try:
+                    df, _, _ = load_parquet_for_symbol(base_symbol, date, allow_fallback=True)
+                    all_dfs = [df]
+                except: pass
+            
+            if not all_dfs:
+                return {"symbol": symbol, "candles": [], "interval": interval}
+            
+        # 3. Process and Concatenate
+        combined_df = pd.concat(all_dfs)
+        
         # Resolve the datetime column
-        time_col = next((c for c in ['datetime', 'date', 'time'] if c in df.columns), None)
+        time_col = next((c for c in ['datetime', 'date', 'time'] if c in combined_df.columns), None)
         if time_col is None:
             raise HTTPException(status_code=422, detail="No datetime column found in data")
 
         # Only parse if it's not already datetime type
-        if not pd.api.types.is_datetime64_any_dtype(df[time_col]):
-            df[time_col] = pd.to_datetime(
-                df[time_col].astype(str).str.replace('Ok ', '', regex=False).str.strip(), 
+        if not pd.api.types.is_datetime64_any_dtype(combined_df[time_col]):
+            combined_df[time_col] = pd.to_datetime(
+                combined_df[time_col].astype(str).str.replace('Ok ', '', regex=False).str.strip(), 
                 dayfirst=False, errors='coerce'
             )
         
-        df = df.dropna(subset=[time_col])
-        df = df.sort_values(time_col)
-
-        # Filter to the selected date if provided
-        if date:
-            target_dt = pd.to_datetime(date).date()
-            filtered_df = df[df[time_col].dt.date == target_dt]
-            
-            # If date filter returns data, use it. 
-            # Otherwise, if we allow fallback, use the whole file (most recent data)
-            if not filtered_df.empty:
-                df = filtered_df
-            else:
-                print(f"⚠️ No data found for {symbol} on {date}. Using most recent data instead.")
+        combined_df = combined_df.dropna(subset=[time_col])
+        combined_df = combined_df.sort_values(time_col)
 
         # Resample to requested interval if not already 1min
         if interval != '1min':
-            df = df.set_index(time_col)
+            combined_df = combined_df.set_index(time_col)
             # Ensure volume column exists
-            if 'volume' not in df.columns:
-                df['volume'] = 0
-            df = df.resample(resample_rule).agg({
+            if 'volume' not in combined_df.columns:
+                combined_df['volume'] = 0
+            combined_df = combined_df.resample(resample_rule).agg({
                 'open': 'first',
                 'high': 'max',
                 'low': 'min',
                 'close': 'last',
                 'volume': 'sum'
             }).dropna(subset=['open'])
-            df = df.reset_index()
+            combined_df = combined_df.reset_index()
             # The index column after reset is the datetime
-            time_col = df.columns[0]
+            time_col = combined_df.columns[0]
 
         # Take the most recent `limit` candles
-        df = df.tail(limit)
+        # If lookback_days == -1, return all (up to 50k for safety)
+        final_limit = 50000 if lookback_days == -1 else limit
+        if date and lookback_days > 0:
+            # For specific practice, we want at least all candles from those days
+            final_limit = max(final_limit, len(combined_df))
+            
+        combined_df = combined_df.tail(final_limit)
 
         candles = []
-        for _, row in df.iterrows():
+        for _, row in combined_df.iterrows():
             ts = int(row[time_col].timestamp())
             candles.append({
                 "time": ts,
@@ -620,6 +692,7 @@ async def get_historical_candles(symbol: str, limit: int = 500, date: str = None
     except Exception as e:
         print(f"❌ Error fetching historical data for {symbol}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch history: {str(e)}")
+
 
 # --- 7. STOCK RESEARCH HUB ENDPOINTS ---
 from app.fundamental_service import FundamentalService
@@ -959,31 +1032,54 @@ async def websocket_endpoint(websocket: WebSocket):
                     # --- SEND BACKFILL (History) ---
                     try:
                         backfill_candles = []
-                        df_backfill, _, _ = load_parquet_for_symbol(primary_symbol.split('-')[0], target_date, allow_fallback=True)
-                        backfill_ts_col = next((c for c in ['datetime', 'date', 'time'] if c in df_backfill.columns), None)
-                        if backfill_ts_col:
-                            if not pd.api.types.is_datetime64_any_dtype(df_backfill[backfill_ts_col]):
-                                df_backfill[backfill_ts_col] = pd.to_datetime(df_backfill[backfill_ts_col].astype(str).str.replace('Ok ', '', regex=False).str.strip(), errors='coerce')
-                            
-                            # Filter up to current target_date (start of day) - or take last 500
-                            # To be safe, just take the first 500 rows if it's the target date
-                            # Actually, we want candles BEFORE the current simulation clock.
-                            # Simulation starts at 9:15 AM today.
-                            market_open_today = pd.to_datetime(target_date).replace(hour=9, minute=15)
-                            hist_mask = (df_backfill[backfill_ts_col] < market_open_today)
-                            h_df = df_backfill[hist_mask].tail(300)
-                            
-                            for _, r in h_df.iterrows():
-                                backfill_candles.append({
-                                    "time": int(r[backfill_ts_col].timestamp()),
-                                    "open": float(r['open']), "high": float(r['high']),
-                                    "low": float(r['low']), "close": float(r['close']),
-                                    "volume": float(r.get('volume', 0))
-                                })
-                            
-                            if backfill_candles:
-                                print(f"📚 Sending {len(backfill_candles)} backfill candles for {primary_symbol}")
-                                await websocket.send_json({"type": "BACKFILL", "data": {"symbol": primary_symbol, "candles": backfill_candles}})
+                        base_sym = primary_symbol.split('-')[0]
+                        
+                        # Find preceding dates for backfill (2 days lookback)
+                        res_dates = await get_available_dates(base_sym)
+                        available_dates = res_dates.get("dates", [])
+                        
+                        backfill_dfs = []
+                        if target_date in available_dates:
+                            idx = available_dates.index(target_date)
+                            # Get 2 preceding days
+                            preceding_dates = available_dates[idx+1 : idx+3]
+                            for d in reversed(preceding_dates):
+                                try:
+                                    df_p, _, _ = load_parquet_for_symbol(base_sym, d)
+                                    backfill_dfs.append(df_p)
+                                except: continue
+                        
+                        # Also include current day's data BEFORE 9:15 AM if any
+                        try:
+                            df_current, _, _ = load_parquet_for_symbol(base_sym, target_date)
+                            backfill_dfs.append(df_current)
+                        except: pass
+                        
+                        if backfill_dfs:
+                            df_backfill = pd.concat(backfill_dfs)
+                            backfill_ts_col = next((c for c in ['datetime', 'date', 'time'] if c in df_backfill.columns), None)
+                            if backfill_ts_col:
+                                if not pd.api.types.is_datetime64_any_dtype(df_backfill[backfill_ts_col]):
+                                    df_backfill[backfill_ts_col] = pd.to_datetime(df_backfill[backfill_ts_col].astype(str).str.replace('Ok ', '', regex=False).str.strip(), errors='coerce')
+                                
+                                market_open_today = pd.to_datetime(target_date).replace(hour=9, minute=15)
+                                hist_mask = (df_backfill[backfill_ts_col] < market_open_today)
+                                h_df = df_backfill[hist_mask]
+                                
+                                # Take last 2000 candles to cover ~2 full days (375 * 2 = 750, plus buffer)
+                                h_df = h_df.tail(2000)
+                                
+                                for _, r in h_df.iterrows():
+                                    backfill_candles.append({
+                                        "time": int(r[backfill_ts_col].timestamp()),
+                                        "open": float(r['open']), "high": float(r['high']),
+                                        "low": float(r['low']), "close": float(r['close']),
+                                        "volume": float(r.get('volume', 0))
+                                    })
+                                
+                                if backfill_candles:
+                                    print(f"📚 Sending {len(backfill_candles)} backfill candles (including lookback) for {primary_symbol}")
+                                    await websocket.send_json({"type": "BACKFILL", "data": {"symbol": primary_symbol, "candles": backfill_candles}})
                     except Exception as be:
                         print(f"⚠️ Backfill error: {be}")
                     

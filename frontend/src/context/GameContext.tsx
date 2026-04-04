@@ -132,21 +132,36 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
 
   // ── Load Available Dates & History ──────────────────────
   // ── Load Historical Candles ──────────────────────
-  const loadHistory = useCallback(async (symbol: string, date: string) => {
+  const loadHistory = useCallback(async (symbol: string, date: string, lookbackDays: number = 0) => {
     setIsLoadingHistory(true);
     setHistoricalCandles([]);
     try {
-      const candles = await fetchHistoricalCandles(symbol, 500, date);
+      const candles = await fetchHistoricalCandles(symbol, 500, date, '1min', lookbackDays);
       setHistoricalCandles(candles);
       if (candles.length > 0) {
         setCurrentPrice(candles[candles.length - 1].close);
-        // Default: set currentTime to the last candle (end of day) if NOT in replay active mode
-        // If we are about to start a replay, we'll start at the beginning of the day (9:15 AM)
-        if (isReplayActive) {
-          setCurrentTime(new Date(candles[0].time * 1000));
+        // ── NEW LOGIC: Correct Start Time for Replay ──────────────────
+        // If we are in Replay mode, find the FIRST candle belonging to the selected date.
+        // This ensures the 2-day lookback is shown as FIXED history, and the 
+        // tick-by-tick simulation starts exactly on the chosen day.
+        if (isReplayActive && date) {
+          const firstCandleOfSelectedDay = candles.find(c => {
+            const cDate = new Date(c.time * 1000).toISOString().split('T')[0];
+            return cDate === date;
+          });
+          
+          if (firstCandleOfSelectedDay) {
+            setCurrentTime(new Date(firstCandleOfSelectedDay.time * 1000));
+            console.log(`🚀 Replay starting at ${new Date(firstCandleOfSelectedDay.time * 1000).toLocaleString()} (Start of ${date})`);
+          } else {
+            // Fallback to start of history if selected date not found in the fetched window
+            setCurrentTime(new Date(candles[0].time * 1000));
+          }
         } else {
+          // LIVE or INITIAL Load: Show most recent data
           setCurrentTime(new Date(candles[candles.length - 1].time * 1000));
         }
+
         console.log(`📊 Loaded ${candles.length} historical candles for ${symbol} on ${date}`);
       } else {
         toast.error(`No data available for ${symbol} on ${date}`);
@@ -176,7 +191,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
       setSelectedDate(nextDate);
 
       if (nextDate) {
-        loadHistory(symbol, nextDate);
+        // Initial load (First Search) -> Load ALL data (-1)
+        loadHistory(symbol, nextDate, -1);
       } else {
         toast.error(`No trading data found for ${symbol}`);
         setHistoricalCandles([]);
@@ -250,7 +266,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
     // Clear ALL stale data so chart starts fresh from WebSocket CANDLE/TICK events.
     // Without this, historicalCandles contains 376 end-of-day candles (up to 15:29),
     // which causes ProChart's cutoff logic to break when ticks arrive at 09:15.
-    setHistoricalCandles([]);
+    // setHistoricalCandles([]); // Let lookback data stay on chart
     setCurrentCandle(null);
     setCurrentTime(null);
     setReplayTicks({});
@@ -491,7 +507,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
 
   const setDate = (dateStr: string) => {
     setSelectedDate(dateStr);
-    loadHistory(selectedSymbol, dateStr);
+    // Specific Practice -> Load 2 days prior (2)
+    loadHistory(selectedSymbol, dateStr, 2);
   };
 
   const clearHistoryForReplay = () => {

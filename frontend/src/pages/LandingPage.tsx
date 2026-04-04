@@ -6,9 +6,10 @@ import { useGSAP } from '@gsap/react';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useAuth } from '../context/AuthContext';
 import { useGame } from '../context/GameContext';
+import { useTheme } from '../context/ThemeContext';
 import { useMultiChartStore } from '../store/useMultiChartStore';
 import { SymbolSearch } from '../components/features/SymbolSearch';
-import { LogOut, ChevronLeft, ChevronRight, ChevronDown, UserCircle, BarChart3, BarChart2, Globe, Search, PieChart, BookOpen, Activity, MoreHorizontal, CheckCircle2, Newspaper, HelpCircle, LayoutDashboard } from 'lucide-react';
+import { LogOut, ChevronLeft, ChevronRight, ChevronDown, UserCircle, BarChart3, BarChart2, Globe, Search, PieChart, BookOpen, Activity, MoreHorizontal, CheckCircle2, Newspaper, HelpCircle, LayoutDashboard, Sun, Moon } from 'lucide-react';
 import './LandingPage.css';
 
 gsap.registerPlugin(ScrollTrigger);
@@ -1280,7 +1281,8 @@ export const MeteorScrollSection: React.FC<{ canStart: boolean }> = ({ canStart 
 };
 
 export default function LandingPage() {
-  const [isLightMode, setIsLightMode] = useState(false);
+  const { theme, setTheme } = useTheme();
+  const isLightMode = theme === 'light';
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const { user, logout } = useAuth();
@@ -1307,8 +1309,8 @@ export default function LandingPage() {
           duration: 1,
           ease: 'power2.inOut',
           onComplete: () => {
-             setShowWelcome(false);
-             sessionStorage.setItem('welcomeIntroPlayed', 'true');
+            setShowWelcome(false);
+            sessionStorage.setItem('welcomeIntroPlayed', 'true');
           }
         });
       } else {
@@ -1321,7 +1323,7 @@ export default function LandingPage() {
     const safetyTimeout = window.setTimeout(() => {
       setShowWelcome(false);
       sessionStorage.setItem('welcomeIntroPlayed', 'true');
-    }, 6000); 
+    }, 6000);
 
     return () => {
       window.clearTimeout(timer);
@@ -1430,9 +1432,9 @@ export default function LandingPage() {
 
       {showFlash && <div className="flash-overlay" />}
 
-      <SymbolSearch 
-        open={isSearchOpen} 
-        onOpenChange={setIsSearchOpen} 
+      <SymbolSearch
+        open={isSearchOpen}
+        onOpenChange={setIsSearchOpen}
         onSelect={(symbol, token) => {
           setSymbol(symbol, token);
           if (activeChartId) {
@@ -1446,10 +1448,10 @@ export default function LandingPage() {
       <nav className="navbar">
         <div className="nav-container">
           <Link to="/" className="brand">TRADE<span className="accent">SHIFT</span></Link>
-          
+
           <div className="nav-center-group" style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
             {/* SEARCH BAR TRIGGER */}
-            <div 
+            <div
               onClick={() => setIsSearchOpen(true)}
               className="landing-search-trigger hidden md:flex items-center rounded-full px-5 py-2.5 transition-all cursor-pointer group"
               style={{ minWidth: '180px' }}
@@ -1466,62 +1468,59 @@ export default function LandingPage() {
               <Link to="/portfolio" className="nav-link-btn" title="View Portfolio Overview">Portfolio</Link>
               <Link to="/learn" className="nav-link-btn" title="View Academy Curriculum">Learn</Link>
               <div className="nav-more-dropdown relative" ref={moreDropdownRef}>
-                <button 
+                <button
                   onClick={() => setIsLandingMoreOpen(!isLandingMoreOpen)}
-                  className={`flex items-center gap-1 text-[14px] font-semibold transition-colors outline-none cursor-pointer ${isLandingMoreOpen ? 'text-accent-secondary' : 'hover:text-accent-secondary'}`} 
+                  className={`flex items-center gap-1 text-[14px] font-semibold transition-colors outline-none cursor-pointer ${isLandingMoreOpen ? 'text-accent-secondary' : 'hover:text-accent-secondary'}`}
                   style={{ background: 'none', border: 'none', color: 'inherit', font: 'inherit', padding: 0 }}
                 >
                   More <ChevronDown size={14} className={`transition-transform duration-200 ${isLandingMoreOpen ? 'rotate-180' : ''}`} />
                 </button>
-                
+
                 {isLandingMoreOpen && (
-                  <div className={`absolute right-0 top-full mt-2 z-[100] min-w-[190px] rounded-2xl p-2 shadow-2xl border ${
-                    isLightMode 
-                      ? 'bg-white border-slate-200' 
-                      : 'bg-[#1e222d] border-[#2a2e39]'
-                  } animate-in fade-in zoom-in-95 duration-200`}>
+                  <div className={`absolute right-0 top-full mt-2 z-[100] min-w-[200px] rounded-xl shadow-2xl border ${isLightMode
+                    ? 'bg-white border-slate-200'
+                    : 'bg-[#1e222d] border-[#2a2e39]'
+                    } animate-in fade-in zoom-in-95 duration-200`}
+                    style={{ padding: '0.375rem' }}>
                     <Link
-                        to="/news"
-                        onClick={() => setIsLandingMoreOpen(false)}
-                        className={`flex items-center gap-3 px-3 py-2.5 text-[15px] font-medium rounded-xl transition-colors outline-none cursor-pointer ${
-                          isLightMode ? 'text-[#1e222d] hover:bg-slate-50' : 'text-slate-100 hover:bg-white/5'
+                      to="/news"
+                      onClick={() => setIsLandingMoreOpen(false)}
+                      className={`flex items-center gap-2 text-sm font-medium rounded-lg transition-colors outline-none cursor-pointer ${isLightMode ? 'text-slate-700 hover:bg-slate-100' : 'text-slate-200 hover:bg-white/5'
                         }`}
-                        style={{ textDecoration: 'none' }}
+                      style={{ padding: '0.5rem 0.75rem', textDecoration: 'none' }}
                     >
-                        <Newspaper size={18} className="text-[#2962ff]" />
-                        News & AI Insights
+                      <Newspaper size={16} className="text-[#2962ff]" />
+                      News & AI Insights
                     </Link>
 
                     <Link
-                        to="/community"
-                        onClick={() => setIsLandingMoreOpen(false)}
-                        className={`flex items-center gap-3 px-3 py-2.5 text-[15px] font-medium rounded-xl transition-colors outline-none cursor-pointer ${
-                          isLightMode ? 'text-[#1e222d] hover:bg-slate-50' : 'text-slate-100 hover:bg-white/5'
+                      to="/community"
+                      onClick={() => setIsLandingMoreOpen(false)}
+                      className={`flex items-center gap-2 text-sm font-medium rounded-lg transition-colors outline-none cursor-pointer ${isLightMode ? 'text-slate-700 hover:bg-slate-100' : 'text-slate-200 hover:bg-white/5'
                         }`}
-                        style={{ textDecoration: 'none' }}
+                      style={{ padding: '0.5rem 0.75rem', textDecoration: 'none' }}
                     >
-                        <LayoutDashboard size={18} className="text-[#2962ff]" />
-                        Community
+                      <LayoutDashboard size={16} className="text-[#2962ff]" />
+                      Community
                     </Link>
 
                     <Link
-                        to="/help"
-                        onClick={() => setIsLandingMoreOpen(false)}
-                        className={`flex items-center gap-3 px-3 py-2.5 text-[15px] font-medium rounded-xl transition-colors outline-none cursor-pointer ${
-                          isLightMode ? 'text-[#1e222d] hover:bg-slate-50' : 'text-slate-100 hover:bg-white/5'
+                      to="/help"
+                      onClick={() => setIsLandingMoreOpen(false)}
+                      className={`flex items-center gap-2 text-sm font-medium rounded-lg transition-colors outline-none cursor-pointer ${isLightMode ? 'text-slate-700 hover:bg-slate-100' : 'text-slate-200 hover:bg-white/5'
                         }`}
-                        style={{ textDecoration: 'none' }}
+                      style={{ padding: '0.5rem 0.75rem', textDecoration: 'none' }}
                     >
-                        <HelpCircle size={18} className="text-[#2962ff]" />
-                        Help & Support
+                      <HelpCircle size={16} className="text-[#2962ff]" />
+                      Help & Support
                     </Link>
 
-                    <div className={`h-[1px] my-1.5 ${isLightMode ? 'bg-slate-100' : 'bg-white/5'}`} />
+                    <div className={`h-[1px] ${isLightMode ? 'bg-slate-100' : 'bg-white/5'}`} style={{ margin: '0.25rem 0' }} />
 
-                    <div className={`flex items-center gap-3 px-3 py-2.5 text-[15px] font-medium rounded-xl cursor-not-allowed ${
-                      isLightMode ? 'text-[#787b86]' : 'text-slate-500'
-                    }`}>
-                        Technical Analysis (Soon)
+                    <div className={`flex items-center gap-2 text-sm font-medium rounded-lg cursor-not-allowed ${isLightMode ? 'text-slate-400' : 'text-slate-500'
+                      }`}
+                      style={{ padding: '0.5rem 0.75rem' }}>
+                      Technical Analysis (Soon)
                     </div>
                   </div>
                 )}
@@ -1531,12 +1530,12 @@ export default function LandingPage() {
 
           <div className="nav-actions" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <button
-              onClick={() => setIsLightMode(!isLightMode)}
+              onClick={() => setTheme(isLightMode ? 'dark' : 'light')}
               className="theme-toggle"
               aria-label="Toggle Theme"
               title="Toggle Theme"
             >
-              {isLightMode ? '🌙' : '☀️'}
+              {isLightMode ? <Moon size={20} /> : <Sun size={20} />}
             </button>
 
             {user ? (
@@ -1559,16 +1558,22 @@ export default function LandingPage() {
                       onClick={() => setIsUserMenuOpen(false)}
                       style={{ position: 'fixed', inset: 0, zIndex: 40 }}
                     ></div>
-                    <div className="absolute right-0 mt-2 w-56 bg-[#1A1E29] border border-white/10 rounded-xl shadow-2xl py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                      <div className="px-4 py-3 border-b border-white/5 mb-1">
-                        <p className="text-base font-bold text-white mt-0.5 tracking-tight">{user.demat_id || 'N/A'}</p>
-                        <p className="text-[11px] text-gray-400 font-medium truncate">{user.email}</p>
+                    <div className={`absolute right-0 mt-2 w-56 border rounded-xl shadow-2xl z-50 animate-in fade-in slide-in-from-top-2 duration-200 ${
+                         isLightMode ? 'bg-white border-slate-200' : 'bg-[#1A1E29] border-white/10'
+                       }`}
+                         style={{ padding: '0.5rem 0' }}>
+                      <div className={`border-b mb-1 ${isLightMode ? 'border-slate-100' : 'border-white/5'}`} style={{ padding: '0.75rem 1rem' }}>
+                        <p className={`text-base font-bold mt-0.5 tracking-tight ${isLightMode ? 'text-slate-900' : 'text-white'}`}>{user.demat_id || 'N/A'}</p>
+                        <p className={`text-[11px] font-medium truncate ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>{user.email}</p>
                       </div>
 
                       <Link
                         to="/settings"
-                        className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 transition-colors"
+                        className={`flex items-center gap-3 text-sm transition-colors ${
+                          isLightMode ? 'text-slate-700 hover:bg-slate-50' : 'text-gray-300 hover:bg-white/5'
+                        }`}
                         onClick={() => setIsUserMenuOpen(false)}
+                        style={{ padding: '0.625rem 1rem', textDecoration: 'none' }}
                       >
                         <UserCircle size={18} />
                         Profile Settings
@@ -1576,7 +1581,10 @@ export default function LandingPage() {
 
                       <button
                         onClick={handleLogout}
-                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-500/10 transition-colors"
+                        className={`w-full flex items-center gap-3 text-sm transition-colors cursor-pointer ${
+                          isLightMode ? 'text-red-600 hover:bg-red-50' : 'text-red-500 hover:bg-red-500/10'
+                        }`}
+                        style={{ padding: '0.625rem 1rem', background: 'transparent', border: 'none', textAlign: 'left' }}
                       >
                         <LogOut size={18} />
                         Sign Out

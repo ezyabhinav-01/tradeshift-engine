@@ -330,6 +330,46 @@
     user-select: none;
 }
 
+.landing-page-root.light-mode .hero-badge {
+    background: rgba(16, 185, 129, 0.08);
+    border-color: rgba(16, 185, 129, 0.15);
+    color: var(--text-primary);
+}
+
+.landing-page-root.light-mode .hero-badge:hover {
+    background: rgba(16, 185, 129, 0.15);
+    border-color: rgba(16, 185, 129, 0.3);
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.15);
+}
+
+.landing-page-root.light-mode .hero-badge::before {
+    background: conic-gradient(
+        from var(--badge-angle, 0deg),
+        transparent 0%,
+        rgba(16, 185, 129, 0.4) 10%,
+        transparent 20%,
+        transparent 50%,
+        rgba(5, 150, 105, 0.4) 60%,
+        transparent 70%
+    );
+}
+
+.landing-page-root.light-mode .hero-badge-pulse {
+    background: #10b981;
+    box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+}
+
+.landing-page-root.light-mode .hero-badge-text {
+    background: linear-gradient(90deg, #065f46 0%, #10b981 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.landing-page-root.light-mode .hero-badge-separator {
+    color: rgba(16, 185, 129, 0.5);
+}
+
 .landing-page-root .hero-title {
     font-size: 3.5rem;
     line-height: 1.15;

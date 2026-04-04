@@ -15,6 +15,7 @@ export interface NewsItem {
   time_str: string;
   source: string;
   url: string;
+  imageUrl?: string;
   analysis?: string;
   sentiment?: string;
   predicted_impact?: string;

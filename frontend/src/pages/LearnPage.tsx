@@ -133,12 +133,11 @@ const SecretCard: React.FC<{
   onReveal: (e: React.MouseEvent) => void;
 }> = ({ secret, index, onReveal }) => {
   const navigate = useNavigate();
-  const [isFlipping, setIsFlipping] = useState(false);
-  const [showAnswer, setShowAnswer] = useState(secret.isRevealed);
+  const [showAnswer, setShowAnswer] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (isFlipping || !cardRef.current) return;
+    if (!cardRef.current) return;
     const rect = cardRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
@@ -158,94 +157,98 @@ const SecretCard: React.FC<{
     }
   };
 
-  const handleReveal = async (e: React.MouseEvent) => {
-    if (secret.isRevealed || isFlipping) return;
-    setIsFlipping(true);
-    onReveal(e);
-    // Wait for flip animation
-    setTimeout(() => {
-      setShowAnswer(true);
-      setIsFlipping(false);
-    }, 600);
+  const handleFlipToBack = async (e: React.MouseEvent) => {
+    if (!secret.isRevealed) {
+      onReveal(e);
+    }
+    setShowAnswer(true);
   };
 
-  // Sync showAnswer with prop
-  useEffect(() => {
-    if (secret.isRevealed) setShowAnswer(true);
-  }, [secret.isRevealed]);
+  const handleFlipToFront = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowAnswer(false);
+  };
 
   return (
-    <div className="w-[85vw] sm:w-[340px] shrink-0 snap-start transform-gpu">
+    <div className="w-[85vw] sm:w-[340px] h-[230px] shrink-0 snap-start flex flex-col group" style={{ perspective: '1000px', animationDelay: `${index * 0.06}s` }}>
       <div
         ref={cardRef}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
-        className={`secret-card magnetic-tilt h-full flex flex-col learn-stagger-enter relative overflow-hidden rounded-2xl border p-5 cursor-pointer group ${
-          showAnswer
-            ? 'bg-white dark:bg-[#0a0a0a] border-purple-300 dark:border-purple-500/20'
-            : 'bg-white dark:bg-[#0a0a0a] border-slate-200 dark:border-white/5 secret-glow-pulse'
-        } ${isFlipping ? 'secret-flip' : 'hover:border-purple-400/30 dark:hover:border-purple-500/20'}`}
-        style={{ animationDelay: `${index * 0.06}s` }}
-        onClick={handleReveal}
+        className="magnetic-tilt w-full h-full relative cursor-pointer learn-stagger-enter"
+        style={{ transformStyle: 'preserve-3d' }}
       >
-        {/* Ambient glow for unrevealed */}
-      {!showAnswer && (
-        <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full bg-purple-500/10 blur-2xl group-hover:bg-purple-500/20 transition-all" />
-      )}
-
-      {/* Header */}
-      <div className="flex items-start justify-between mb-3 relative z-10">
-        <span className="text-2xl">{secret.iconEmoji}</span>
-        <div className="flex items-center gap-2">
-          <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md bg-purple-500/10 text-purple-500 dark:text-purple-400 border border-purple-500/20">
-            +{secret.xpReward} XP
-          </span>
-          {showAnswer ? (
-            <Unlock size={14} className="text-emerald-500" />
-          ) : (
-            <Lock size={14} className="text-slate-400 dark:text-slate-500 group-hover:text-purple-400 transition-colors" />
-          )}
-        </div>
-      </div>
-
-      {/* Question */}
-      <h4 className="text-sm font-bold text-slate-800 dark:text-white mb-3 leading-snug pr-4 relative z-10">
-        {secret.question}
-      </h4>
-
-      {/* Answer or Reveal Prompt */}
-      {showAnswer ? (
-        <div className="secret-answer-enter flex flex-col flex-1">
-          <div className="w-full h-px bg-gradient-to-r from-transparent via-purple-500/20 to-transparent my-3 shrink-0" />
-          <div
-            className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed cms-content line-clamp-2"
-            style={{ fontSize: '0.75rem' }}
-            dangerouslySetInnerHTML={{ __html: secret.answerHtml || '<p class="text-slate-400 dark:text-slate-500 italic">No answer content yet.</p>' }}
-          />
-          <div className="flex items-center justify-between mt-auto pt-4">
-            <div className="flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              <span className="text-[9px] font-bold text-emerald-500/70 uppercase tracking-wider">Revealed</span>
+        {/* Inner Flip Container */}
+        <div 
+          className="w-full h-full absolute top-0 left-0 transition-transform duration-700 ease-[cubic-bezier(0.4,0,0.2,1)]"
+          style={{ transformStyle: 'preserve-3d', transform: showAnswer ? 'rotateY(180deg)' : 'rotateY(0deg)' }}
+        >
+          {/* ════ FRONT ════ */}
+          <div 
+            onClick={handleFlipToBack}
+            className="absolute inset-0 rounded-2xl border p-5 flex flex-col bg-white dark:bg-[#0a0a0a] border-slate-200 dark:border-white/5 secret-glow-pulse group-hover:border-purple-400/30 overflow-hidden"
+            style={{ backfaceVisibility: 'hidden' }}
+          >
+            <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full bg-purple-500/10 blur-2xl group-hover:bg-purple-500/20 transition-all pointer-events-none" />
+            
+            <div className="flex items-start justify-between mb-3 relative z-10 pointer-events-none">
+              <span className="text-2xl">{secret.iconEmoji}</span>
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md bg-purple-500/10 text-purple-500 dark:text-purple-400 border border-purple-500/20">
+                  +{secret.xpReward} XP
+                </span>
+                <Lock size={14} className="text-slate-400 dark:text-slate-500 group-hover:text-purple-400 transition-colors" />
+              </div>
             </div>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                navigate(`/learn/secret/${secret.id}`);
-              }}
-              className="text-[10px] font-bold text-purple-500 hover:text-purple-400 uppercase tracking-widest flex items-center gap-1 transition"
-            >
-              Explore &rarr;
-            </button>
+
+            <h4 className="text-sm font-bold text-slate-800 dark:text-white mb-3 leading-snug pr-4 relative z-10 pointer-events-none">
+              {secret.question}
+            </h4>
+
+            <div className="relative z-10 mt-auto pt-2 pointer-events-none">
+              <div className="flex items-center gap-2 text-[10px] text-emerald-500 font-bold uppercase tracking-wider transition-colors">
+                {secret.isRevealed ? <Unlock size={12} /> : <KeyRound size={12} className="secret-key-bounce" />}
+                Tap to Reveal &rarr;
+              </div>
+            </div>
+          </div>
+
+          {/* ════ BACK ════ */}
+          <div 
+            onClick={handleFlipToFront}
+            className="absolute inset-0 rounded-2xl border p-5 flex flex-col bg-white dark:bg-[#0a0a0a] border-purple-300 dark:border-purple-500/20 shadow-xl overflow-hidden cursor-pointer hover:border-purple-400 transition-colors"
+            style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}
+          >
+            <div className="flex items-start justify-between mb-2 relative z-10 pointer-events-none">
+              <span className="text-xl">{secret.iconEmoji}</span>
+              <Unlock size={14} className="text-emerald-500" />
+            </div>
+
+            <div className="w-full h-px bg-gradient-to-r from-transparent via-purple-500/20 to-transparent my-1 shrink-0" />
+            
+            <div
+              className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed cms-content line-clamp-3 overflow-hidden flex-1 pointer-events-none"
+              style={{ fontSize: '0.75rem' }}
+              dangerouslySetInnerHTML={{ __html: secret.answerHtml || '<p class="text-slate-400 dark:text-slate-500 italic">No answer content yet.</p>' }}
+            />
+            
+            <div className="flex items-center justify-between mt-1 pt-2 border-t border-white/5">
+              <div className="flex items-center gap-1.5 pointer-events-none">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                <span className="text-[9px] font-bold text-emerald-500/70 uppercase tracking-wider">Revealed</span>
+              </div>
+              <div 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/learn/secret/${secret.id}`);
+                }}
+                className="text-[10px] font-bold text-white bg-purple-500 hover:bg-purple-400 uppercase tracking-widest flex items-center gap-1 transition px-3 py-1.5 rounded-lg shadow-[0_0_15px_rgba(168,85,247,0.4)] cursor-pointer"
+              >
+                Explore &rarr;
+              </div>
+            </div>
           </div>
         </div>
-      ) : (
-        <div className="relative z-10 mt-auto pt-2">
-          <div className="flex items-center gap-2 text-[10px] text-purple-500 dark:text-purple-400 font-bold uppercase tracking-wider group-hover:text-purple-400 transition-colors">
-            <KeyRound size={12} className="secret-key-bounce" />
-            Tap to Reveal
-          </div>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -275,8 +278,8 @@ const TrackCard: React.FC<{
     const y = e.clientY - rect.top;
     const centerX = rect.width / 2;
     const centerY = rect.height / 2;
-    const rotateX = ((y - centerY) / centerY) * -6; 
-    const rotateY = ((x - centerX) / centerX) * 6;
+    const rotateX = ((y - centerY) / centerY) * -15; 
+    const rotateY = ((x - centerX) / centerX) * 15;
     
     cardRef.current.style.setProperty('--rot-x', `${rotateX}deg`);
     cardRef.current.style.setProperty('--rot-y', `${rotateY}deg`);
@@ -411,6 +414,17 @@ export default function LearnPage() {
     }
     return null;
   }, [tracks, completedLessons]);
+
+  const secretsContainerRef = useRef<HTMLDivElement>(null);
+  const scrollSecrets = (dir: 'left' | 'right') => {
+    if (secretsContainerRef.current) {
+      const scrollAmount = 350;
+      secretsContainerRef.current.scrollBy({
+        left: dir === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+  };
 
   if (isLoading) {
     return (
@@ -556,7 +570,7 @@ export default function LearnPage() {
 
         {/* ══════════════ MARKET SECRETS ══════════════ */}
         {secrets.length > 0 && (
-          <div className="market-secrets-section">
+          <div className="market-secrets-section relative group/secrets">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 bg-purple-500/10 rounded-xl border border-purple-500/20">
@@ -578,7 +592,28 @@ export default function LearnPage() {
               </div>
             </div>
 
-            <div className="flex overflow-x-auto gap-4 pb-4 snap-x hide-scrollbar -mx-4 px-4 lg:-mx-8 lg:px-8">
+            {/* Floating Navigation Buttons */}
+            <div className="absolute top-1/2 -left-4 -translate-y-1/2 z-20 opacity-0 group-hover/secrets:opacity-100 transition-opacity hidden sm:block">
+              <button 
+                onClick={() => scrollSecrets('left')}
+                className="p-3 rounded-full bg-white dark:bg-black/50 backdrop-blur-xl border border-slate-200 dark:border-white/10 text-black dark:text-white shadow-lg dark:shadow-2xl hover:scale-110 active:scale-95 transition-all"
+              >
+                <ChevronRight size={20} className="rotate-180" />
+              </button>
+            </div>
+            <div className="absolute top-1/2 -right-4 -translate-y-1/2 z-20 opacity-0 group-hover/secrets:opacity-100 transition-opacity hidden sm:block">
+              <button 
+                onClick={() => scrollSecrets('right')}
+                className="p-3 rounded-full bg-white dark:bg-black/50 backdrop-blur-xl border border-slate-200 dark:border-white/10 text-black dark:text-white shadow-lg dark:shadow-2xl hover:scale-110 active:scale-95 transition-all"
+              >
+                <ChevronRight size={20} />
+              </button>
+            </div>
+
+            <div 
+              ref={secretsContainerRef}
+              className="flex overflow-x-auto gap-4 pb-4 snap-x hide-scrollbar -mx-4 px-4 lg:-mx-8 lg:px-8"
+            >
               {secrets.map((secret, idx) => (
                 <SecretCard
                   key={secret.id}

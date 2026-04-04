@@ -114,9 +114,10 @@
 
 .track-card:hover {
   transform: translateY(-4px) scale(1.01);
-  /* Use stacked animations to keep the base opacity if needed, or don't overwrite animation */
-  /* We will just use box-shadow transition instead of an animation to avoid overwriting the stagger */
-  box-shadow: 0 0 30px -5px var(--track-glow-color, rgba(99, 102, 241, 0.2));
+  box-shadow:
+    0 0 30px -5px var(--track-glow-color, rgba(99, 102, 241, 0.2)),
+    0 25px 50px -12px rgba(0, 0, 0, 0.25),
+    0 8px 20px -4px rgba(0, 0, 0, 0.1);
 }
 
 .track-card.track-emerald {
@@ -292,6 +293,48 @@
 
 .cms-content p {
   margin-bottom: 1.5rem;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  /* ═══════════════════════════════════════════
+   SUBMODULE DETAIL PAGE - TYPOGRAPHY
+   Standardizing to: Inter (Heading), Montserrat (Body)
+   ═══════════════════════════════════════════ */
+
+.submodule-detail-page {
+  font-family: 'Montserrat', sans-serif !important;
+}
+
+.submodule-detail-page h1,
+.submodule-detail-page h2,
+.submodule-detail-page h3,
+.submodule-detail-page h4,
+.submodule-detail-page h5,
+.submodule-detail-page h6,
+.submodule-detail-page .font-inter,
+.submodule-detail-page [role="heading"] {
+  font-family: 'Inter', sans-serif !important;
+}
+
+/* Ensure CMS-rendered content also follows this */
+.submodule-detail-page .cms-content-chapter h1,
+.submodule-detail-page .cms-content-chapter h2,
+.submodule-detail-page .cms-content-chapter h3 {
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 900;
+  letter-spacing: -0.05em;
+}
+
+.submodule-detail-page .cms-content-chapter p,
+.submodule-detail-page .cms-content-chapter li {
+  font-family: 'Montserrat', sans-serif !important;
+  line-height: 1.8;
+  font-weight: 500;
+}
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .cms-content p:last-child {

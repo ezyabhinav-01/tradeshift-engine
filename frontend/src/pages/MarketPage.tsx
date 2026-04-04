@@ -210,7 +210,7 @@ const MarketPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-12 bg-gradient-to-br from-slate-200/50 via-slate-100 to-slate-200 dark:from-blue-900/10 dark:via-black dark:to-black min-h-screen text-black dark:text-white" style={{ fontFamily: 'Inter, sans-serif' }}>
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-12 bg-transparent text-black dark:text-white" style={{ fontFamily: 'Inter, sans-serif' }}>
 
       {/* Top Header & Search */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 p-6 rounded-xl backdrop-blur-md">

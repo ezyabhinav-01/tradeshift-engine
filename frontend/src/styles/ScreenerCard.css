@@ -1,0 +1,200 @@
+/* Premium Screener Card Animations & Effects */
+
+@keyframes border-beam {
+  0% {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+
+  100% {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+@keyframes glow-pulse {
+
+  0%,
+  100% {
+    box-shadow: 0 0 15px -5px rgba(59, 130, 246, 0.3);
+  }
+
+  50% {
+    box-shadow: 0 0 25px 2px rgba(59, 130, 246, 0.5);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.screener-card-container {
+  overflow: visible !important;
+}
+
+.high-conviction-aura {
+  animation: glow-pulse 3s infinite ease-in-out;
+}
+
+.shimmer-text {
+  background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.2), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 2.5s infinite;
+}
+
+.border-beam-container {
+  pointer-events: none;
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  overflow: hidden;
+  mask-image: radial-gradient(at center, transparent 70%, black);
+}
+
+.border-beam {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 200%;
+  height: 200%;
+  background: conic-gradient(from 0deg, transparent 80%, var(--primary, #3b82f6));
+  animation: border-beam 4s linear infinite;
+}
+
+.screener-card-hover {
+  transition: box-shadow 0.3s ease, border-color 0.3s ease, opacity 0.3s ease;
+  position: relative;
+  transform-style: preserve-3d;
+  will-change: transform, opacity;
+}
+
+.screener-card-hover:hover {
+  z-index: 50;
+  border-color: rgba(16, 185, 129, 0.4);
+  /* Light green border on hover */
+  box-shadow:
+    0 25px 60px -12px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(16, 185, 129, 0.2),
+    /* Inner ring */
+    0 0 20px 2px rgba(16, 185, 129, 0.15) !important;
+  /* Outer glow */
+  transform:
+    perspective(1000px) rotateX(var(--rotate-x, 0deg)) rotateY(var(--rotate-y, 0deg)) scale3d(1.02, 1.02, 1.02);
+}
+
+.dark .screener-card-hover:hover {
+  border-color: rgba(59, 130, 246, 0.4);
+  /* Blue border in dark mode */
+  box-shadow:
+    0 25px 60px -12px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(58, 131, 246, 0.2),
+    0 0 25px 5px rgba(58, 131, 246, 0.15) !important;
+}
+
+
+.liquid-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  background: radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+      rgba(16, 185, 129, 0.1),
+      transparent 40%);
+  z-index: 0;
+  border-radius: inherit;
+}
+
+.dark .liquid-bg {
+  background: radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+      rgba(58, 131, 246, 0.08),
+      transparent 40%);
+}
+
+.screener-card-hover:hover .liquid-bg {
+  opacity: 1;
+}
+
+/* Subtle Ripple */
+.liquid-ripple {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(200px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+      rgba(0, 0, 0, 0.03),
+      transparent 80%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  mix-blend-mode: multiply;
+  z-index: 1;
+}
+
+.dark .liquid-ripple {
+  background: radial-gradient(200px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+      rgba(255, 255, 255, 0.02),
+      transparent 80%);
+  mix-blend-mode: overlay;
+}
+
+.screener-card-hover:hover .liquid-ripple {
+  opacity: 1;
+}
+
+/* Glassmorphism enhancements */
+.glass-surface {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.03) !important;
+}
+
+.dark .glass-surface {
+  background: rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Metric Hover Animation */
+.metric-item {
+  transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.screener-card-hover:hover .metric-item {
+  transform: translateY(-2px);
+}
+
+.particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #3b82f6;
+  /* Blue in light mode */
+  pointer-events: none;
+  opacity: 0;
+  z-index: 100;
+  filter: blur(0.5px);
+  box-shadow: 0 0 12px 3px rgba(37, 99, 235, 0.6);
+}
+
+.dark .particle {
+  background: #10b981;
+  /* Green in dark mode */
+  box-shadow: 0 0 12px 3px rgba(16, 185, 129, 0.6);
+}
+
+/* Focus Isolation - Spotlight Effect (Optimized) */
+.screener-grid-group:hover .screener-card-hover {
+  opacity: 0.4;
+  transition: opacity 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease;
+}
+
+.screener-grid-group:hover .screener-card-hover:hover {
+  opacity: 1;
+  box-shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.4) !important;
+}
+
+.dark .screener-grid-group:hover .screener-card-hover:hover {
+  box-shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.6) !important;
+}

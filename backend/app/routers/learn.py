@@ -694,6 +694,7 @@ async def get_sub_module_detail(sub_module_id: int, db: AsyncSession = Depends(g
             "subModuleNumber": sub_module.sub_module_number,
             "moduleId": str(sub_module.module_id),
             "moduleTitle": sub_module.module.title,
+            "moduleNumber": sub_module.module.module_number,
             "trackId": str(sub_module.module.track_id),
             "trackTitle": sub_module.module.track.title,
             "prev_id": prev_id,

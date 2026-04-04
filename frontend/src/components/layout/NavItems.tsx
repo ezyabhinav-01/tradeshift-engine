@@ -50,8 +50,8 @@ export const NavItems = ({ isMobile, onItemClick }: { isMobile?: boolean, onItem
                             handleItemClick();
                         }}
                         className={`text-sm font-semibold transition-colors duration-200 ${isActive
-                                ? 'text-tv-primary'
-                                : 'text-tv-text-secondary hover:text-tv-text-primary'
+                            ? 'text-tv-primary'
+                            : 'text-tv-text-secondary hover:text-tv-text-primary'
                             }`}
                     >
                         {item.name}
@@ -61,9 +61,9 @@ export const NavItems = ({ isMobile, onItemClick }: { isMobile?: boolean, onItem
 
             {/* More Dropdown */}
             <div className={`relative ${isMobile ? 'w-full' : ''}`} ref={dropdownRef}>
-                <button 
-                  onClick={() => setIsMoreOpen(!isMoreOpen)}
-                  className={`flex items-center gap-1 text-sm font-semibold text-tv-text-secondary hover:text-tv-text-primary transition-colors outline-none ${isMobile ? 'justify-between w-full' : ''}`}
+                <button
+                    onClick={() => setIsMoreOpen(!isMoreOpen)}
+                    className={`flex items-center gap-1 text-sm font-semibold text-tv-text-secondary hover:text-tv-text-primary transition-colors outline-none ${isMobile ? 'justify-between w-full' : ''}`}
                 >
                     More <ChevronDown size={14} className={`transition-transform duration-200 ${isMoreOpen ? 'rotate-180' : ''}`} />
                 </button>
@@ -81,9 +81,9 @@ export const NavItems = ({ isMobile, onItemClick }: { isMobile?: boolean, onItem
 
                         <Link
                             to="/community"
-                            onClick={() => { 
-                                setIsMoreOpen(false); 
-                                handleItemClick(); 
+                            onClick={() => {
+                                setIsMoreOpen(false);
+                                handleItemClick();
                             }}
                             className={`flex items-center gap-2 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg transition-colors outline-none cursor-pointer ${isMobile ? 'w-full' : ''}`}
                         >
@@ -93,18 +93,18 @@ export const NavItems = ({ isMobile, onItemClick }: { isMobile?: boolean, onItem
 
                         <Link
                             to="/help"
-                            onClick={() => { 
-                                setIsMoreOpen(false); 
-                                handleItemClick(); 
+                            onClick={() => {
+                                setIsMoreOpen(false);
+                                handleItemClick();
                             }}
                             className={`flex items-center gap-2 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg transition-colors outline-none cursor-pointer ${isMobile ? 'w-full' : ''}`}
                         >
                             <HelpCircle size={16} className="text-tv-primary" />
                             Help & Support
                         </Link>
-                        
+
                         {!isMobile && <div className="h-[1px] bg-slate-100 dark:bg-white/5 my-1" />}
-                        
+
                         <div className={`flex items-center gap-2 px-3 py-2 text-sm font-medium text-slate-400 dark:text-slate-500 rounded-lg cursor-not-allowed ${isMobile ? 'w-full' : ''}`}>
                             Technical Analysis (Soon)
                         </div>

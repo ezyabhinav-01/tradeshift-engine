@@ -14,6 +14,7 @@ class NewsItem(BaseModel):
     publishedAt: str
     sentiment: Optional[str] = None
     category: str
+    imageUrl: Optional[str] = None
 
 class ExplainRequest(BaseModel):
     news_id: str

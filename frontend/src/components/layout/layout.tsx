@@ -1,10 +1,14 @@
 import { Outlet, useLocation } from 'react-router-dom';
+import React, { useRef } from 'react';
 import Topbar from './Header';
 import { GlobalTicker } from '../market/GlobalTicker';
 
 const Layout = () => {
     const location = useLocation();
     const isChartRoute = location.pathname === '/' || location.pathname === '/terminal';
+    const isLearnSubRoute = location.pathname.startsWith('/learn/');
+
+    const scrollRef = useRef<HTMLDivElement>(null);
 
     return (
         /* 1. Main Container */
@@ -18,22 +22,27 @@ const Layout = () => {
                     
                     {/* 3. Dark gradient overlay (dark mode only) */}
                     <div className="absolute inset-0 bg-gradient-to-br from-transparent via-transparent to-black/50 pointer-events-none hidden dark:block"></div>
-
-                    {/* 4. Dot Grid (dark mode only) */}
-                    <div className="absolute inset-0 h-full w-full bg-[radial-gradient(#ffffff10_1px,transparent_1px)] [background-size:20px_20px] pointer-events-none hidden dark:block"></div>
+ 
+                    {/* 4. Dot Grid (Global) */}
+                    <div className="ambient-dot-grid"></div>
                 </>
             )}
 
             {/* 5. Actual Content (z-index ensures it stays above the background) */}
             <div className="relative z-10 flex flex-col h-full w-full">
-                <Topbar />
-                <div className="w-full bg-transparent border-none">
-                    <GlobalTicker />
-                </div>
+                {!isLearnSubRoute && <Topbar />}
+                {!isLearnSubRoute && (
+                    <div className="w-full bg-transparent border-none">
+                        <GlobalTicker />
+                    </div>
+                )}
                 
                 <div className="flex-1 flex min-h-0 overflow-hidden">
-                    <div className="flex-1 flex flex-col min-h-0 overflow-y-auto custom-scrollbar">
-                        <Outlet />
+                    <div 
+                        ref={scrollRef}
+                        className="flex-1 flex flex-col min-h-0 overflow-y-auto custom-scrollbar"
+                    >
+                        <Outlet context={{ scrollRef }} />
                     </div>
                 </div>
             </div>

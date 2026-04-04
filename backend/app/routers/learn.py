@@ -1,19 +1,47 @@
 # File: backend/app/routers/learn.py
 # Learning Progress API Router
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks,Request
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from pydantic import BaseModel
 from datetime import datetime, date, timedelta
 from typing import Optional, List
+import json
+import os
+import asyncio
+from redis import Redis
 
 from sqlalchemy.orm import joinedload
 from app.database import get_db
-from app.models import LearningProgress, UserStreak, UserBadge, Track, Module, SubModule, Lesson, MarketSecret, UserSecretReveal
+from app.models import LearningProgress, UserStreak, UserBadge, Track, Module, SubModule, Lesson, MarketSecret, UserSecretReveal, User
 from app.services.badge_service import check_and_grant_badges
+from app.dependencies import get_current_user
 
 router = APIRouter(prefix="/api/learn", tags=["learn"])
+
+@router.post("/admin/sync-rolling-market")
+async def manual_rolling_market_sync(
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Manually trigger the 7-day rolling market data sync.
+    Fetches today's data, saves to Parquet, and persistent to Supabase.
+    Only for administrative use.
+    """
+    # Since this is a production-level sync, we use background tasks
+    from scripts.fetch_last_7_days import fetch_rolling_7days
+    background_tasks.add_task(fetch_rolling_7days)
+    
+    return {
+        "status": "triggered",
+        "message": "Unified market data pipeline started. Local files and Supabase sync are being processed."
+    }
+
+# Initialize Redis Client
+redis_client = Redis(host=os.getenv("REDIS_HOST", "localhost"), port=6379, decode_responses=True)
+CACHE_EXPIRATION = 600  # 10 minutes
 
 
 # ═══════════════════════════════════════════
@@ -51,31 +79,27 @@ class BadgeAwardRequest(BaseModel):
 # ═══════════════════════════════════════════
 
 @router.get("/stats")
-async def get_learning_stats(user_id: int = 1, db: AsyncSession = Depends(get_db)):
+async def get_learning_stats(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """
     Get comprehensive learning stats for a user.
     Returns XP, streak, completed lessons, and badges.
     """
     try:
-        # Get all completed lessons
-        result = await db.execute(
-            select(LearningProgress).where(LearningProgress.user_id == user_id)
-        )
-        progress_records = result.scalars().all()
+        # Optimization: Fetch all in parallel to reduce sequential RTTs
+        tasks = [
+            db.execute(select(LearningProgress).where(LearningProgress.user_id == current_user.id)),
+            db.execute(select(UserStreak).where(UserStreak.user_id == current_user.id)),
+            db.execute(select(UserBadge).where(UserBadge.user_id == current_user.id))
+        ]
+        
+        results = await asyncio.gather(*tasks)
+        
+        progress_records = results[0].scalars().all()
+        streak = results[1].scalar_one_or_none()
+        badges = results[2].scalars().all()
+
         completed_lessons = [p.lesson_id for p in progress_records]
         total_xp = sum(p.xp_earned for p in progress_records)
-
-        # Get streak
-        streak_result = await db.execute(
-            select(UserStreak).where(UserStreak.user_id == user_id)
-        )
-        streak = streak_result.scalar_one_or_none()
-
-        # Get badges
-        badge_result = await db.execute(
-            select(UserBadge).where(UserBadge.user_id == user_id)
-        )
-        badges = badge_result.scalars().all()
 
         # Calculate level
         level = calculate_level(total_xp)
@@ -105,7 +129,7 @@ async def get_learning_stats(user_id: int = 1, db: AsyncSession = Depends(get_db
 async def complete_lesson(
     request: CompleteLessonRequest, 
     background_tasks: BackgroundTasks,
-    user_id: int = 1, 
+    current_user: User = Depends(get_current_user), 
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -115,7 +139,7 @@ async def complete_lesson(
         # Check if already completed
         existing = await db.execute(
             select(LearningProgress).where(
-                LearningProgress.user_id == user_id,
+                LearningProgress.user_id == current_user.id,
                 LearningProgress.lesson_id == request.lesson_id,
             )
         )
@@ -129,7 +153,7 @@ async def complete_lesson(
 
         # Create progress record
         progress = LearningProgress(
-            user_id=user_id,
+            user_id=current_user.id,
             lesson_id=request.lesson_id,
             track_id=request.track_id,
             xp_earned=actual_xp,
@@ -138,12 +162,12 @@ async def complete_lesson(
         db.add(progress)
 
         # Update streak
-        await update_streak(db, user_id)
+        await update_streak(db, current_user.id)
 
         await db.commit()
 
         # [GAMIFICATION] Check for badges in background
-        background_tasks.add_task(check_and_grant_badges, user_id)
+        background_tasks.add_task(check_and_grant_badges, current_user.id)
 
         return {"status": "completed", "xp_earned": actual_xp}
     except Exception as e:
@@ -151,13 +175,13 @@ async def complete_lesson(
         raise HTTPException(status_code=500, detail=f"Failed to complete lesson: {str(e)}")
 
 @router.post("/time")
-async def add_learning_time(request: AddTimeRequest, user_id: int = 1, db: AsyncSession = Depends(get_db)):
+async def add_learning_time(request: AddTimeRequest, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """
     Increment user's total learning time (active session tracking).
     """
     try:
         # Get or setup streak model since that's where learning_minutes lives
-        streak = await update_streak(db, user_id)
+        streak = await update_streak(db, current_user.id)
         
         # Add time
         streak.learning_minutes = (streak.learning_minutes or 0) + request.minutes
@@ -174,12 +198,12 @@ async def add_learning_time(request: AddTimeRequest, user_id: int = 1, db: Async
 
 
 @router.post("/streak")
-async def update_user_streak(user_id: int = 1, db: AsyncSession = Depends(get_db)):
+async def update_user_streak(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """
     Update the user's daily learning streak.
     """
     try:
-        streak = await update_streak(db, user_id)
+        streak = await update_streak(db, current_user.id)
         await db.commit()
         return {
             "current_streak": streak.current_streak,
@@ -192,7 +216,7 @@ async def update_user_streak(user_id: int = 1, db: AsyncSession = Depends(get_db
 
 
 @router.post("/badge")
-async def award_badge(request: BadgeAwardRequest, user_id: int = 1, db: AsyncSession = Depends(get_db)):
+async def award_badge(request: BadgeAwardRequest, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """
     Award a badge to the user.
     """
@@ -200,7 +224,7 @@ async def award_badge(request: BadgeAwardRequest, user_id: int = 1, db: AsyncSes
         # Check if already awarded
         existing = await db.execute(
             select(UserBadge).where(
-                UserBadge.user_id == user_id,
+                UserBadge.user_id == current_user.id,
                 UserBadge.badge_id == request.badge_id,
             )
         )
@@ -208,7 +232,7 @@ async def award_badge(request: BadgeAwardRequest, user_id: int = 1, db: AsyncSes
             return {"status": "already_awarded"}
 
         badge = UserBadge(
-            user_id=user_id,
+            user_id=current_user.id,
             badge_id=request.badge_id,
             badge_title=request.badge_title,
             earned_at=datetime.utcnow(),
@@ -227,7 +251,19 @@ async def get_tracks(db: AsyncSession = Depends(get_db)):
     """
     Returns the structured learning tracks from the CMS database.
     (Tracks -> Modules -> SubModules -> Lessons)
+    Includes Redis caching to handle high-latency database connections.
     """
+    cache_key = "academy_tracks_cache"
+    
+    # 1. Try to fetch from Redis Cache
+    try:
+        cached_data = redis_client.get(cache_key)
+        if cached_data:
+            return json.loads(cached_data)
+    except Exception as e:
+        # Non-blocking: fail gracefully and proceed to DB
+        print(f"⚠️ Redis Cache Error: {e}")
+
     try:
         # Fetch tracks with sub-resources eagerly loaded
         result = await db.execute(
@@ -322,8 +358,14 @@ async def get_tracks(db: AsyncSession = Depends(get_db)):
                 
             tracks_data.append(t_data)
             
+        # 3. Store in Redis before returning
+        try:
+            redis_client.setex(cache_key, CACHE_EXPIRATION, json.dumps(tracks_data))
+        except Exception:
+            pass
+
         return tracks_data
-        
+            
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch tracks: {str(e)}")
 
@@ -836,10 +878,15 @@ def calculate_level(xp: int) -> int:
 # MARKET SECRETS — Gamified Learning
 # ═══════════════════════════════════════════
 
+class SecretQuizSubmitRequest(BaseModel):
+    answers: List[int]  # List of selected option indices
+
+
 @router.get("/secrets")
-async def get_secrets(user_id: int = 1, db: AsyncSession = Depends(get_db)):
+async def get_secrets(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """
     Get all published secrets, marking which ones the current user has revealed.
+    Includes quiz status information.
     """
     try:
         # Fetch all published secrets
@@ -852,24 +899,42 @@ async def get_secrets(user_id: int = 1, db: AsyncSession = Depends(get_db)):
 
         # Fetch user's reveals
         reveals_result = await db.execute(
-            select(UserSecretReveal).where(UserSecretReveal.user_id == user_id)
+            select(UserSecretReveal).where(UserSecretReveal.user_id == current_user.id)
         )
         reveals = reveals_result.scalars().all()
-        revealed_ids = {r.secret_id for r in reveals}
+        reveals_map = {r.secret_id: r for r in reveals}
 
         secrets_data = []
         for s in secrets:
-            is_revealed = s.id in revealed_ids
+            reveal = reveals_map.get(s.id)
+            is_revealed = reveal is not None
+            has_quiz = bool(s.quiz_questions and len(s.quiz_questions) > 0)
+
             secret_data = {
                 "id": s.id,
                 "question": s.question,
                 "iconEmoji": s.icon_emoji,
                 "xpReward": s.xp_reward,
                 "isRevealed": is_revealed,
+                "hasQuiz": has_quiz,
+                "quizCompleted": reveal.quiz_completed if reveal else False,
+                "xpEarned": reveal.xp_earned if reveal else 0,
             }
             # Only send answer if revealed
             if is_revealed:
-                secret_data["answerHtml"] = s.answer_html or ""
+                secret_data["answerHtml"] = s.answer_html or tiptap_to_html(s.answer_content)
+                # Send quiz questions (without correct answers) if quiz exists and not completed
+                if has_quiz and not (reveal and reveal.quiz_completed):
+                    secret_data["quizQuestions"] = [
+                        {
+                            "question": q.get("question", ""),
+                            "options": q.get("options", []),
+                        }
+                        for q in s.quiz_questions
+                    ]
+                elif has_quiz and reveal and reveal.quiz_completed:
+                    secret_data["quizScore"] = reveal.quiz_score
+
             secrets_data.append(secret_data)
 
         return {"secrets": secrets_data}
@@ -878,7 +943,7 @@ async def get_secrets(user_id: int = 1, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/secrets/stats")
-async def get_secrets_stats(user_id: int = 1, db: AsyncSession = Depends(get_db)):
+async def get_secrets_stats(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """
     Get secret stats for the user: total available, total revealed, XP earned from secrets.
     """
@@ -891,7 +956,7 @@ async def get_secrets_stats(user_id: int = 1, db: AsyncSession = Depends(get_db)
 
         # User reveals
         reveals_result = await db.execute(
-            select(UserSecretReveal).where(UserSecretReveal.user_id == user_id)
+            select(UserSecretReveal).where(UserSecretReveal.user_id == current_user.id)
         )
         reveals = reveals_result.scalars().all()
 
@@ -908,31 +973,36 @@ async def get_secrets_stats(user_id: int = 1, db: AsyncSession = Depends(get_db)
 async def reveal_secret(
     secret_id: int,
     background_tasks: BackgroundTasks,
-    user_id: int = 1,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Reveal a market secret. Awards XP once per user per secret.
-    Returns the answer HTML on success.
+    Reveal a market secret. Shows the answer content.
+    If the secret has a quiz, XP is awarded only after completing the quiz.
+    If no quiz, XP is awarded immediately on reveal.
     """
     try:
         # Check if already revealed
         existing = await db.execute(
             select(UserSecretReveal).where(
-                UserSecretReveal.user_id == user_id,
+                UserSecretReveal.user_id == current_user.id,
                 UserSecretReveal.secret_id == secret_id
             )
         )
-        if existing.scalar_one_or_none():
+        existing_reveal = existing.scalar_one_or_none()
+        if existing_reveal:
             # Already revealed — return the answer anyway
             secret_result = await db.execute(
                 select(MarketSecret).where(MarketSecret.id == secret_id)
             )
             secret = secret_result.scalar_one_or_none()
+            has_quiz = bool(secret and secret.quiz_questions and len(secret.quiz_questions) > 0)
             return {
                 "status": "already_revealed",
                 "xpEarned": 0,
-                "answerHtml": secret.answer_html if secret else ""
+                "hasQuiz": has_quiz,
+                "quizCompleted": existing_reveal.quiz_completed,
+                "answerHtml": (secret.answer_html or tiptap_to_html(secret.answer_content)) if secret else ""
             }
 
         # Fetch the secret
@@ -946,42 +1016,158 @@ async def reveal_secret(
         if not secret:
             raise HTTPException(status_code=404, detail="Secret not found or not published")
 
-        xp = secret.xp_reward or 25
+        has_quiz = bool(secret.quiz_questions and len(secret.quiz_questions) > 0)
+
+        # If no quiz, award XP immediately. If quiz exists, XP = 0 until quiz completion.
+        xp = 0 if has_quiz else (secret.xp_reward or 25)
 
         # Create reveal record
         reveal = UserSecretReveal(
-            user_id=user_id,
+            user_id=current_user.id,
             secret_id=secret_id,
             xp_earned=xp,
-            revealed_at=datetime.utcnow()
+            revealed_at=datetime.utcnow(),
+            quiz_completed=not has_quiz,  # Mark as completed if no quiz
         )
         db.add(reveal)
 
-        # Also create a learning progress entry for XP tracking (so it shows in total XP)
-        progress = LearningProgress(
-            user_id=user_id,
-            lesson_id=f"secret_{secret_id}",
-            track_id="secrets",
-            xp_earned=xp,
-            completed_at=datetime.utcnow()
-        )
-        db.add(progress)
+        # If no quiz, also create learning progress entry for immediate XP
+        if not has_quiz and xp > 0:
+            progress = LearningProgress(
+                user_id=current_user.id,
+                lesson_id=f"secret_{secret_id}",
+                track_id="secrets",
+                xp_earned=xp,
+                completed_at=datetime.utcnow()
+            )
+            db.add(progress)
 
         # Update streak
-        await update_streak(db, user_id)
+        await update_streak(db, current_user.id)
 
         await db.commit()
 
         # Check badges in background
-        background_tasks.add_task(check_and_grant_badges, user_id)
+        background_tasks.add_task(check_and_grant_badges, current_user.id)
 
         return {
             "status": "revealed",
             "xpEarned": xp,
-            "answerHtml": secret.answer_html or ""
+            "hasQuiz": has_quiz,
+            "quizCompleted": not has_quiz,
+            "answerHtml": (secret.answer_html or tiptap_to_html(secret.answer_content)) if secret else ""
         }
     except HTTPException:
         raise
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to reveal secret: {str(e)}")
+
+
+@router.post("/secrets/{secret_id}/quiz")
+async def submit_secret_quiz(
+    secret_id: int,
+    request: SecretQuizSubmitRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Submit quiz answers for a market secret.
+    XP is calculated proportionally: (xp_reward / total_questions) * correct_answers.
+    """
+    try:
+        # Fetch the secret
+        secret_result = await db.execute(
+            select(MarketSecret).where(MarketSecret.id == secret_id)
+        )
+        secret = secret_result.scalar_one_or_none()
+        if not secret:
+            raise HTTPException(status_code=404, detail="Secret not found")
+
+        if not secret.quiz_questions or len(secret.quiz_questions) == 0:
+            raise HTTPException(status_code=400, detail="This secret has no quiz")
+
+        # Fetch user's reveal record
+        reveal_result = await db.execute(
+            select(UserSecretReveal).where(
+                UserSecretReveal.user_id == current_user.id,
+                UserSecretReveal.secret_id == secret_id
+            )
+        )
+        reveal = reveal_result.scalar_one_or_none()
+        if not reveal:
+            raise HTTPException(status_code=400, detail="You must reveal this secret first")
+
+        if reveal.quiz_completed:
+            return {
+                "status": "already_completed",
+                "score": reveal.quiz_score,
+                "totalQuestions": len(secret.quiz_questions),
+                "xpEarned": reveal.xp_earned,
+            }
+
+        # Validate answers
+        quiz = secret.quiz_questions
+        total_questions = len(quiz)
+        if len(request.answers) != total_questions:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Expected {total_questions} answers, got {len(request.answers)}"
+            )
+
+        # Grade the quiz
+        correct_count = 0
+        for i, q in enumerate(quiz):
+            correct_index = q.get("correctIndex", 0)
+            if request.answers[i] == correct_index:
+                correct_count += 1
+
+        # Calculate proportional XP
+        total_xp = secret.xp_reward or 25
+        xp_earned = int((total_xp / total_questions) * correct_count)
+
+        # Update the reveal record
+        reveal.quiz_score = correct_count
+        reveal.quiz_completed = True
+        reveal.xp_earned = xp_earned
+
+        # Create learning progress entry for XP tracking
+        # Check if one already exists (from a previous partial attempt)
+        existing_progress = await db.execute(
+            select(LearningProgress).where(
+                LearningProgress.user_id == current_user.id,
+                LearningProgress.lesson_id == f"secret_{secret_id}"
+            )
+        )
+        progress_record = existing_progress.scalar_one_or_none()
+        if progress_record:
+            progress_record.xp_earned = xp_earned
+        else:
+            progress = LearningProgress(
+                user_id=current_user.id,
+                lesson_id=f"secret_{secret_id}",
+                track_id="secrets",
+                xp_earned=xp_earned,
+                completed_at=datetime.utcnow()
+            )
+            db.add(progress)
+
+        await db.commit()
+
+        # Check badges in background
+        background_tasks.add_task(check_and_grant_badges, current_user.id)
+
+        return {
+            "status": "completed",
+            "score": correct_count,
+            "totalQuestions": total_questions,
+            "xpEarned": xp_earned,
+            "correctAnswers": [q.get("correctIndex", 0) for q in quiz],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to submit quiz: {str(e)}")
+

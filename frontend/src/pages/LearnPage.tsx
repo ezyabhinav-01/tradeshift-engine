@@ -101,27 +101,107 @@ const StreakCalendar: React.FC<{ streak: number; lastActiveDate: string | null }
 };
 
 // ═══════════════════════════════════════════
+// BADGE DETAIL MODAL
+// ═══════════════════════════════════════════
+const BadgeDetailModal: React.FC<{ badge: Badge; onClose: () => void }> = ({ badge, onClose }) => {
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 backdrop-blur-md bg-white/10 dark:bg-black/40 animate-in fade-in duration-300">
+      <div 
+        className="absolute inset-0" 
+        onClick={onClose} 
+      />
+      <div className="relative w-full max-w-md bg-white dark:bg-[#0d0d0d] border border-slate-200 dark:border-white/10 rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+        {/* Glow effect */}
+        <div className={`absolute -top-24 -right-24 w-48 h-48 rounded-full blur-[80px] opacity-20 ${badge.unlocked ? 'bg-amber-500' : 'bg-slate-500'}`} />
+        
+        <div className="p-8 flex flex-col items-center text-center">
+          <div className={`w-24 h-24 rounded-full flex items-center justify-center text-5xl mb-6 relative ${
+            badge.unlocked 
+              ? 'bg-amber-500/10 shadow-[0_0_40px_rgba(245,158,11,0.2)]' 
+              : 'bg-slate-500/10 grayscale'
+          }`}>
+            {badge.icon}
+            {badge.unlocked && (
+              <div className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-emerald-500 border-4 border-white dark:border-[#0d0d0d] flex items-center justify-center">
+                <Sparkles size={14} className="text-white" />
+              </div>
+            )}
+          </div>
+
+          <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-2 tracking-tight">
+            {badge.title}
+          </h3>
+          
+          <div className="flex items-center gap-2 mb-6">
+            <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${
+              badge.unlocked 
+                ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' 
+                : 'bg-slate-500/10 text-slate-400 border-slate-500/10'
+            }`}>
+              {badge.unlocked ? 'Achievement Unlocked' : 'Locked achievement'}
+            </span>
+            {badge.unlockedAt && (
+              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">
+                Earned {new Date(badge.unlockedAt).toLocaleDateString()}
+              </span>
+            )}
+          </div>
+
+          <div className="w-full h-px bg-slate-100 dark:bg-white/5 mb-6" />
+
+          <div className="space-y-4 w-full">
+            <div className="text-left">
+              <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">Description</p>
+              <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed italic">
+                "{badge.description}"
+              </p>
+            </div>
+            
+            <div className="text-left">
+              <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">Requirement</p>
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-white">
+                <Target size={14} className="text-indigo-500" />
+                {badge.condition}
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="w-full mt-8 py-3.5 rounded-2xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold text-sm hover:opacity-90 transition-opacity"
+          >
+            Got it
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════
 // BADGE CARD
 // ═══════════════════════════════════════════
-const BadgeCard: React.FC<{ badge: Badge }> = ({ badge }) => (
-  <div className={`group relative flex flex-col items-center gap-2 p-4 rounded-xl border transition-all min-w-[100px] cursor-default ${
+const BadgeCard: React.FC<{ badge: Badge; onClick: () => void }> = ({ badge, onClick }) => (
+  <button 
+    onClick={onClick}
+    className={`group relative flex flex-col items-center gap-2 p-4 rounded-xl border transition-all min-w-[100px] hover:scale-105 active:scale-95 ${
     badge.unlocked
-      ? 'bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 badge-unlocked hover:border-primary/30'
-      : 'bg-slate-50 dark:bg-white/[0.02] border-slate-100 dark:border-white/5 badge-locked'
+      ? 'bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 badge-unlocked hover:border-primary/30 shadow-sm'
+      : 'bg-slate-50 dark:bg-white/[0.02] border-slate-100 dark:border-white/5 badge-locked grayscale-[0.5] opacity-60'
   }`}>
-    <span className="text-3xl">{badge.icon}</span>
+    <span className="text-3xl transform group-hover:scale-110 transition-transform">{badge.icon}</span>
     <span className={`text-[10px] font-bold text-center leading-tight ${
       badge.unlocked ? 'text-slate-700 dark:text-white' : 'text-slate-400 dark:text-slate-600'
     }`}>{badge.title}</span>
     {!badge.unlocked && (
       <Lock size={10} className="absolute top-2 right-2 text-slate-300 dark:text-slate-600" />
     )}
-    {/* Tooltip */}
-    <div className="absolute -top-12 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[10px] font-medium rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-lg">
-      {badge.condition}
-      <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-900 dark:bg-white rotate-45" />
+    {/* Tooltip hint */}
+    <div className="absolute -top-10 left-1/2 -translate-x-1/2 px-2 py-1 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[9px] font-bold rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+      Click for info
+      <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-slate-900 dark:bg-white rotate-45" />
     </div>
-  </div>
+  </button>
 );
 
 // ═══════════════════════════════════════════
@@ -385,6 +465,7 @@ export default function LearnPage() {
   const isGuest = !user;
   const [isLoading, setIsLoading] = useState(true);
   const [xpPopups, setXpPopups] = useState<{ id: number; xp: number; x: number; y: number }[]>([]);
+  const [selectedBadge, setSelectedBadge] = useState<Badge | null>(null);
 
   // Check streak and fetch tracks on mount
   useEffect(() => {
@@ -562,11 +643,23 @@ export default function LearnPage() {
             </div>
             <div className="flex gap-3 overflow-x-auto pb-2 badge-gallery">
               {badges.map(badge => (
-                <BadgeCard key={badge.id} badge={badge} />
+                <BadgeCard 
+                  key={badge.id} 
+                  badge={badge} 
+                  onClick={() => setSelectedBadge(badge)}
+                />
               ))}
             </div>
           </div>
         </div>
+
+        {/* ══════════════ MODALS ══════════════ */}
+        {selectedBadge && (
+          <BadgeDetailModal 
+            badge={selectedBadge} 
+            onClose={() => setSelectedBadge(null)} 
+          />
+        )}
 
         {/* ══════════════ MARKET SECRETS ══════════════ */}
         {secrets.length > 0 && (

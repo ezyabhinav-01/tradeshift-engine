@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import axios from 'axios';
+import { useLearnStore } from '../store/useLearnStore';
 
 interface User {
   id: number;
@@ -83,6 +84,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
+      // Explicitly reset the store before redirecting
+      useLearnStore.getState().resetStore();
+      
       // Explicitly redirect to home page on logout
       // We don't call setUser(null) here to avoid React re-rendering the current protected page 
       // which might trigger a sub-redirect to /login before the browser can reload the home page.

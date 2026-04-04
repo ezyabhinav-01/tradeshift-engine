@@ -17,27 +17,12 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/trade", tags=["trading"])
 
+from app.dependencies import get_current_user
+
 async def _get_user_id(request: Request, db: AsyncSession) -> int:
-    """Helper to extract user_id from JWT or fallback to 999 for local dev."""
-    token = request.cookies.get("access_token")
-    if not token:
-        auth_header = request.headers.get("Authorization")
-        if auth_header and auth_header.startswith("Bearer "):
-            token = auth_header.split(" ")[1]
-    
-    if token:
-        try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-            email = payload.get("sub")
-            if email:
-                result = await db.execute(select(User).filter(User.email == email))
-                user = result.scalars().first()
-                if user :
-                    return user.id
-        except Exception:
-            pass
-    
-    return 999 # Fallback for local dev
+    """Helper to extract user_id from the authenticated user."""
+    user = await get_current_user(request, db)
+    return user.id
 
 @router.post("/", response_model=TradeResponse)
 async def execute_trade(

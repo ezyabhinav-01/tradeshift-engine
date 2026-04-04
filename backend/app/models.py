@@ -208,6 +208,7 @@ class DrawingTemplate(Base):
     tags = Column(String, default="[]") # JSON list
     data = Column(String) # JSON serialized drawing tools
     thumbnail = Column(String, nullable=True) # Base64 chart snapshot
+    timestamp = Column(DateTime, default=datetime.utcnow)
 class InstrumentMaster(Base):
     """
     Master table for all searchable instruments (Stocks, Indices, Options).
@@ -493,6 +494,7 @@ class MarketSecret(Base):
     xp_reward = Column(Integer, default=25)
     sort_order = Column(Integer, default=0)
     is_published = Column(Boolean, default=False)
+    quiz_questions = Column(JSON, default=list)        # [{question, options, correctIndex}]
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -509,3 +511,35 @@ class UserSecretReveal(Base):
     secret_id = Column(Integer, ForeignKey("market_secrets.id", ondelete="CASCADE"), nullable=False, index=True)
     revealed_at = Column(DateTime, default=datetime.utcnow)
     xp_earned = Column(Integer, default=0)
+    quiz_score = Column(Integer, default=0)            # Number of correct answers
+    quiz_completed = Column(Boolean, default=False)    # Whether quiz has been attempted
+
+
+class BroadcastRead(Base):
+    """
+    Tracks which user has read which broadcast notification.
+    Broadcast notifications have user_id = NULL in the notifications table.
+    """
+    __tablename__ = "broadcast_reads"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    notification_id = Column(Integer, ForeignKey("notifications.id", ondelete="CASCADE"), nullable=False, index=True)
+    read_at = Column(DateTime, default=datetime.utcnow)
+
+class MarketCandle(Base):
+    """
+    1-minute historical market candles for indices and stocks.
+    Maintains a rolling 7-day window.
+    """
+    __tablename__ = "market_candles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    symbol = Column(String, index=True)
+    timestamp = Column(DateTime, index=True)
+    open = Column(Float)
+    high = Column(Float)
+    low = Column(Float)
+    close = Column(Float)
+    volume = Column(Float)
+    created_at = Column(DateTime, default=datetime.utcnow)

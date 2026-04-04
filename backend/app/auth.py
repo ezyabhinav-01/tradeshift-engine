@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Response, BackgroundTasks, Request
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Optional, List
 from sqlalchemy import select
 from .models import User, UserSession
 import uuid
@@ -39,6 +40,18 @@ def get_password_hash(password):
     salt = bcrypt.gensalt()
     return bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
 
+def normalize_phone(phone: Optional[str]) -> Optional[str]:
+    """
+    Remove all non-numeric characters except the leading + to ensure consistent comparison.
+    Example: '+91 91423 27953' -> '+919142327953'
+    """
+    if not phone:
+        return None
+    normalized = "".join(c for c in phone if c.isdigit())
+    if phone.startswith("+"):
+        normalized = "+" + normalized
+    return normalized
+
 async def create_session(db: AsyncSession, user_id: int, request: Request, response: Response):
     session_token = str(uuid.uuid4())
     expires_at = datetime.utcnow() + timedelta(days=7)
@@ -63,7 +76,7 @@ async def create_session(db: AsyncSession, user_id: int, request: Request, respo
     )
     return session_token
 
-from typing import Optional
+
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
@@ -96,7 +109,7 @@ async def register_request(
         db_user.hashed_password = get_password_hash(user.password)
         db_user.full_name = user.full_name
         db_user.dob = user.dob
-        db_user.phone_number = user.phone_number
+        db_user.phone_number = normalize_phone(user.phone_number)
         db_user.experience_level = user.experience_level
         db_user.investment_goals = user.investment_goals
         db_user.preferred_instruments = user.preferred_instruments
@@ -112,7 +125,7 @@ async def register_request(
             hashed_password=hashed_password, 
             full_name=user.full_name,
             dob=user.dob,
-            phone_number=user.phone_number,
+            phone_number=normalize_phone(user.phone_number),
             experience_level=user.experience_level,
             investment_goals=user.investment_goals,
             preferred_instruments=user.preferred_instruments,
@@ -259,7 +272,11 @@ async def forgot_password(
     result = await db.execute(select(User).filter(User.email == request.email))
     user = result.scalars().first()
     
-    if not user or user.phone_number != request.phone_number:
+    # Normalize phone numbers for comparison
+    input_phone = normalize_phone(request.phone_number)
+    db_phone = normalize_phone(user.phone_number) if user else None
+    
+    if not user or db_phone != input_phone:
         raise HTTPException(status_code=404, detail="No matching account found with these details.")
     
     # Generate 6-digit OTP
@@ -500,6 +517,8 @@ async def update_profile(
 ):
     update_data = profile_data.dict(exclude_unset=True)
     for field, value in update_data.items():
+        if field == "phone_number":
+            value = normalize_phone(value)
         setattr(current_user, field, value)
     
     await db.commit()

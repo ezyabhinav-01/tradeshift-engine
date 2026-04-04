@@ -18,24 +18,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/history", tags=["history"])
 
 
+from app.dependencies import get_current_user
+
 async def _get_user_id(request: Request, db: AsyncSession) -> int:
-    token = request.cookies.get("access_token")
-    if not token:
-        auth_header = request.headers.get("Authorization")
-        if auth_header and auth_header.startswith("Bearer "):
-            token = auth_header.split(" ")[1]
-    if token:
-        try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-            email = payload.get("sub")
-            if email:
-                result = await db.execute(select(User).filter(User.email == email))
-                user = result.scalars().first()
-                if user :
-                    return user.id
-        except Exception:
-            pass
-    raise HTTPException(status_code=401, detail="Authentication required")
+    """Helper to extract user_id from the authenticated user."""
+    user = await get_current_user(request, db)
+    return user.id
 
 
 def _apply_filters(stmt, date_from, date_to, symbol, direction, search, session_type):
@@ -146,6 +134,8 @@ async def get_trade_history(
             "limit": limit,
             "total_pages": max(1, -(-total // limit)),
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error fetching trade history: {e}")
         return {"trades": [], "total": 0, "page": 1, "limit": limit, "total_pages": 1}
@@ -198,6 +188,8 @@ async def export_trades_csv(
             media_type="text/csv",
             headers={"Content-Disposition": f"attachment; filename={filename}"},
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error exporting trades CSV: {e}")
         return {"error": "Failed to export CSV"}
@@ -254,6 +246,8 @@ async def get_monthly_summary(
             months.append(m)
 
         return {"months": months}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error fetching monthly summary: {e}")
         return {"months": []}

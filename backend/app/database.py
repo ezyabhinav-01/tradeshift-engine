@@ -1,4 +1,9 @@
 import os
+from dotenv import load_dotenv
+
+# Load environment variables explicitly
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
+
 import time
 import asyncio
 import ssl
@@ -40,6 +45,14 @@ def get_database_url_async():
         url = url.replace("?sslmode=require", "")
     elif "&sslmode=require" in url:
         url = url.replace("&sslmode=require", "")
+        
+    # 🔥 Fix for Supabase Transaction Pooler (PgBouncer)
+    # Prepared statements are NOT supported in Transaction Mode.
+    if "?" in url:
+        url += "&prepared_statement_cache_size=0"
+    else:
+        url += "?prepared_statement_cache_size=0"
+        
     return url
 
 
@@ -59,13 +72,26 @@ async def connect_to_database():
     try:
         db_url = get_database_url_async()
         
-        # Create Async Engine
+        # Determine if SSL is needed (skip for local Docker/localhost)
+        is_local = "localhost" in db_url or "@db:" in db_url
+        
+        connect_args = {}
+        if not is_local:
+            ssl_ctx = ssl.create_default_context()
+            ssl_ctx.check_hostname = False
+            ssl_ctx.verify_mode = ssl.CERT_NONE
+            connect_args["ssl"] = ssl_ctx
+            
+        # 🔥 Mandatory fix for Supabase Transaction Pooler (PgBouncer)
+        # asyncpg must have statement cache disabled in transaction mode.
+        connect_args["statement_cache_size"] = 0
+        
         engine = create_async_engine(
             db_url, 
             pool_pre_ping=True,
             pool_size=20,
             max_overflow=10,
-            # Let asyncpg handle SSL negotiation natively, removing forced ssl_ctx
+            connect_args=connect_args
         )
         
         # Test Connection
@@ -115,13 +141,26 @@ def connect_to_database_sync():
         return _db_cache["engine_sync"]
         
     url = get_database_url()
-    # Ensure no asyncpg in sync url
-    if "+asyncpg" in url:
-        url = url.replace("+asyncpg", "")
+    # 1. Strip async dialect
+    if "postgresql+asyncpg://" in url:
+        url = url.replace("postgresql+asyncpg://", "postgresql://")
+    elif "postgres+asyncpg://" in url:
+        url = url.replace("postgres+asyncpg://", "postgresql://")
+        
+    # 2. Strip ALL query parameters (psycopg2 is sensitive)
+    if "?" in url:
+        url = url.split("?")[0]
         
     logger.info("🔄 Establishing new sync database connection...")
-    # Explicitly require SSL for psycopg2 connections to Supabase
-    engine = create_engine(url, pool_pre_ping=True, connect_args={"sslmode": "require"})
+    
+    # Determine if SSL is needed
+    is_local = "localhost" in url or "@db:" in url
+    connect_args = {}
+    if not is_local:
+        # Explicitly require SSL for psycopg2 connections to remote like Supabase
+        connect_args["sslmode"] = "require"
+        
+    engine = create_engine(url, pool_pre_ping=True, connect_args=connect_args)
     _db_cache["engine_sync"] = engine
     _db_cache["session_maker_sync"] = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     return engine

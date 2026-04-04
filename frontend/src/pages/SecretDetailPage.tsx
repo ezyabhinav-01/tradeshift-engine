@@ -1,13 +1,24 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useLearnStore } from '../store/useLearnStore';
-import { ArrowLeft, ChevronLeft, ChevronRight, Lock, Sparkles, KeyRound } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Lock, Sparkles, KeyRound, CheckCircle2, XCircle, Trophy, Zap } from 'lucide-react';
 
 export default function SecretDetailPage() {
   const { secretId } = useParams();
   const navigate = useNavigate();
-  const { fetchSecrets, secrets } = useLearnStore();
+  const { fetchSecrets, secrets, submitSecretQuiz } = useLearnStore();
   const [loading, setLoading] = useState(secrets.length === 0);
+
+  // Quiz state
+  const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({});
+  const [quizResult, setQuizResult] = useState<{
+    score: number;
+    totalQuestions: number;
+    xpEarned: number;
+    correctAnswers: number[];
+  } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [showXpAnimation, setShowXpAnimation] = useState(false);
 
   useEffect(() => {
     if (secrets.length === 0) {
@@ -23,6 +34,40 @@ export default function SecretDetailPage() {
   const secret = currentIndex >= 0 ? secrets[currentIndex] : null;
   const prevSecret = currentIndex > 0 ? secrets[currentIndex - 1] : null;
   const nextSecret = currentIndex >= 0 && currentIndex < secrets.length - 1 ? secrets[currentIndex + 1] : null;
+
+  // Reset quiz state when navigating to a different secret
+  useEffect(() => {
+    setSelectedAnswers({});
+    setQuizResult(null);
+    setShowXpAnimation(false);
+  }, [secretId]);
+
+  const handleSelectAnswer = (questionIndex: number, optionIndex: number) => {
+    if (quizResult) return; // Don't allow changes after submission
+    setSelectedAnswers(prev => ({ ...prev, [questionIndex]: optionIndex }));
+  };
+
+  const handleSubmitQuiz = async () => {
+    if (!secret || !secret.quizQuestions) return;
+    const totalQuestions = secret.quizQuestions.length;
+    const answers = Array.from({ length: totalQuestions }, (_, i) => selectedAnswers[i] ?? -1);
+
+    if (answers.includes(-1)) return; // All questions must be answered
+
+    setSubmitting(true);
+    const result = await submitSecretQuiz(secret.id, answers);
+    setSubmitting(false);
+
+    if (result) {
+      setQuizResult(result);
+      // Trigger XP animation
+      setTimeout(() => setShowXpAnimation(true), 300);
+    }
+  };
+
+  const allAnswered = secret?.quizQuestions
+    ? Object.keys(selectedAnswers).length === secret.quizQuestions.length
+    : false;
 
   if (loading) {
     return (
@@ -108,9 +153,21 @@ export default function SecretDetailPage() {
                 </h1>
               </div>
               <div className="shrink-0 self-start sm:self-center">
-                <div className="px-4 py-2 bg-purple-500/10 rounded-2xl border border-purple-500/20 flex flex-col items-center justify-center gap-1">
-                  <span className="text-[10px] font-black uppercase text-purple-400/80 tracking-widest">Reward Earned</span>
-                  <span className="text-lg font-black text-purple-400">+{secret.xpReward} XP</span>
+                <div className={`px-4 py-2 rounded-2xl border flex flex-col items-center justify-center gap-1 ${
+                  secret.quizCompleted || !secret.hasQuiz
+                    ? 'bg-purple-500/10 border-purple-500/20'
+                    : 'bg-amber-500/10 border-amber-500/20'
+                }`}>
+                  <span className={`text-[10px] font-black uppercase tracking-widest ${
+                    secret.quizCompleted || !secret.hasQuiz ? 'text-purple-400/80' : 'text-amber-400/80'
+                  }`}>
+                    {secret.quizCompleted || !secret.hasQuiz ? 'Reward Earned' : 'Complete Quiz for XP'}
+                  </span>
+                  <span className={`text-lg font-black ${
+                    secret.quizCompleted || !secret.hasQuiz ? 'text-purple-400' : 'text-amber-400'
+                  }`}>
+                    {secret.quizCompleted ? `+${secret.xpEarned} XP` : !secret.hasQuiz ? `+${secret.xpReward} XP` : `Up to +${secret.xpReward} XP`}
+                  </span>
                 </div>
               </div>
             </div>
@@ -125,6 +182,155 @@ export default function SecretDetailPage() {
             </div>
           </div>
         </div>
+
+        {/* ═══════════════════════════════════════════ */}
+        {/* QUIZ SECTION */}
+        {/* ═══════════════════════════════════════════ */}
+        {secret.hasQuiz && !secret.quizCompleted && secret.quizQuestions && secret.quizQuestions.length > 0 && (
+          <div className="relative">
+            <div className="absolute -inset-1 bg-gradient-to-br from-amber-500/10 to-orange-500/10 rounded-3xl blur-2xl opacity-40"></div>
+            <div className="relative bg-[#0a0a0a] border border-amber-500/20 rounded-3xl p-8 sm:p-10 shadow-2xl space-y-8">
+              
+              {/* Quiz Header */}
+              <div className="flex items-center gap-3 border-b border-amber-500/10 pb-6">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+                  <Zap size={20} className="text-amber-400" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-white tracking-tight">Knowledge Check</h3>
+                  <p className="text-xs text-zinc-500 font-medium mt-0.5">
+                    Answer correctly to earn up to <span className="text-amber-400 font-bold">+{secret.xpReward} XP</span>
+                  </p>
+                </div>
+              </div>
+
+              {/* Questions */}
+              {secret.quizQuestions.map((q, qIndex) => (
+                <div key={qIndex} className="space-y-3">
+                  <div className="flex items-start gap-3">
+                    <span className="w-7 h-7 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs font-black text-zinc-400 shrink-0 mt-0.5">
+                      {qIndex + 1}
+                    </span>
+                    <p className="text-base font-bold text-white leading-snug">{q.question}</p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 ml-10">
+                    {q.options.map((option, oIndex) => {
+                      const isSelected = selectedAnswers[qIndex] === oIndex;
+                      const isCorrect = quizResult && quizResult.correctAnswers[qIndex] === oIndex;
+                      const isWrong = quizResult && isSelected && !isCorrect;
+
+                      let optionStyle = 'bg-zinc-900/80 border-zinc-800 hover:border-zinc-600 text-zinc-300 hover:text-white';
+                      if (isSelected && !quizResult) {
+                        optionStyle = 'bg-purple-500/10 border-purple-500/40 text-purple-300 ring-1 ring-purple-500/20';
+                      }
+                      if (quizResult && isCorrect) {
+                        optionStyle = 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300';
+                      }
+                      if (isWrong) {
+                        optionStyle = 'bg-red-500/10 border-red-500/40 text-red-300';
+                      }
+
+                      return (
+                        <button
+                          key={oIndex}
+                          onClick={() => handleSelectAnswer(qIndex, oIndex)}
+                          disabled={!!quizResult}
+                          className={`p-3 rounded-xl border text-left text-sm font-medium transition-all duration-200 flex items-center gap-3 ${optionStyle}`}
+                        >
+                          <span className={`w-6 h-6 rounded-md border flex items-center justify-center text-xs font-black shrink-0 transition-colors ${
+                            isSelected && !quizResult
+                              ? 'bg-purple-500 border-purple-400 text-white'
+                              : quizResult && isCorrect
+                                ? 'bg-emerald-500 border-emerald-400 text-white'
+                                : isWrong
+                                  ? 'bg-red-500 border-red-400 text-white'
+                                  : 'bg-zinc-800 border-zinc-700 text-zinc-500'
+                          }`}>
+                            {quizResult && isCorrect ? <CheckCircle2 size={14} /> :
+                             isWrong ? <XCircle size={14} /> :
+                             String.fromCharCode(65 + oIndex)}
+                          </span>
+                          {option}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+
+              {/* Submit Button or Results */}
+              {!quizResult ? (
+                <button
+                  onClick={handleSubmitQuiz}
+                  disabled={!allAnswered || submitting}
+                  className={`w-full py-4 rounded-2xl font-black text-base uppercase tracking-wider transition-all duration-300 flex items-center justify-center gap-2 ${
+                    allAnswered
+                      ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-400 hover:to-orange-400 shadow-lg shadow-amber-500/20 cursor-pointer'
+                      : 'bg-zinc-900 text-zinc-600 border border-zinc-800 cursor-not-allowed'
+                  }`}
+                >
+                  {submitting ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Grading...
+                    </>
+                  ) : (
+                    <>
+                      <Zap size={18} />
+                      {allAnswered ? 'Submit & Earn XP' : `Answer All ${secret.quizQuestions.length} Questions`}
+                    </>
+                  )}
+                </button>
+              ) : (
+                <div className="relative overflow-hidden rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/5 to-emerald-500/10 p-6">
+                  {/* XP Float Animation */}
+                  {showXpAnimation && quizResult.xpEarned > 0 && (
+                    <div className="absolute top-2 right-6 xp-popup text-2xl font-black text-purple-400">
+                      +{quizResult.xpEarned} XP
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
+                      <Trophy size={28} className="text-emerald-400" />
+                    </div>
+                    <div>
+                      <h4 className="text-lg font-black text-white mb-1">
+                        {quizResult.score === quizResult.totalQuestions ? '🎯 Perfect Score!' :
+                         quizResult.score > quizResult.totalQuestions / 2 ? '🔥 Great Job!' :
+                         '📚 Keep Learning!'}
+                      </h4>
+                      <p className="text-sm text-zinc-400 font-medium">
+                        You got <span className="text-emerald-400 font-bold">{quizResult.score}/{quizResult.totalQuestions}</span> correct
+                        and earned <span className="text-purple-400 font-bold">+{quizResult.xpEarned} XP</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Score Bar */}
+                  <div className="mt-4">
+                    <div className="w-full h-2 rounded-full bg-zinc-800 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-1000 ease-out"
+                        style={{ width: `${(quizResult.score / quizResult.totalQuestions) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Quiz Completed Badge (for already completed quizzes) */}
+        {secret.hasQuiz && secret.quizCompleted && !quizResult && (
+          <div className="flex items-center gap-3 px-5 py-3 rounded-2xl bg-emerald-500/5 border border-emerald-500/10">
+            <CheckCircle2 size={18} className="text-emerald-500" />
+            <span className="text-sm font-bold text-emerald-400">
+              Quiz completed — You scored {secret.quizScore !== undefined ? `${secret.quizScore}` : '—'} and earned +{secret.xpEarned} XP
+            </span>
+          </div>
+        )}
 
         {/* Navigation Controls */}
         <div className="flex items-center justify-between gap-4 pt-8 border-t border-zinc-900">

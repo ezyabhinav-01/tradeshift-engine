@@ -51,6 +51,11 @@ export interface Badge {
   condition: string;
 }
 
+export interface QuizQuestion {
+  question: string;
+  options: string[];
+}
+
 export interface MarketSecret {
   id: number;
   question: string;
@@ -58,6 +63,11 @@ export interface MarketSecret {
   xpReward: number;
   isRevealed: boolean;
   answerHtml?: string;
+  hasQuiz: boolean;
+  quizCompleted: boolean;
+  xpEarned: number;
+  quizQuestions?: QuizQuestion[];
+  quizScore?: number;
 }
 
 // ═══════════════════════════════════════════
@@ -140,13 +150,14 @@ interface LearnState {
   fetchTracks: () => Promise<void>;
   fetchUserStats: () => Promise<void>;
   fetchSecrets: () => Promise<void>;
-  revealSecret: (id: number) => Promise<{ xpEarned: number; answerHtml: string } | null>;
+  revealSecret: (id: number) => Promise<{ xpEarned: number; answerHtml: string; hasQuiz: boolean; quizCompleted: boolean } | null>;
+  submitSecretQuiz: (secretId: number, answers: number[]) => Promise<{ score: number; totalQuestions: number; xpEarned: number; correctAnswers: number[] } | null>;
   completeLesson: (lessonId: string, trackId: string) => Promise<void>;
   setActiveTrack: (trackId: string | null) => void;
   setActiveModule: (moduleId: string | null) => void;
-  getTrackProgress: (trackId: string) => number;
   getModuleProgress: (moduleId: string) => number;
   logLearningTime: (minutes: number) => Promise<void>;
+  resetStore: () => void;
 }
 
 export function getXPForLevel(level: number): number {
@@ -180,7 +191,7 @@ export const useLearnStore = create<LearnState>((set, get) => ({
   // Actions
   fetchUserStats: async () => {
     try {
-      const res = await fetch('/api/learn/stats');
+      const res = await fetch('/api/learn/stats', { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         
@@ -216,6 +227,7 @@ export const useLearnStore = create<LearnState>((set, get) => ({
       const res = await fetch('/api/learn/time', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ minutes })
       });
       if (res.ok) {
@@ -229,7 +241,7 @@ export const useLearnStore = create<LearnState>((set, get) => ({
 
   fetchTracks: async () => {
     try {
-      const res = await fetch('/api/learn/tracks');
+      const res = await fetch('/api/learn/tracks', { credentials: 'include' });
       const data = await res.json();
       if (Array.isArray(data)) {
         // Map aesthetics dynamically based on index to keep the CMS clean
@@ -249,7 +261,7 @@ export const useLearnStore = create<LearnState>((set, get) => ({
 
   fetchSecrets: async () => {
     try {
-      const res = await fetch('/api/learn/secrets');
+      const res = await fetch('/api/learn/secrets', { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         const secrets = data.secrets || [];
@@ -269,24 +281,68 @@ export const useLearnStore = create<LearnState>((set, get) => ({
       const res = await fetch(`/api/learn/secrets/${id}/reveal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
       });
       if (res.ok) {
         const data = await res.json();
         // Update the secret in local state
         set(state => ({
           secrets: state.secrets.map(s =>
-            s.id === id ? { ...s, isRevealed: true, answerHtml: data.answerHtml } : s
+            s.id === id ? {
+              ...s,
+              isRevealed: true,
+              answerHtml: data.answerHtml,
+              hasQuiz: data.hasQuiz,
+              quizCompleted: data.quizCompleted,
+            } : s
           ),
           secretsRevealed: state.secretsRevealed + (data.status === 'revealed' ? 1 : 0),
         }));
-        // Refresh stats to update XP
-        if (data.status === 'revealed') {
+        // Refresh stats to update XP (only if no quiz — XP already awarded)
+        if (data.status === 'revealed' && !data.hasQuiz) {
           await get().fetchUserStats();
         }
-        return { xpEarned: data.xpEarned, answerHtml: data.answerHtml };
+        return { xpEarned: data.xpEarned, answerHtml: data.answerHtml, hasQuiz: data.hasQuiz, quizCompleted: data.quizCompleted };
       }
     } catch (e) {
       console.error("Failed to reveal secret", e);
+    }
+    return null;
+  },
+
+  submitSecretQuiz: async (secretId: number, answers: number[]) => {
+    try {
+      const res = await fetch(`/api/learn/secrets/${secretId}/quiz`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ answers }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        // Update secret in local state
+        set(state => ({
+          secrets: state.secrets.map(s =>
+            s.id === secretId ? {
+              ...s,
+              quizCompleted: true,
+              quizScore: data.score,
+              xpEarned: data.xpEarned,
+              quizQuestions: undefined, // Clear questions after completion
+            } : s
+          ),
+        }));
+        // Refresh stats to update XP
+        await get().fetchUserStats();
+        return {
+          score: data.score,
+          totalQuestions: data.totalQuestions,
+          xpEarned: data.xpEarned,
+          correctAnswers: data.correctAnswers,
+        };
+      }
+    } catch (e) {
+      console.error("Failed to submit quiz", e);
     }
     return null;
   },
@@ -302,6 +358,7 @@ export const useLearnStore = create<LearnState>((set, get) => ({
       const res = await fetch('/api/learn/progress', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
+        credentials: 'include',
         body: JSON.stringify({ lesson_id: lessonId, track_id: trackId, xp_earned: xpGained })
       });
       if (res.ok) {
@@ -359,4 +416,20 @@ export const useLearnStore = create<LearnState>((set, get) => ({
     }
     return 0;
   },
+
+  resetStore: () => set({
+    completedLessons: [],
+    totalXP: 0,
+    level: 1,
+    currentStreak: 0,
+    longestStreak: 0,
+    lastActiveDate: null,
+    lessonsToday: 0,
+    quizzesCompleted: 0,
+    tracksStarted: [],
+    learningMinutes: 0,
+    secretsRevealed: 0,
+    activeTrackId: null,
+    activeModuleId: null,
+  }),
 }));

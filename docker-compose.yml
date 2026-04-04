@@ -110,6 +110,7 @@ services:
       - "5173:5173"
     environment:
       - VITE_API_URL=http://backend:8000
+      - VITE_CHAT_API_URL=http://chatbot:8001
       - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
       - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
       - CHOKIDAR_USEPOLLING=true

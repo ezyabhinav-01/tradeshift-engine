@@ -74,17 +74,6 @@ async def send_message(
     """Send a message to a channel or a specific user."""
     user_id = await _get_user_id(request, db)
 
-    # Resolve the actual sender; fallback to first user if the dev user (999) is returned
-    sender_res = await db.execute(select(User).filter(User.id == user_id))
-    sender = sender_res.scalars().first()
-
-    if not sender:
-        first_user_res = await db.execute(select(User).limit(1))
-        sender = first_user_res.scalars().first()
-        if not sender:
-            raise HTTPException(status_code=401, detail="User not found. Please log in.")
-        user_id = sender.id
-
     db_msg = CommunityMessage(
         sender_id=user_id,
         content=msg.content,
@@ -96,6 +85,8 @@ async def send_message(
     await db.commit()
     await db.refresh(db_msg)
 
+    sender_res = await db.execute(select(User).filter(User.id == user_id))
+    sender = sender_res.scalars().one()
     sender_name = sender.full_name or sender.email or "Unknown"
     response_dict = _to_message(db_msg, sender_name)
 

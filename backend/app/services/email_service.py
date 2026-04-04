@@ -459,7 +459,11 @@ MOTIVATIONAL_QUOTES = [
     "Compound interest is the eighth wonder of the world. He who understands it, earns it... he who doesn't... pays it. — Albert Einstein",
     "The stock market is a device for transferring money from the impatient to the patient. — Warren Buffett",
     "Your level of success is determined by your level of discipline and perseverance. — Unknown",
-    "Don't let the fear of losing be greater than the excitement of winning. — Robert Kiyosaki"
+    "Don't let the fear of losing be greater than the excitement of winning. — Robert Kiyosaki",
+    "The best time to plant a tree was 20 years ago. The second best time is now. — Proverb",
+    "Financial freedom is available to those who learn about it and work for it. — Robert Kiyosaki",
+    "Risk comes from not knowing what you're doing. — Warren Buffett",
+    "Formal education will make you a living; self-education will make you a fortune. — Jim Rohn"
 ]
 
 import random
@@ -494,10 +498,18 @@ async def send_badge_earned_email(
       </p>
     </div>
 
-    {_text(f"Well done, {first}! Your progress in the Academy is truly impressive. Each badge you earn represents a step closer to financial mastery. This badge has been securely saved to your profile dashboard.")}
+    {_text(f"Incredible work, {first}! Your dedication to mastering the markets is paying off. This badge is more than just an icon—it's a testament to your discipline and your commitment to financial growth.")}
     
-    <div style="border:1px dashed rgba(255,255,255,0.15); border-radius:12px; padding:20px; margin:32px 0; text-align:center;">
-       <p style="color:{TEXT_LIGHT}; font-size:12px; margin:0;">Level up even faster by maintaining your daily streak. The markets never stop, and neither should your growth.</p>
+    {_divider()}
+    
+    <p style="color:#fff; font-size:16px; font-weight:600; margin-bottom:12px;">Next Steps for Your Growth:</p>
+    {_text("• Continue your current track to maintain your momentum.")}
+    {_text("• Apply what you've learned in the simulation to see real-world patterns.")}
+    {_text("• Keep pushing your boundaries — greatness lies just outside your comfort zone.")}
+
+    <div style="background:linear-gradient(90deg, rgba(41,98,255,0.1) 0%, rgba(168,85,247,0.1) 100%); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:20px; margin:32px 0; text-align:center;">
+       <p style="color:#fff; font-size:14px; font-weight:700; margin:0 0 8px;">"The secret of change is to focus all of your energy, not on fighting the old, but on building the new."</p>
+       <p style="color:{TEXT_LIGHT}; font-size:12px; margin:0;">Stay hungry, stay curious, and keep growing. We're excited to see what you achieve next!</p>
     </div>
 
     {_cta_button("View My Badge Collection")}

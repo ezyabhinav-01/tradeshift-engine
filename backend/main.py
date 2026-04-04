@@ -98,8 +98,23 @@ def refresh_market_cache():
     except Exception as e:
         logger.error(f"Error in background market refresh: {e}")
 
+def rolling_market_refresh():
+    """Daily job to refresh the 7-day rolling market data files."""
+    try:
+        logger.info("🔄 Running daily 7-day rolling market data refresh...")
+        from scripts.fetch_last_7_days import fetch_rolling_7days
+        fetch_rolling_7days()
+        logger.info("✅ Daily market data refresh complete.")
+    except Exception as e:
+        logger.error(f"❌ Error in daily market data refresh: {e}")
+
 # Run every 15 minutes
 scheduler.add_job(refresh_market_cache, 'interval', minutes=15)
+
+# Rolling data refresh: Every day at 17:00 IST (5:00 PM)
+# This handles the daily fetch of today's data and pruning of the oldest day.
+scheduler.add_job(rolling_market_refresh, 'cron', hour=17, minute=0, timezone='Asia/Kolkata')
+
 scheduler.start()
 
 @app.on_event("startup")

@@ -28,8 +28,8 @@ const ChartArea = ({ onPriceClick, onEntryLineClick, previewPrice, positions: pr
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const previewLineRef = useRef<IPriceLine | null>(null);
-  const positionLinesRef = useRef<{ id: string | number, type: 'ENTRY' | 'SL' | 'TP', line: IPriceLine }[]>([]);
-  const draggingRef = useRef<{ id: string | number, type: 'SL' | 'TP', line: IPriceLine } | null>(null);
+  const positionLinesRef = useRef<{ id: string | number, type: 'ENTRY' | 'SL' | 'TP', line: IPriceLine; }[]>([]);
+  const draggingRef = useRef<{ id: string | number, type: 'SL' | 'TP', line: IPriceLine; } | null>(null);
   const isDataLoadedRef = useRef(false);
 
   // ── Initialize Chart ────────────────────────────────────────────────────
@@ -43,23 +43,23 @@ const ChartArea = ({ onPriceClick, onEntryLineClick, previewPrice, positions: pr
       },
       crosshair: {
         mode: CrosshairMode.Normal,
-        vertLine: { 
-          width: 1, 
-          color: isDark ? 'rgba(120, 123, 134, 0.5)' : 'rgba(120, 123, 134, 0.5)', 
+        vertLine: {
+          width: 1,
+          color: isDark ? 'rgba(120, 123, 134, 0.5)' : 'rgba(120, 123, 134, 0.5)',
           style: 2 // Dashed
         },
-        horzLine: { 
-          width: 1, 
-          color: isDark ? 'rgba(120, 123, 134, 0.5)' : 'rgba(120, 123, 134, 0.5)', 
+        horzLine: {
+          width: 1,
+          color: isDark ? 'rgba(120, 123, 134, 0.5)' : 'rgba(120, 123, 134, 0.5)',
           style: 2 // Dashed
         },
       },
       grid: {
-        vertLines: { 
+        vertLines: {
           color: isDark ? 'rgba(42, 46, 57, 0.5)' : 'rgba(240, 243, 250, 0.8)',
           style: 1 // Dotted
         },
-        horzLines: { 
+        horzLines: {
           color: isDark ? 'rgba(42, 46, 57, 0.5)' : 'rgba(240, 243, 250, 0.8)',
           style: 1 // Dotted
         },
@@ -214,8 +214,8 @@ const ChartArea = ({ onPriceClick, onEntryLineClick, previewPrice, positions: pr
     positionLinesRef.current = [];
 
     // Filter for active trades for this symbol
-    const activeTrades = trades.filter(t => 
-      t.symbol === selectedSymbol && 
+    const activeTrades = trades.filter(t =>
+      t.symbol === selectedSymbol &&
       ['OPEN', 'PENDING', 'TRIGGERED'].includes(t.status)
     );
 
@@ -275,13 +275,13 @@ const ChartArea = ({ onPriceClick, onEntryLineClick, previewPrice, positions: pr
 
       const rect = container.getBoundingClientRect();
       const mouseY = e.clientY - rect.top;
-      
+
       // Find which line is being clicked (within ~10px tolerance)
       const clickedLine = positionLinesRef.current.find(item => {
         // Convert line price to coordinate
         const priceY = seriesRef.current!.priceToCoordinate(item.line.options().price);
         if (priceY === null) return false;
-        
+
         return Math.abs(priceY - mouseY) < 12;
       });
 
@@ -292,10 +292,10 @@ const ChartArea = ({ onPriceClick, onEntryLineClick, previewPrice, positions: pr
           return;
         }
 
-        draggingRef.current = { 
-          id: clickedLine.id, 
-          type: clickedLine.type as 'SL' | 'TP', 
-          line: clickedLine.line 
+        draggingRef.current = {
+          id: clickedLine.id,
+          type: clickedLine.type as 'SL' | 'TP',
+          line: clickedLine.line
         };
         // Visual feedback
         clickedLine.line.applyOptions({ lineWidth: 3, lineStyle: 0 });
@@ -312,7 +312,7 @@ const ChartArea = ({ onPriceClick, onEntryLineClick, previewPrice, positions: pr
 
       if (newPrice !== null) {
         const snappedPrice = Math.round(newPrice * 20) / 20; // 0.05 increments
-        draggingRef.current.line.applyOptions({ 
+        draggingRef.current.line.applyOptions({
           price: snappedPrice,
           title: `${draggingRef.current.type}: ₹${snappedPrice.toFixed(2)} (Updating...)`
         });
@@ -326,17 +326,17 @@ const ChartArea = ({ onPriceClick, onEntryLineClick, previewPrice, positions: pr
       const { id, type } = draggingRef.current;
 
       // Call API to modify order
-      modifyOrder(id, { 
-        [type === 'SL' ? 'stop_loss' : 'take_profit']: finalPrice 
+      modifyOrder(id, {
+        [type === 'SL' ? 'stop_loss' : 'take_profit']: finalPrice
       });
 
       // Cleanup visual feedback
-      draggingRef.current.line.applyOptions({ 
-        lineWidth: 1, 
+      draggingRef.current.line.applyOptions({
+        lineWidth: 1,
         lineStyle: 2,
         title: `${type}: ₹${finalPrice.toFixed(2)}`
       });
-      
+
       draggingRef.current = null;
       container.style.cursor = 'default';
     };
@@ -393,8 +393,8 @@ const ChartArea = ({ onPriceClick, onEntryLineClick, previewPrice, positions: pr
 
       // Fit the visible range to show all data only initially
       if (!isDataLoadedRef.current) {
-         chartRef.current?.timeScale().fitContent();
-         isDataLoadedRef.current = true;
+        chartRef.current?.timeScale().fitContent();
+        isDataLoadedRef.current = true;
       }
     } catch (err) {
       console.error('Chart setData error:', err);
@@ -437,8 +437,8 @@ const ChartArea = ({ onPriceClick, onEntryLineClick, previewPrice, positions: pr
     }
 
     const updatePnLPositions = () => {
-      const activeTrades = trades.filter(t => 
-        t.symbol === selectedSymbol && 
+      const activeTrades = trades.filter(t =>
+        t.symbol === selectedSymbol &&
         ['OPEN', 'TRIGGERED'].includes(t.status)
       );
 
@@ -446,7 +446,7 @@ const ChartArea = ({ onPriceClick, onEntryLineClick, previewPrice, positions: pr
         const isBuy = (trade.direction || trade.type) === 'BUY';
         const pnlValue = (currentPrice - trade.entryPrice) * trade.quantity * (isBuy ? 1 : -1);
         const yCoord = seriesRef.current!.priceToCoordinate(trade.entryPrice);
-        
+
         return {
           id: trade.id,
           price: trade.entryPrice,
@@ -461,7 +461,7 @@ const ChartArea = ({ onPriceClick, onEntryLineClick, previewPrice, positions: pr
     };
 
     updatePnLPositions();
-    
+
     // Also update on chart scroll/zoom to keep labels aligned
     const timeScale = chartRef.current.timeScale();
     timeScale.subscribeVisibleLogicalRangeChange(updatePnLPositions);
@@ -481,15 +481,15 @@ const ChartArea = ({ onPriceClick, onEntryLineClick, previewPrice, positions: pr
       <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
         {positionsWithPnL.map((pos) => (
           pos.y > 0 && (
-            <div 
+            <div
               key={pos.id}
               className="absolute left-[80px] flex items-center gap-2 transform -translate-y-1/2 transition-all duration-100 ease-linear"
               style={{ top: `${pos.y}px` }}
             >
-              <div 
+              <div
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md shadow-lg border backdrop-blur-md
-                  ${pos.pnl >= 0 
-                    ? 'bg-[#089981]/20 border-[#089981]/40 text-[#089981]' 
+                  ${pos.pnl >= 0
+                    ? 'bg-[#089981]/20 border-[#089981]/40 text-[#089981]'
                     : 'bg-[#f23645]/20 border-[#f23645]/40 text-[#f23645]'}`}
               >
                 <span className="text-[10px] font-black tracking-tighter uppercase opacity-60">
@@ -500,9 +500,9 @@ const ChartArea = ({ onPriceClick, onEntryLineClick, previewPrice, positions: pr
                 </span>
                 <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${pos.pnl >= 0 ? 'bg-[#089981]' : 'bg-[#f23645]'}`} />
               </div>
-              
+
               {/* Connector line to the price scale */}
-              <div 
+              <div
                 className={`h-[1px] w-[2000px] opacity-20 border-t border-dashed ${pos.pnl >= 0 ? 'border-[#089981]' : 'border-[#f23645]'}`}
               />
             </div>

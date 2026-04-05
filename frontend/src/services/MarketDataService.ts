@@ -12,13 +12,15 @@ export class MarketDataService {
     private reconnectAttempts = 0;
     private maxReconnectAttempts = 3;
     private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    private lastConnectArgs: { speed: number; symbols?: string[]; symbol?: string; date?: string } | null = null;
+    private lastConnectArgs: { speed: number; symbols?: string[]; symbol?: string; date?: string; startTime?: string } | null = null;
+
 
     constructor(url?: string) {
         if (url) this.url = url;
     }
 
-    connect(speed: number, symbols?: string[], symbol?: string, date?: string) {
+    connect(speed: number, symbols?: string[], symbol?: string, date?: string, startTime?: string) {
+
         // Clear any pending reconnect
         if (this.reconnectTimer) {
             clearTimeout(this.reconnectTimer);
@@ -32,7 +34,8 @@ export class MarketDataService {
         }
 
         // Save args for potential reconnect
-        this.lastConnectArgs = { speed, symbols, symbol, date };
+        this.lastConnectArgs = { speed, symbols, symbol, date, startTime };
+
 
         this.ws = new WebSocket(this.url);
 
@@ -45,7 +48,9 @@ export class MarketDataService {
                 ...(symbols ? { symbols } : {}),
                 ...(symbol ? { symbol } : {}),
                 ...(date ? { date } : {}),
+                ...(startTime ? { startTime } : {}),
             });
+
         };
 
         this.ws.onmessage = (event) => {
@@ -73,10 +78,11 @@ export class MarketDataService {
                 console.log(`🔄 Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
                 this.reconnectTimer = setTimeout(() => {
                     if (this.lastConnectArgs) {
-                        const { speed, symbols, symbol, date } = this.lastConnectArgs;
-                        this.connect(speed, symbols, symbol, date);
+                        const { speed, symbols, symbol, date, startTime } = this.lastConnectArgs;
+                        this.connect(speed, symbols, symbol, date, startTime);
                     }
                 }, delay);
+
             }
         };
     }

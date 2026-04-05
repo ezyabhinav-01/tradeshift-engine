@@ -16,14 +16,15 @@ from sqlalchemy.orm import joinedload
 from app.database import get_db
 from app.models import LearningProgress, UserStreak, UserBadge, Track, Module, SubModule, Lesson, MarketSecret, UserSecretReveal, User
 from app.services.badge_service import check_and_grant_badges
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, admin_required
 
 router = APIRouter(prefix="/api/learn", tags=["learn"])
 
 @router.post("/admin/sync-rolling-market")
 async def manual_rolling_market_sync(
+    request: Request,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(get_current_user)
+    admin_user: User = Depends(admin_required)
 ):
     """
     Manually trigger the 7-day rolling market data sync.
@@ -32,7 +33,7 @@ async def manual_rolling_market_sync(
     """
     # Since this is a production-level sync, we use background tasks
     from scripts.fetch_last_7_days import fetch_rolling_7days
-    background_tasks.add_task(fetch_rolling_7days)
+    background_tasks.add_task(fetch_rolling_7days, days=7)
     
     return {
         "status": "triggered",

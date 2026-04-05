@@ -540,21 +540,41 @@ async def get_historical_candles(
         elif date and lookback_days > 0:
             if date in available_dates:
                 idx = available_dates.index(date)
+                # Include target date (idx) + N preceding days (idx+1, idx+2)
                 target_dates = available_dates[idx : idx + 1 + lookback_days]
+            else:
+                # If date not in list, try to at least return the date
+                target_dates = [date]
         elif date:
             target_dates = [date]
         
         # 3. Fetch Data from MinIO
         all_dfs = []
-        if not target_dates:
-            df, _, _ = load_parquet_for_symbol(base_symbol, None, allow_fallback=True)
+        loaded_files = set()
+        
+        if not target_dates and not date:
+            # Fallback to most recent data
+            df, fpath, _ = load_parquet_for_symbol(base_symbol, None, allow_fallback=True)
             all_dfs.append(df)
+            loaded_files.add(fpath)
         else:
             for d in reversed(target_dates): # Oldest first
                 try:
-                    df, _, _ = load_parquet_for_symbol(base_symbol, d, allow_fallback=False)
+                    df, fpath, _ = load_parquet_for_symbol(base_symbol, d, allow_fallback=False)
                     all_dfs.append(df)
-                except: continue
+                    loaded_files.add(fpath)
+                except FileNotFoundError:
+                    continue
+            
+            # If lookback_days was -1, also try to add the base file (the most recent data)
+            if lookback_days == -1:
+                try:
+                    df_base, fpath, _ = load_parquet_for_symbol(base_symbol, None, allow_fallback=True)
+                    # Check if this df_base has new data not in all_dfs
+                    if fpath not in loaded_files:
+                        all_dfs.append(df_base)
+                        loaded_files.add(fpath)
+                except: pass
 
         if not all_dfs:
             return {"symbol": symbol, "candles": [], "interval": interval}
@@ -580,7 +600,13 @@ async def get_historical_candles(
 
         candles = []
         for _, row in combined_df.iterrows():
-            ts = int(row[time_col].timestamp())
+            # Force naive to be treated as UTC to match the browser's view
+            # This fixes the "gap" and the 5:30 hour shift between history and ticker
+            ts_val = row[time_col]
+            if ts_val.tzinfo is None:
+                ts_val = ts_val.tz_localize('UTC')
+            ts = int(ts_val.timestamp())
+
             candles.append({
                 "time": ts,
                 "open":  float(row["open"]),
@@ -891,12 +917,31 @@ async def websocket_endpoint(websocket: WebSocket):
                         symbols_req = ["NIFTY"]
                     
                     target_date = message.get("date")
+                    start_time_req = message.get("startTime") # e.g. "2026-04-02T10:00:00.000Z"
                     speed       = float(message.get("speed", 1.0))
                     
                     main_symbols = symbols_req
                     primary_symbol = symbols_req[0]
                     main_iterators = {}
                     main_current_rows = {}
+
+                    # Determine exact start limit for simulation and backfill
+                    # Default: start of the target day (hour=0, minute=0)
+                    # We use start of day instead of 09:15 since Parquet data might be in UTC format (03:45 open)
+                    start_dt_limit = pd.to_datetime(target_date).replace(hour=0, minute=0).tz_localize(None)
+                    if start_time_req:
+                        try:
+                            # 📍 Normalizing all incoming to naive (no TZ) to match Parquet data
+                            # This fixes the "skipping/jumping" bug during Pause/Resume
+                            req_ts = pd.to_datetime(start_time_req).tz_localize(None)
+                            
+                            # Only use if it's on the target date
+                            if req_ts.date() == pd.to_datetime(target_date).date():
+                                start_dt_limit = max(start_dt_limit, req_ts)
+                                print(f"📍 Resuming from (NAIVE): {start_dt_limit}")
+                        except Exception as te:
+                            print(f"⚠️ StartTime Parse Error: {te}")
+
 
                     # Load data for each requested symbol
                     success_count = 0
@@ -917,6 +962,11 @@ async def websocket_endpoint(websocket: WebSocket):
                                     temp_df[date_col].astype(str).str.replace('Ok ', '', regex=False).str.strip(), 
                                     dayfirst=False, errors='coerce'
                                 )
+                            
+                            # Ensure temp_df is naive for comparison
+                            if temp_df[date_col].dt.tz is not None:
+                                temp_df[date_col] = temp_df[date_col].dt.tz_localize(None)
+
 
                             if not target_date:
                                 first_date = temp_df[date_col].dropna().min().date()
@@ -925,7 +975,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             target_dt = pd.to_datetime(target_date).date()
                             mask = (
                                 (temp_df[date_col].dt.date == target_dt) &
-                                (temp_df[date_col].dt.time >= datetime.time(9, 15)) &
+                                (temp_df[date_col] >= start_dt_limit) &
                                 (temp_df[date_col].dt.time <= datetime.time(15, 30))
                             )
                             f_df = temp_df[mask].sort_values(by=date_col)
@@ -933,7 +983,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             if not f_df.empty:
                                 main_iterators[symbol] = iter(f_df.to_dict(orient="records"))
                                 success_count += 1
-                                print(f"✅ Loaded {len(f_df)} candles for {symbol} on {target_date}")
+                                print(f"✅ Loaded {len(f_df)} candles for {symbol} starting from {start_dt_limit}")
                         except Exception as e:
                             print(f"⚠️ Failed to load {symbol}: {e}")
 
@@ -974,20 +1024,30 @@ async def websocket_endpoint(websocket: WebSocket):
                                 if not pd.api.types.is_datetime64_any_dtype(df_backfill[backfill_ts_col]):
                                     df_backfill[backfill_ts_col] = pd.to_datetime(df_backfill[backfill_ts_col].astype(str).str.replace('Ok ', '', regex=False).str.strip(), errors='coerce')
                                 
-                                market_open_today = pd.to_datetime(target_date).replace(hour=9, minute=15)
-                                hist_mask = (df_backfill[backfill_ts_col] < market_open_today)
+                                # Ensure naive for comparison
+                                if df_backfill[backfill_ts_col].dt.tz is not None:
+                                    df_backfill[backfill_ts_col] = df_backfill[backfill_ts_col].dt.tz_localize(None)
+                                
+                                hist_mask = (df_backfill[backfill_ts_col] < start_dt_limit)
+
                                 h_df = df_backfill[hist_mask]
                                 
                                 # Take last 2000 candles to cover ~2 full days (375 * 2 = 750, plus buffer)
                                 h_df = h_df.tail(2000)
                                 
                                 for _, r in h_df.iterrows():
-                                    backfill_candles.append({
-                                        "time": int(r[backfill_ts_col].timestamp()),
-                                        "open": float(r['open']), "high": float(r['high']),
-                                        "low": float(r['low']), "close": float(r['close']),
-                                        "volume": float(r.get('volume', 0))
-                                    })
+                                    try:
+                                        ts_val = r[backfill_ts_col]
+                                        if ts_val.tzinfo is None:
+                                            ts_val = ts_val.tz_localize('UTC')
+                                        backfill_candles.append({
+                                            "time": int(ts_val.timestamp()),
+                                            "open": float(r['open']), "high": float(r['high']),
+                                            "low": float(r['low']), "close": float(r['close']),
+                                            "volume": float(r.get('volume', 0))
+                                        })
+                                    except: continue
+
                                 
                                 if backfill_candles:
                                     print(f"📚 Sending {len(backfill_candles)} backfill candles (including lookback) for {primary_symbol}")
@@ -1204,8 +1264,9 @@ async def websocket_endpoint(websocket: WebSocket):
                                     "data": {
                                         "symbol": sym,
                                         "price": round(float(ticks[i]), 2),
-                                        "timestamp": tick_time.isoformat(),
+                                        "timestamp": tick_time.isoformat() + "Z", # Force UTC suffix
                                         "volume": int(main_current_rows[sym].get('volume', 0)),
+
                                     }
                                 })
                             except Exception: break
@@ -1320,8 +1381,9 @@ async def websocket_endpoint(websocket: WebSocket):
                                     "data": {
                                         "symbol": primary_symbol,
                                         "price": round(interp_price, 2),
-                                        "timestamp": tick_time.isoformat(),
+                                        "timestamp": tick_time.isoformat() + "Z", # Force UTC suffix
                                         "volume": int(main_current_rows[primary_symbol].get('volume', 0)),
+
                                     }
                                 })
                                 # Update Global Ticker (simulatedIndices)
@@ -1435,7 +1497,8 @@ async def websocket_endpoint(websocket: WebSocket):
                             "low":    float(row.get('low', 0)),
                             "close":   float(row.get('close', 0)),
                             "volume": int(row.get('volume', 0)),
-                            "timestamp": base_time.isoformat(),
+                            "timestamp": base_time.isoformat() + "Z",
+
                             "symbol": sym,
                         }
                     })

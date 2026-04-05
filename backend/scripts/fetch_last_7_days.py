@@ -31,7 +31,8 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-API_ENDPOINT = "https://api.shoonya.com/NorenWClientTP/"
+# Standard Shoonya Endpoint
+API_ENDPOINT = "https://api.shoonya.com/NorenWClient/"
 
 INSTRUMENTS = {
     'NIFTY':     {'token': '26000', 'exchange': 'NSE', 'ticker': '^NSEI'},
@@ -46,19 +47,34 @@ class ShoonyaAPI(NorenApi):
         NorenApi.__init__(self, host=API_ENDPOINT, websocket=API_ENDPOINT)
 
 def login_shoonya():
-    uid, pwd, vc, sec, totp_sec = os.getenv('SHOONYA_USER_ID'), os.getenv('SHOONYA_PASSWORD'), \
-                                   os.getenv('SHOONYA_VENDOR_CODE'), os.getenv('SHOONYA_API_SECRET'), \
-                                   os.getenv('SHOONYA_TOTP_SECRET')
+    uid = os.getenv('SHOONYA_USER_ID', '').strip()
+    pwd = os.getenv('SHOONYA_PASSWORD', '').strip()
+    vc = os.getenv('SHOONYA_VENDOR_CODE', '').strip()
+    sec = os.getenv('SHOONYA_API_SECRET', '').strip()
+    totp_sec = os.getenv('SHOONYA_TOTP_SECRET', '').strip()
+    
     if not all([uid, pwd, vc, sec, totp_sec]):
+        logger.error(f"❌ Missing Shoonya credentials in .env: {[uid is not None, pwd is not None, vc is not None, sec is not None, totp_sec is not None]}")
         return None
+    
     api = ShoonyaAPI()
     try:
+        # Generate TOTP
         totp = pyotp.TOTP(totp_sec).now()
+        logger.info(f"🔑 Attempting Shoonya Login for {uid} (TOTP: {totp})...")
+        
+        # SDK's login handles hashing internally. 
+        # Ensure we pass the plain password and api_secret.
         ret = api.login(userid=uid, password=pwd, twoFA=totp, vendor_code=vc, api_secret=sec, imei='abc1234')
+        
         if ret and ret.get('stat') == 'Ok':
+            logger.info("✅ Shoonya Login Successful")
             return api
+        else:
+            logger.error(f"❌ Shoonya Login Failed: {ret.get('emsg') if ret else 'Connection Error'}")
     except Exception as e:
-        logger.error(f"Shoonya Auth Error: {e}")
+        logger.error(f"Shoonya Auth Error: {str(e)}")
+    return None
     return None
 
 def prune_old_data(data_dir, days=7):
@@ -140,75 +156,125 @@ def fetch_rolling_7days(days=1):
     
     api = login_shoonya()
     summary = []
+    today_str = date.today().strftime('%Y-%m-%d')
 
     for sym, cfg in INSTRUMENTS.items():
-        success = False
-        df = None
+        logger.info(f"🔍 Checking {sym} for the last {days} days...")
         
-        # 1. Try Shoonya
-        if api:
-            logger.info(f"📡 Fetching {sym} from Shoonya (up to {days} days)...")
-            end_ref = datetime.now()
-            all_days = []
-            for i in range(days):
-                d_end = end_ref - timedelta(days=i)
-                d_start = d_end - timedelta(days=1)
-                try:
-                    ret = api.get_time_price_series(exchange=cfg['exchange'], token=cfg['token'], 
-                                                   starttime=d_start.timestamp(), endtime=d_end.timestamp(), interval=1)
-                    if ret and isinstance(ret, list):
-                        all_days.append(pd.DataFrame(ret))
-                    time.sleep(0.2)
-                except: pass
-            if all_days:
-                df = pd.concat(all_days, ignore_index=True)
-                success = True
-        
-        # 2. Try yfinance Fallback
-        if not success:
-            logger.info(f"📡 Fallback: Fetching {sym} from yfinance ({days}d)...")
-            try:
-                # yfinance 1m data limited to last 7 days.
-                period_str = f"{days}d" if days <= 7 else "7d"
-                df_yf = yf.download(cfg['ticker'], period=period_str, interval="1m", progress=False)
-                if df_yf is not None and not df_yf.empty:
-                    # ⚠️ Handle potential MultiIndex columns from yfinance
-                    if isinstance(df_yf.columns, pd.MultiIndex):
-                        df_yf.columns = df_yf.columns.get_level_values(0)
-                    
-                    df = df_yf.rename(columns={'Open': 'into', 'High': 'inth', 'Low': 'intl', 'Close': 'intc', 'Volume': 'intv'})
-                    df['time'] = "Ok " + df.index.strftime('%d-%m-%Y %H:%M:%S')
-                    success = True
-            except Exception as e:
-                logger.error(f"Fallback failed for {sym}: {e}")
-
-        # 3. Process Success
-        if success and df is not None and not df.empty:
-            # Save local parquet (for legacy support/replay)
-            # Infer date for filename
-            df['parsed_date'] = pd.to_datetime(df['time'].astype(str).str.replace('Ok ', '').str.strip(), 
-                                               format='%d-%m-%Y %H:%M:%S', errors='coerce').dt.strftime('%Y-%m-%d')
-            for d_str, group in df.groupby('parsed_date'):
-                if pd.isna(d_str): continue
-                path = os.path.join(data_dir, f"{sym}_{d_str}.parquet")
-                group[['time', 'into', 'inth', 'intl', 'intc', 'intv']].to_parquet(path, index=False)
+        for i in range(days):
+            target_date = date.today() - timedelta(days=i)
+            date_str = target_date.strftime('%Y-%m-%d')
+            parquet_path = os.path.join(data_dir, f"{sym}_{date_str}.parquet")
             
-            # Sync to Supabase
-            try:
-                sync_to_supabase(df, sym)
-                summary.append(f"{sym}: synced.")
-            except Exception as e:
-                logger.error(f"Supabase sync failed for {sym}: {e}")
-                summary.append(f"{sym}: local only.")
-        else:
-             summary.append(f"{sym}: failed.")
-             
-        time.sleep(0.5)
+            # 1. Check if we should skip
+            if os.path.exists(parquet_path) and date_str != today_str:
+                logger.info(f"⏭️ Skipping {sym} for {date_str} (Local file exists)")
+                continue
+
+            # 2. Robust Fetch with Retries (Shoonya -> yf)
+            max_retries = 3
+            current_delay = 2 # Initial retry delay
+            
+            for attempt in range(max_retries):
+                logger.info(f"🔄 {sym} for {date_str} - Attempt {attempt+1}/{max_retries}")
+                success = False
+                df = None
+                
+                # --- TRY SHOONYA ---
+                if api:
+                    try:
+                        d_start = datetime.combine(target_date, datetime.min.time())
+                        d_end = datetime.combine(target_date, datetime.max.time())
+                        logger.info(f"📡 Requesting {sym} from Shoonya...")
+                        ret = api.get_time_price_series(exchange=cfg['exchange'], token=cfg['token'], 
+                                                       starttime=d_start.timestamp(), endtime=d_end.timestamp(), interval=1)
+                        if ret and isinstance(ret, list):
+                            df = pd.DataFrame(ret)
+                            success = True
+                            logger.info(f"✅ Success from Shoonya for {sym}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Shoonya fetch error (Attempt {attempt+1}): {e}")
+
+                # --- TRY YFINANCE FALLBACK ---
+                if not success:
+                    try:
+                        logger.info(f"📡 Requesting {sym} from yfinance (Fallback)...")
+                        yf_start = target_date.strftime('%Y-%m-%d')
+                        yf_end = (target_date + timedelta(days=1)).strftime('%Y-%m-%d')
+                        df_yf = yf.download(cfg['ticker'], start=yf_start, end=yf_end, interval="1m", progress=False)
+                        
+                        if df_yf is not None and not df_yf.empty:
+                            if isinstance(df_yf.columns, pd.MultiIndex):
+                                df_yf.columns = df_yf.columns.get_level_values(0)
+                            
+                            df = df_yf.rename(columns={'Open': 'into', 'High': 'inth', 'Low': 'intl', 'Close': 'intc', 'Volume': 'intv'})
+                            df['time'] = "Ok " + df.index.strftime('%d-%m-%Y %H:%M:%S')
+                            success = True
+                            logger.info(f"✅ Success from yfinance for {sym}")
+                        else:
+                            logger.info(f"📅 No data returned for {sym} on {date_str} (Likely holiday/weekend).")
+                            summary.append(f"{sym} ({date_str}): holiday/empty.")
+                            success = True # Mark success as True so it doesn't retry, but df is None
+                            break 
+                    except Exception as e:
+                        # yfinance 0.2.36+ raises actual exceptions on failure if configured,
+                        # but standard usage often just prints to stderr. 
+                        # We check for tell-tale weekend/holiday strings in the error.
+                        err_str = str(e).lower()
+                        if "pricesmissingerror" in err_str or "no price data found" in err_str:
+                            logger.info(f"📅 No price data found for {sym} on {date_str} (Likely holiday/weekend).")
+                            summary.append(f"{sym} ({date_str}): holiday/empty.")
+                            break # Don't retry holidays
+                        
+                        if "ratelimiterror" in err_str or "too many requests" in err_str:
+                            logger.warning(f"🛑 Rate Limited by yfinance. Sleeping for 60 seconds before retry...")
+                            time.sleep(60)
+                            # We don't increment attempt here in a real "fetch all" mode
+                            # but for now we increase retry count
+                            max_retries = 10 
+                        
+                        logger.error(f"❌ yfinance fallback error (Attempt {attempt+1}/{max_retries}): {e}")
+
+                # If successful, process and break retry loop
+                if success and df is not None and not df.empty:
+                    # Save local parquet
+                    df['parsed_date'] = pd.to_datetime(df['time'].astype(str).str.replace('Ok ', '').str.strip(), 
+                                                       format='%d-%m-%Y %H:%M:%S', errors='coerce').dt.strftime('%Y-%m-%d')
+                    
+                    # Filter just in case yf gave us more than one day
+                    day_df = df[df['parsed_date'] == date_str]
+                    if not day_df.empty:
+                        day_df[['time', 'into', 'inth', 'intl', 'intc', 'intv']].to_parquet(parquet_path, index=False)
+                        
+                        # Sync to Supabase
+                        try:
+                            sync_to_supabase(day_df, sym)
+                            summary.append(f"{sym} ({date_str}): synced (Attempt {attempt+1}).")
+                        except Exception as e:
+                            logger.error(f"Supabase sync failed for {sym}: {e}")
+                            summary.append(f"{sym} ({date_str}): local only.")
+                        break # Exit retry loop on success
+                    else:
+                        logger.warning(f"No data matched {date_str} for {sym}. May be non-trading day.")
+                        # This isn't necessarily a failure to fetch, just empty market. Don't retry.
+                        summary.append(f"{sym} ({date_str}): holiday/empty.")
+                        break
+                
+                # If we get here, this attempt failed. Slow down before next attempt.
+                if attempt < max_retries - 1:
+                    logger.info(f"🛑 Attempt {attempt+1} failed. Slowing down... Waiting {current_delay * 2}s")
+                    time.sleep(current_delay * 2)
+                    current_delay *= 2 # Exponential backoff
+                else:
+                    logger.error(f"💀 All retries failed for {sym} on {date_str}")
+                    summary.append(f"{sym} ({date_str}): FAILED.")
+
+            time.sleep(3) # Base delay between days to prevent rate limiting
 
     # Final Prune and Alert
     prune_old_data(data_dir)
-    alert_msg = "\n".join(summary)
-    create_admin_alert(f"7-Day Rolling Pipeline Results:\n{alert_msg}")
+    alert_msg = "\n".join(summary[:20]) + ("\n..." if len(summary) > 20 else "")
+    create_admin_alert(f"Optimized Sync Results:\n{alert_msg}")
     logger.info("🏁 Pipeline complete.")
 
 if __name__ == "__main__":

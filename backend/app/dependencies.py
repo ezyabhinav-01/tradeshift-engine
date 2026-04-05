@@ -49,3 +49,16 @@ async def get_current_user(request: Request, db: AsyncSession = Depends(get_db))
          pass
     
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials")
+
+
+async def admin_required(current_user: User = Depends(get_current_user)):
+    """
+    Dependency to restrict access to specialized admin-only functions.
+    Hardcoded to 'admin@gmail.com' for the current MVP.
+    """
+    if current_user.email != "admin@gmail.com":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="Forbidden: Admin access required."
+        )
+    return current_user

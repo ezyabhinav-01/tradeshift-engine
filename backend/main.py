@@ -16,6 +16,7 @@ import asyncio
 import datetime
 import time
 import glob
+import random
 from redis import Redis
 from prometheus_fastapi_instrumentator import Instrumentator
 from app.oms import OrderManager
@@ -215,17 +216,17 @@ async def log_user_activity(request: Request, call_next):
                                 )
                                 await db.commit()
                             
-                            # Log discrete event
-                            async with await get_session() as db:
-                                await db.execute(
-                                    insert(UserEvent).values(
-                                        user_id=select(User.id).where(User.email == user_email).scalar_subquery(),
-                                        event_name="page_view",
-                                        event_data={"path": path},
-                                        created_at=text("CURRENT_TIMESTAMP")
-                                    )
-                                )
-                                await db.commit()
+                            # Log discrete event - DISABLED as per user request to keep events for trades only
+                            # async with await get_session() as db:
+                            #     await db.execute(
+                            #         insert(UserEvent).values(
+                            #             user_id=select(User.id).where(User.email == user_email).scalar_subquery(),
+                            #             event_name="page_view",
+                            #             event_data={"path": path},
+                            #             created_at=text("CURRENT_TIMESTAMP")
+                            #         )
+                            #     )
+                            #     await db.commit()
                         except Exception as e:
                             logger.error(f"⚠️ Activity Log DB Error: {e}")
 
@@ -260,144 +261,120 @@ app.include_router(notifications.router)
 # --- 3. INFRASTRUCTURE CONNECTIONS ---
 # Database connection is now handled by app.database module (above)
 
-try:
-    minio_client = Minio("minio:9000", "minioadmin", "minioadmin", secure=False)
-except Exception:
-    pass
+# MinIO Configuration
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9000").replace("http://", "").replace("https://", "")
+MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
+MINIO_BUCKET = os.getenv("MINIO_BUCKET", "market-data")
 
 try:
-    redis_client = Redis(host=os.getenv("REDIS_HOST", "redis"), port=6379, decode_responses=True)
-except Exception:
-    print("⚠️ Redis not connected")
+    minio_client = Minio(
+        MINIO_ENDPOINT,
+        access_key=MINIO_ACCESS_KEY,
+        secret_key=MINIO_SECRET_KEY,
+        secure=os.getenv("MINIO_SECURE", "False").lower() == "true"
+    )
+    logger.info(f"✅ MinIO client initialized for endpoint {MINIO_ENDPOINT}")
+except Exception as e:
+    logger.error(f"❌ MinIO initialization failed: {e}")
+    minio_client = None
+
+# Redis Configuration
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+REDIS_URL = os.getenv("REDIS_URL", f"redis://{REDIS_HOST}:{REDIS_PORT}/0")
+
+try:
+    redis_client = Redis.from_url(REDIS_URL, decode_responses=True)
+    redis_client.ping() # Verify connection
+    logger.info(f"✅ Redis connected via {REDIS_HOST}")
+except Exception as e:
+    logger.error(f"❌ Redis connection failed: {e}")
+    redis_client = None
 
 # --- 4. HELPER FUNCTION: Load Parquet by Symbol ---
 def load_parquet_for_symbol(symbol: str, target_date: str = None, allow_fallback: bool = False):
     """
-    Load data for a specific symbol. from the data/ directory.
-    
-    Args:
-        symbol (str): Symbol name (e.g., 'NIFTY', 'BANKNIFTY', 'NIFTY_50')
-        target_date (str): Optional date string (e.g., '2026-03-02') to load specific date file.
-        allow_fallback (bool): If True, and no specific target_date file is found,
-                               it will try to load the most recent file for the symbol.
-        
-    Returns:
-        tuple: (DataFrame, file_path, symbol_name)
-        
-    Raises:
-        FileNotFoundError: If no matching Parquet file is found
+    Load data for a specific symbol from MinIO storage using Supabase metadata.
     """
-    # Use absolute path to ensure robustness
-    base_path = os.path.dirname(os.path.abspath(__file__))
-    data_dir = os.path.join(base_path, "data")
-    
-    matching_files = []
-    # Try exact match first for date format: NIFTY_2026-03-02.parquet
-    if target_date:
-        pattern_date = os.path.join(data_dir, f"{symbol}_{target_date}.parquet")
-        date_match = glob.glob(pattern_date)
-        if date_match:
-            matching_files.extend(date_match)
+    try:
+        # 1. Resolve Instrument Metadata from Supabase
+        if target_date:
+            query = text("""
+                SELECT bucket_name, object_name FROM index_metadata 
+                WHERE instrument = :symbol AND TO_CHAR(start_date, 'YYYY-MM-DD') = :target_date
+                LIMIT 1
+            """)
+            params = {"symbol": symbol, "target_date": target_date}
+        else:
+            # Fallback: Get the most recent date for this symbol
+            query = text("""
+                SELECT bucket_name, object_name FROM index_metadata 
+                WHERE instrument = :symbol 
+                ORDER BY start_date DESC LIMIT 1
+            """)
+            params = {"symbol": symbol}
 
-    # Search for files matching the pattern (if no date or date file not found)
-    if not matching_files and allow_fallback:
-        pattern = os.path.join(data_dir, f"{symbol}_*.parquet")
-        matching_files = glob.glob(pattern)
-        print(f"🔄 Fallback triggered. Searching for {pattern}... found {len(matching_files)} files.")
-        
-        # Try exact match (e.g., NIFTY_50_1min.parquet for symbol "NIFTY_50")
-        pattern_exact = os.path.join(data_dir, f"{symbol}.parquet")
-        exact_match = glob.glob(pattern_exact)
-        if exact_match:
-            matching_files.extend(exact_match)
-    
-    if not matching_files:
-        raise FileNotFoundError(f"No Parquet file found for symbol '{symbol}' (date: {target_date}) in {data_dir} directory")
-    
-    # Sort files to get the most recent (if multiple exist)
-    # Files are typically named: SYMBOL_YEAR.parquet or SYMBOL_suffix.parquet
-    matching_files.sort(reverse=True)
-    selected_file = matching_files[0]
-    
-    print(f"📂 Loading file: {selected_file}")
-    
-    # Load the Parquet file
-    df = pd.read_parquet(selected_file)
-    df.columns = df.columns.str.lower()
-    
-    # --- HANDLING SHOONYA API DATA FORMAT ---
-    # Map columns: into->open, inth->high, intl->low, intc->close
-    # Note: Handle duplicates - prefer 'intv' over 'v', 'intoi' over 'oi'
-    column_map = {
-        'into': 'open',
-        'inth': 'high',
-        'intl': 'low',
-        'intc': 'close',
-        'intv': 'volume',
-        'intoi': 'oi'
-    }
-    
-    # Drop the duplicate columns BEFORE renaming
-    if 'v' in df.columns and 'intv' in df.columns:
-        df = df.drop(columns=['v'])
-    elif 'v' in df.columns:
-        column_map['v'] = 'volume'
-        
-    if 'oi' in df.columns and 'intoi' in df.columns:
-        df = df.drop(columns=['oi']) # Shoonya sometimes has both 'oi' and 'intoi'
-    elif 'oi' in df.columns:
-        column_map['oi'] = 'oi'  # Keep as is
-    
-    df = df.rename(columns=column_map)
-    
-    # Clean and parse timestamp
-    if 'time' in df.columns:
-        # Shoonya sometimes prefixes with "Ok " (e.g., "Ok 2026-02-13 12:12:00")
-        df['time'] = df['time'].astype(str).str.replace('Ok ', '', regex=False).str.strip()
-        
-        # Try multiple formats
-        for fmt in ['%d-%m-%Y %H:%M:%S', '%Y-%m-%d %H:%M:%S', '%m/%d/%Y %H:%M:%S']:
-            try:
-                df['datetime'] = pd.to_datetime(df['time'], format=fmt, errors='coerce')
-                if not df['datetime'].isnull().all():
-                    break
-            except:
-                continue
-        
-        # Fallback for ISO format
-        if 'datetime' not in df.columns or df['datetime'].isnull().all():
-            df['datetime'] = pd.to_datetime(df['time'], errors='coerce')
-    
-    # FORCE NUMERIC TYPES for OHLC (DO THIS BEFORE CHECKING FOR REQUIRED COLUMNS)
-    # This fixes the "ufunc 'add' did not contain a loop..." error
-    numeric_cols = ['open', 'high', 'low', 'close']
-    for col in numeric_cols:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
+        with engine_sync.connect() as conn:
+            row = conn.execute(query, params).fetchone()
             
-    # Drop rows with NaNs in critical columns
-    df = df.dropna(subset=[c for c in numeric_cols if c in df.columns] + (['datetime'] if 'datetime' in df.columns else []))
-    
-    # Sort by datetime (if datetime exists)
-    if 'datetime' in df.columns:
-        df = df.sort_values('datetime')
-    
-    # Ensure required columns exist
-    required_cols = ['open', 'high', 'low', 'close', 'datetime']
-    missing = [c for c in required_cols if c not in df.columns]
-    if missing:
-        print(f"⚠️ Warning: Missing columns in {selected_file}: {missing}")
-    
-    print(f"✅ Loaded {len(df)} rows. Columns: {list(df.columns)}")
+        if not row:
+            if allow_fallback and target_date: # Try without date
+                 return load_parquet_for_symbol(symbol, None, False)
+            raise FileNotFoundError(f"No metadata found for symbol '{symbol}' (date: {target_date}) in Supabase")
+            
+        bucket_name, object_name = row
+        
+        # 2. Fetch from MinIO
+        if not minio_client:
+            raise Exception("MinIO client not initialized")
+            
+        print(f"📦 Fetching from MinIO: {bucket_name}/{object_name}")
+        response = minio_client.get_object(bucket_name, object_name)
+        
+        try:
+            # Load the Parquet file from memory
+            df = pd.read_parquet(io.BytesIO(response.data))
+        finally:
+            response.close()
+            response.release_conn()
+            
+        # 3. Clean and map columns
+        df.columns = df.columns.str.lower()
+        column_map = {
+            'into': 'open', 'inth': 'high', 'intl': 'low', 'intc': 'close',
+            'intv': 'volume', 'intoi': 'oi', 'v': 'volume', 'oi': 'oi'
+        }
+        df = df.rename(columns=column_map)
+        
+        # Clean and parse timestamp
+        time_col = 'time' if 'time' in df.columns else ('datetime' if 'datetime' in df.columns else None)
+        if time_col:
+            df['time'] = df[time_col].astype(str).str.replace('Ok ', '', regex=False).str.strip()
+            # Try multiple formats
+            for fmt in ['%d-%m-%Y %H:%M:%S', '%Y-%m-%d %H:%M:%S', '%m/%d/%Y %H:%M:%S']:
+                try:
+                    df['datetime'] = pd.to_datetime(df['time'], format=fmt, errors='coerce')
+                    if not df['datetime'].isnull().all(): break
+                except: continue
+            if 'datetime' not in df.columns or df['datetime'].isnull().all():
+                df['datetime'] = pd.to_datetime(df['time'], errors='coerce')
 
-    # Extract the actual symbol name from the filename for display
-    # e.g., "data/NIFTY_2026.parquet" -> "NIFTY"
-    # or "data/NIFTY_50_1min.parquet" -> "NIFTY_50"
-    base_name = os.path.basename(selected_file).replace('.parquet', '')
-    
-    return df, selected_file, symbol
+        # Clean numeric data
+        for col in ['open', 'high', 'low', 'close']:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+        
+        df = df.dropna(subset=['open', 'high', 'low', 'close'])
+        if 'datetime' in df.columns:
+            df = df.sort_values('datetime')
+            
+        print(f"✅ Loaded {len(df)} rows from MinIO for {symbol}.")
+        return df, object_name, symbol
 
-# --- 5. REST API ENDPOINTS ---
+    except Exception as e:
+        logger.error(f"❌ MinIO Load Error for {symbol}: {e}")
+        raise e
 
 @app.get("/api/search")
 async def search_instruments(query: str):
@@ -448,48 +425,39 @@ async def search_instruments(query: str):
 @app.get("/api/available-symbols")
 async def get_available_symbols():
     """
-    Get list of symbols that have Parquet data files available.
+    Get list of symbols that have Parquet data files available (from Supabase Metadata).
     """
-    print("🔍 API: /api/available-symbols called")
     try:
-        base_path = os.path.dirname(os.path.abspath(__file__))
-        data_dir = os.path.join(base_path, "data")
-        parquet_files = glob.glob(os.path.join(data_dir, "*.parquet"))
+        # Query distinct instruments from Supabase metadata
+        query = text("SELECT DISTINCT instrument FROM index_metadata ORDER BY instrument")
+        
+        with engine_sync.connect() as conn:
+            result = conn.execute(query)
+            rows = result.fetchall()
         
         available_symbols = []
-        seen_symbols = set()
-        for f in parquet_files:
-            basename = os.path.basename(f)
-            # Explicitly name the 5 major instruments in the database
-            if basename.startswith('NIFTY_') and not basename.startswith('NIFTY_BANK'): 
-                symbol_part = 'NIFTY'
-                name = 'NIFTY 50'
-            elif basename.startswith('BANKNIFTY') or basename.startswith('NIFTY_BANK'): 
-                symbol_part = 'BANKNIFTY'
-                name = 'BANKNIFTY'
-            elif basename.startswith('SENSEX'): 
-                symbol_part = 'SENSEX'
-                name = 'SENSEX'
-            elif basename.startswith('HDFCBANK'): 
-                symbol_part = 'HDFCBANK'
-                name = 'HDFC BANK'
-            elif basename.startswith('RELIANCE'): 
-                symbol_part = 'RELIANCE'
-                name = 'RELIANCE'
-            else:
-                symbol_part = basename.split('_')[0]
-                name = symbol_part.replace('_', ' ')
+        for row in rows:
+            symbol_part = row[0]
             
-            if symbol_part not in seen_symbols:
-                available_symbols.append({
-                    "symbol": symbol_part,
-                    "token": "0",  # Default token
-                    "name": name,
-                    "instrument_type": "INDEX" if symbol_part in ["NIFTY", "BANKNIFTY", "SENSEX"] else "EQUITY"
-                })
-                seen_symbols.add(symbol_part)
+            # Use same display name logic as before
+            if symbol_part == 'NIFTY': name = 'NIFTY 50'
+            elif symbol_part == 'BANKNIFTY': name = 'BANKNIFTY'
+            elif symbol_part == 'SENSEX': name = 'SENSEX'
+            elif symbol_part == 'HDFCBANK': name = 'HDFC BANK'
+            elif symbol_part == 'RELIANCE': name = 'RELIANCE'
+            else: name = symbol_part.replace('_', ' ')
+            
+            available_symbols.append({
+                "symbol": symbol_part,
+                "token": "0",
+                "name": name,
+                "instrument_type": "INDEX" if symbol_part in ["NIFTY", "BANKNIFTY", "SENSEX"] else "EQUITY"
+            })
         
-        return {"symbols": sorted(available_symbols, key=lambda x: x["symbol"])}
+        return {"symbols": available_symbols}
+    except Exception as e:
+        logger.error(f"❌ Error getting available symbols from Supabase: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get symbols: {str(e)}")
     except Exception as e:
         print(f"❌ Error getting available symbols: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get symbols: {str(e)}")
@@ -497,36 +465,31 @@ async def get_available_symbols():
 @app.get("/api/available-dates/{symbol}")
 async def get_available_dates(symbol: str):
     """
-    Get list of available dates for a specific symbol based on its parquet files.
+    Get list of available dates for a specific symbol based on Supabase metadata.
     """
     try:
-        import re
         # Extract the base symbol if it comes with a date suffix like RELIANCE-03-04
         base_symbol = symbol.split('-')[0] if '-' in symbol else symbol
         
-        base_path = os.path.dirname(os.path.abspath(__file__))
-        data_dir = os.path.join(base_path, "data")
-        pattern = os.path.join(data_dir, f"{base_symbol}_*.parquet")
-        files = glob.glob(pattern)
+        # Query dates from metadata table
+        query = text("""
+            SELECT TO_CHAR(start_date, 'YYYY-MM-DD') as date_str 
+            FROM index_metadata 
+            WHERE instrument = :symbol 
+            ORDER BY start_date DESC
+        """)
         
-        # Also try exact match for the symbol itself (without _date)
-        exact_match = os.path.join(data_dir, f"{base_symbol}.parquet")
-        if os.path.exists(exact_match):
-            files.append(exact_match)
+        with engine_sync.connect() as conn:
+            result = conn.execute(query, {"symbol": base_symbol})
+            rows = result.fetchall()
             
-        print(f"📅 Finding dates for {base_symbol} in {data_dir}... found {len(files)} files.")
-        
-        dates = []
-        for f in files:
-            # Extract date matching YYYY-MM-DD from the filename
-            match = re.search(r"(\d{4}-\d{2}-\d{2})", f)
-            if match:
-                dates.append(match.group(1))
-                
-        # Sort dates in reverse chronological order (newest first)
-        dates.sort(reverse=True)
+        dates = [row[0] for row in rows]
+        print(f"📅 Found {len(dates)} dates for {base_symbol} in metadata.")
         
         return {"symbol": symbol, "dates": dates}
+    except Exception as e:
+        logger.error(f"❌ Error getting available dates for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get dates: {str(e)}")
     except Exception as e:
         print(f"❌ Error getting available dates for {symbol}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get dates: {str(e)}")
@@ -541,49 +504,40 @@ async def get_historical_candles(
     lookback_days: int = 0
 ):
     """
-    Return historical OHLC candles for a given symbol from its Parquet file.
-     Optionally filtered by a specific YYYY-MM-DD date.
-     Supports resampling via interval parameter.
-     Supports lookback_days to fetch data for preceding dates.
-
-    Args:
-        symbol: Symbol name (e.g. 'NIFTY', 'BANKNIFTY')
-        limit:  Max candles to return (default 500, most recent)
-        date:   Optional date filter (YYYY-MM-DD)
-        interval: Candle interval - '1min', '3min', '5min', '15min', '30min', '1hr' (default '1min')
-        lookback_days: Number of preceding trading days to include. 
-                       If -1, returns ALL available data for the symbol in the database.
-
-    Returns:
-        JSON list of {time, open, high, low, close, volume} objects
+    Return historical OHLC candles from MinIO storage with Redis caching.
     """
+    # 1. Redis Cache Check
+    cache_key = f"hist:{symbol}:{date or 'latest'}:{interval}:{lookback_days}:{limit}"
+    if redis_client:
+        try:
+            cached_data = redis_client.get(cache_key)
+            if cached_data:
+                print(f"⚡ Redis Cache Hit: {cache_key}")
+                return json.loads(cached_data)
+        except Exception as e:
+            logger.warning(f"⚠️ Redis read error: {e}")
+
     # Map interval strings to pandas resample rules
     INTERVAL_MAP = {
-        '1min': '1min',
-        '3min': '3min',
-        '5min': '5min',
-        '15min': '15min',
-        '30min': '30min',
-        '1hr': '1h',
+        '1min': '1min', '3min': '3min', '5min': '5min',
+        '15min': '15min', '30min': '30min', '1hr': '1h',
     }
     
     resample_rule = INTERVAL_MAP.get(interval)
     if resample_rule is None:
-        raise HTTPException(status_code=400, detail=f"Invalid interval '{interval}'. Allowed: {list(INTERVAL_MAP.keys())}")
+        raise HTTPException(status_code=400, detail=f"Invalid interval '{interval}'.")
 
     try:
         base_symbol = symbol.split('-')[0] if '-' in symbol else symbol
         
-        # 1. Handle Lookback / All-Data Logic
+        # 2. Resolve Target Dates (Using our new API logic)
         target_dates = []
+        res = await get_available_dates(base_symbol)
+        available_dates = res.get("dates", [])
+        
         if lookback_days == -1:
-            # Fetch ALL available dates
-            res = await get_available_dates(base_symbol)
-            target_dates = res.get("dates", [])
+            target_dates = available_dates
         elif date and lookback_days > 0:
-            # Find the target date and N preceding dates
-            res = await get_available_dates(base_symbol)
-            available_dates = res.get("dates", []) # Sorted newest -> oldest
             if date in available_dates:
                 idx = available_dates.index(date)
                 # Include target date (idx) + N preceding days (idx+1, idx+2)
@@ -592,10 +546,9 @@ async def get_historical_candles(
                 # If date not in list, try to at least return the date
                 target_dates = [date]
         elif date:
-            # Default behavior: exactly this date
             target_dates = [date]
         
-        # 2. Fetch Data
+        # 3. Fetch Data from MinIO
         all_dfs = []
         loaded_files = set()
         
@@ -605,8 +558,7 @@ async def get_historical_candles(
             all_dfs.append(df)
             loaded_files.add(fpath)
         else:
-            # Load multiple dates (oldest first for concatenation)
-            for d in reversed(target_dates):
+            for d in reversed(target_dates): # Oldest first
                 try:
                     df, fpath, _ = load_parquet_for_symbol(base_symbol, d, allow_fallback=False)
                     all_dfs.append(df)
@@ -625,58 +577,25 @@ async def get_historical_candles(
                 except: pass
 
         if not all_dfs:
-            # If no data found for lookback, at least try to return something if possible
-            if date:
-                try:
-                    df, _, _ = load_parquet_for_symbol(base_symbol, date, allow_fallback=True)
-                    all_dfs = [df]
-                except: pass
+            return {"symbol": symbol, "candles": [], "interval": interval}
             
-            if not all_dfs:
-                return {"symbol": symbol, "candles": [], "interval": interval}
-            
-        # 3. Process and Concatenate
         combined_df = pd.concat(all_dfs)
+        time_col = 'datetime'
         
-        # Resolve the datetime column
-        time_col = next((c for c in ['datetime', 'date', 'time'] if c in combined_df.columns), None)
-        if time_col is None:
-            raise HTTPException(status_code=422, detail="No datetime column found in data")
-
-        # Only parse if it's not already datetime type
-        if not pd.api.types.is_datetime64_any_dtype(combined_df[time_col]):
-            combined_df[time_col] = pd.to_datetime(
-                combined_df[time_col].astype(str).str.replace('Ok ', '', regex=False).str.strip(), 
-                dayfirst=False, errors='coerce'
-            )
-        
-        combined_df = combined_df.dropna(subset=[time_col])
+        # Ensure it's sorted
         combined_df = combined_df.sort_values(time_col)
 
-        # Resample to requested interval if not already 1min
+        # 4. Resample
         if interval != '1min':
             combined_df = combined_df.set_index(time_col)
-            # Ensure volume column exists
-            if 'volume' not in combined_df.columns:
-                combined_df['volume'] = 0
             combined_df = combined_df.resample(resample_rule).agg({
-                'open': 'first',
-                'high': 'max',
-                'low': 'min',
-                'close': 'last',
-                'volume': 'sum'
+                'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
             }).dropna(subset=['open'])
             combined_df = combined_df.reset_index()
-            # The index column after reset is the datetime
             time_col = combined_df.columns[0]
 
-        # Take the most recent `limit` candles
-        # If lookback_days == -1, return all (up to 50k for safety)
+        # 5. Format to JSON
         final_limit = 50000 if lookback_days == -1 else limit
-        if date and lookback_days > 0:
-            # For specific practice, we want at least all candles from those days
-            final_limit = max(final_limit, len(combined_df))
-            
         combined_df = combined_df.tail(final_limit)
 
         candles = []
@@ -694,19 +613,24 @@ async def get_historical_candles(
                 "high":  float(row["high"]),
                 "low":   float(row["low"]),
                 "close": float(row["close"]),
-                "volume": float(row.get("volume", 0)) if "volume" in row.index else 0,
+                "volume": float(row.get("volume", 0)),
             })
 
-        return {"symbol": symbol, "candles": candles, "interval": interval}
+        response_data = {"symbol": symbol, "candles": candles, "interval": interval}
+        
+        # 6. Save to Redis Cache (TTL: 24 Hours)
+        if redis_client:
+            try:
+                redis_client.setex(cache_key, 86400, json.dumps(response_data))
+                print(f"✅ Redis Cache Set: {cache_key}")
+            except Exception as e:
+                logger.warning(f"⚠️ Redis write error: {e}")
 
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except HTTPException:
-        raise
+        return response_data
+
     except Exception as e:
-        print(f"❌ Error fetching historical data for {symbol}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch history: {str(e)}")
-
+        logger.error(f"❌ Error fetching historical data for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # --- 7. STOCK RESEARCH HUB ENDPOINTS ---
 from app.fundamental_service import FundamentalService
@@ -1176,28 +1100,15 @@ async def websocket_endpoint(websocket: WebSocket):
                     # Fetch today's news for alignment with simulation ticks
                     try:
                         raw_news = await fetch_news_for_date(primary_symbol, target_date)
-                        # Convert publishedAt → timestamp (datetime) for simulation time comparison
                         active_news = []
                         for n in raw_news:
-                            try:
-                                pub = n.get("publishedAt") or n.get("timestamp")
-                                if pub and isinstance(pub, str):
-                                    ts = pd.to_datetime(pub, errors="coerce")
-                                    if pd.notna(ts):
-                                        n["timestamp"] = ts.to_pydatetime()
-                                    else:
-                                        # Fallback: schedule at market open + random offset
-                                        n["timestamp"] = base_time if 'base_time' in dir() else datetime.datetime.now()
-                                elif pub and isinstance(pub, datetime.datetime):
-                                    n["timestamp"] = pub
-                                else:
-                                    n["timestamp"] = datetime.datetime.now()
-                                n["triggered"] = False
-                                active_news.append(n)
-                            except Exception:
-                                pass  # Skip malformed news items
+                            # Reset trigger state for replay and ensure naive timestamp
+                            n["triggered"] = False
+                             # Trust n["timestamp"] is already a naive datetime from news_service.py
+                            active_news.append(n)
+                        print(f"✅ Simulation Ready: Prepared {len(active_news)} shifted news items for {target_date}")
                     except Exception as e:
-                        print(f"⚠️ Failed to fetch news for {target_date}: {e}")
+                        print(f"⚠️ Failed to prepare news for simulation on {target_date}: {e}")
                         active_news = []
 
                 elif command == "BUY":
@@ -1295,6 +1206,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     datetime.datetime.now()
                 )
                 base_time = pd.to_datetime(date_val) if not isinstance(date_val, datetime.datetime) else date_val
+                # CRITICAL: Ensure base_time is naive for comparison with news timestamps
+                if hasattr(base_time, "tzinfo") and base_time.tzinfo is not None:
+                    base_time = base_time.replace(tzinfo=None)
             except Exception as e:
                 print(f"❌ Ref row parse error: {e}")
                 continue
@@ -1405,9 +1319,23 @@ async def websocket_endpoint(websocket: WebSocket):
                             await websocket.send_json({ "type": "STATS", "data": { "tick": i, "speed": speed } })
                         except Exception: pass
 
-                    # ─── Smooth Sub-Tick Interpolation (10 steps) ───
-                    # Split the 5s delay into 10 x 500ms chunks with interpolated prices
-                    sub_steps = 10
+                    # ─── Smooth Sub-Tick Brownian Bridge Simulation ───
+                    sub_steps = 60
+                    # Standard deviation (approx 0.005% of current price as volatility per tick)
+                    vol_scale = last_tick_price * 0.00005 if last_tick_price > 0 else 0.1
+                    
+                    # Generate raw Brownian components
+                    raw_walk = [random.gauss(0, vol_scale) for _ in range(sub_steps)]
+                    # Cumulative sum to get Brownian Motion
+                    bm = []
+                    curr_sum = 0
+                    for r in raw_walk:
+                        curr_sum += r
+                        bm.append(curr_sum)
+                    bm_final = bm[-1]
+                    # Convert to Bridge (so it ends exactly at 0 to match historical data)
+                    bridge_noise = [bm[s] - ((s + 1) / sub_steps) * bm_final for s in range(sub_steps)]
+
                     for step in range(sub_steps):
                         # Command Check (Inner - run in each sub-step)
                         trigger_next = False
@@ -1439,7 +1367,12 @@ async def websocket_endpoint(websocket: WebSocket):
                         if primary_symbol and primary_symbol in all_symbol_ticks and i + 1 < len(all_symbol_ticks[primary_symbol]):
                             curr_val = float(all_symbol_ticks[primary_symbol][i])
                             next_val = float(all_symbol_ticks[primary_symbol][i+1])
-                            interp_price = curr_val + (next_val - curr_val) * factor
+                            
+                            # Linear path
+                            linear_price = curr_val + (next_val - curr_val) * factor
+                            # Add Brownian noise
+                            interp_price = linear_price + bridge_noise[step]
+
                             
                             try:
                                 # Send TICK
@@ -1465,83 +1398,84 @@ async def websocket_endpoint(websocket: WebSocket):
                                 await websocket.send_json({ "type": "INDICES_TICK", "data": interp_indices })
                             except Exception: break
 
-                        # ── Sleep for 1/10th of the interval ──
-                        actual_delay = 1.0 / (speed * sub_steps) if speed > 0 else 1.0 / sub_steps
-                        await asyncio.sleep(actual_delay)
+                        # --- NEW: Synchronized News Injection (Second-Precision) ---
+                        sub_tick_time = tick_time + datetime.timedelta(seconds=step)
+                        for idx, n_item in enumerate(list(active_news)):
+                            if not isinstance(n_item, dict): continue
+                            n_timestamp = n_item.get("timestamp")
+                            if not n_timestamp: continue
+                            
+                            if not n_item.get("triggered") and sub_tick_time >= n_timestamp:
+                                active_news[idx]["triggered"] = True
+                                print(f"📰 FLASHING NEWS: {n_item['title']} at simulated time {sub_tick_time.strftime('%H:%M:%S')}", flush=True)
+                                
+                                # Ensure time_str matches the EXACT trigger time for visual sync
+                                display_time = sub_tick_time.strftime("%H:%M:%S")
+
+                                asyncio.create_task(websocket.send_json({
+                                    "type": "NEWS_FLASH",
+                                    "data": {
+                                        "id": idx,
+                                        "symbol": primary_symbol,
+                                        "title": n_item["title"],
+                                        "description": n_item["description"],
+                                        "time_str": display_time,
+                                        "source": n_item["source"],
+                                        "url": n_item["url"],
+                                        "is_simulated": n_item.get("is_simulated", False)
+                                    }
+                                }))
+                                
+                                async def perform_analysis(item, item_idx, sym):
+                                    try:
+                                        impact_task = analyze_news_impact(item["title"], item["description"], sym)
+                                        explainer_task = generate_news_explainer(item["title"], item["description"], sym)
+                                        impact_res, explainer_res = await asyncio.gather(impact_task, explainer_task)
+                                        await websocket.send_json({
+                                            "type": "NEWS_ANALYSIS",
+                                            "data": {
+                                                "id": item_idx,
+                                                "analysis": impact_res["analysis"],
+                                                "sentiment": impact_res["sentiment"],
+                                                "predicted_impact": impact_res.get("predicted_impact", "Unknown")
+                                            }
+                                        })
+                                        await websocket.send_json({
+                                            "type": "NEWS_EXPLAINER",
+                                            "data": { "id": item_idx, "explainer": explainer_res }
+                                        })
+                                    except Exception as ex:
+                                        print(f"⚠️ Error in News AI: {ex}", flush=True)
+                                        
+                                asyncio.create_task(perform_analysis(n_item, idx, primary_symbol))
+
+                                active_impact_observers.append({
+                                    "news_id": idx,
+                                    "baseline_price": interp_price,
+                                    "target_time": sub_tick_time + datetime.timedelta(minutes=15)
+                                })
+                        
+                        # --- PROCESS IMPACT OBSERVERS ---
+                        for obs in list(active_impact_observers):
+                            if sub_tick_time >= obs["target_time"] and primary_symbol in all_symbol_ticks:
+                                # Use current interpolated price for impact calc
+                                pct_change = ((interp_price - obs["baseline_price"]) / obs["baseline_price"]) * 100 if obs["baseline_price"] > 0 else 0
+                                asyncio.create_task(websocket.send_json({
+                                    "type": "NEWS_IMPACT_RESULT",
+                                    "data": {
+                                        "id": obs["news_id"],
+                                        "actual_impact": f"{pct_change:+.2f}% in 15m",
+                                        "price_start": obs["baseline_price"],
+                                        "price_end": interp_price
+                                    }
+                                }))
+                                active_impact_observers.remove(obs)
+
+                        # ── Precise Speed Scaling (60 seconds per candle / speed) ──
+                        actual_delay = 60.0 / (speed * sub_steps) if speed > 0 else 1.0 / sub_steps
+                        await asyncio.sleep(min(actual_delay, 1.0)) # Safety cap
                     
                     last_tick_sent_at = time.time()
-
-                    # --- NEW: Synchronized News Injection ---
-                    for idx, n_item in enumerate(list(active_news)):
-                        if not isinstance(n_item, dict): continue
-                        n_timestamp = n_item.get("timestamp")
-                        if not n_timestamp: continue
-                        
-                        if not n_item.get("triggered") and tick_time >= n_timestamp:
-                            active_news[idx]["triggered"] = True
-                            print(f"📰 FLASHING NEWS: {n_item['title']} at simulated time {tick_time.strftime('%H:%M:%S')}", flush=True)
-                            
-                            # Ensure time_str matches the EXACT trigger time for visual sync
-                            display_time = tick_time.strftime("%H:%M:%S")
-
-                            asyncio.create_task(websocket.send_json({
-                                "type": "NEWS_FLASH",
-                                "data": {
-                                    "id": idx,
-                                    "symbol": primary_symbol,
-                                    "title": n_item["title"],
-                                    "description": n_item["description"],
-                                    "time_str": display_time,
-                                    "source": n_item["source"],
-                                    "url": n_item["url"],
-                                    "is_simulated": n_item.get("is_simulated", False)
-                                }
-                            }))
-                            
-                            async def perform_analysis(item, item_idx, sym):
-                                try:
-                                    impact_task = analyze_news_impact(item["title"], item["description"], sym)
-                                    explainer_task = generate_news_explainer(item["title"], item["description"], sym)
-                                    impact_res, explainer_res = await asyncio.gather(impact_task, explainer_task)
-                                    await websocket.send_json({
-                                        "type": "NEWS_ANALYSIS",
-                                        "data": {
-                                            "id": item_idx,
-                                            "analysis": impact_res["analysis"],
-                                            "sentiment": impact_res["sentiment"],
-                                            "predicted_impact": impact_res.get("predicted_impact", "Unknown")
-                                        }
-                                    })
-                                    await websocket.send_json({
-                                        "type": "NEWS_EXPLAINER",
-                                        "data": { "id": item_idx, "explainer": explainer_res }
-                                    })
-                                except Exception as ex:
-                                    print(f"⚠️ Error in News AI: {ex}", flush=True)
-                                    
-                            asyncio.create_task(perform_analysis(n_item, idx, primary_symbol))
-
-                            active_impact_observers.append({
-                                "news_id": idx,
-                                "baseline_price": all_symbol_ticks[primary_symbol][i] if primary_symbol in all_symbol_ticks else 0,
-                                "target_time": tick_time + datetime.timedelta(minutes=15)
-                            })
-                    
-                    # --- PROCESS IMPACT OBSERVERS ---
-                    for obs in list(active_impact_observers):
-                        if tick_time >= obs["target_time"] and primary_symbol in all_symbol_ticks:
-                            curr_p = all_symbol_ticks[primary_symbol][i]
-                            pct_change = ((curr_p - obs["baseline_price"]) / obs["baseline_price"]) * 100 if obs["baseline_price"] > 0 else 0
-                            asyncio.create_task(websocket.send_json({
-                                "type": "NEWS_IMPACT_RESULT",
-                                "data": {
-                                    "id": obs["news_id"],
-                                    "actual_impact": f"{pct_change:+.2f}% in 15m",
-                                    "price_start": obs["baseline_price"],
-                                    "price_end": curr_p
-                                }
-                            }))
-                            active_impact_observers.remove(obs)
                 
                 if not is_running:
                     break

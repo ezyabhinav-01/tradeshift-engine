@@ -104,7 +104,7 @@ const Home = () => {
 
       for (const chart of visibleCharts) {
         const fetchKey = `${chart.id}-${chart.symbol}-${selectedDate}-${activeTimeframe}`;
-        
+
         // Fetch if symbol/date/timeframe changed and it's not currently being fetched
         if (chart.symbol && lastFetchedRef.current[chart.id] !== fetchKey) {
           lastFetchedRef.current[chart.id] = fetchKey;
@@ -450,8 +450,8 @@ const Home = () => {
                 <button
                   onClick={() => executeOrder(pendingOrder)}
                   className={`w-full py-4 font-black uppercase tracking-widest text-sm rounded-xl transition-all active:scale-[0.98] shadow-lg ${pendingOrder.direction === 'BUY'
-                      ? 'bg-[#089981] hover:bg-[#07856f] text-white shadow-[#089981]/20'
-                      : 'bg-[#f23645] hover:bg-[#d8303d] text-white shadow-[#f23645]/20'
+                    ? 'bg-[#089981] hover:bg-[#07856f] text-white shadow-[#089981]/20'
+                    : 'bg-[#f23645] hover:bg-[#d8303d] text-white shadow-[#f23645]/20'
                     }`}
                 >
                   Confirm {pendingOrder.direction}
@@ -494,11 +494,10 @@ const Home = () => {
             <span
               key={tf}
               onClick={() => setActiveTimeframe(tf)}
-              className={`px-2 py-0.5 rounded cursor-pointer transition-all duration-200 font-semibold text-[11px] uppercase tracking-wider ${
-                activeTimeframe === tf
+              className={`px-2 py-0.5 rounded cursor-pointer transition-all duration-200 font-semibold text-[11px] uppercase tracking-wider ${activeTimeframe === tf
                   ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40 shadow-[0_0_8px_rgba(59,130,246,0.15)]'
                   : 'hover:text-blue-400 hover:bg-white/5 text-tv-text-secondary'
-              }`}
+                }`}
             >
               {tf}
             </span>

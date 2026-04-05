@@ -20,7 +20,7 @@ export interface NewsItem {
   sentiment?: string;
   predicted_impact?: string;
   actual_impact?: string;
-  qa_history?: {question: string, answer: string}[];
+  qa_history?: { question: string, answer: string; }[];
   explainer?: {
     essence: string;
     analogy: string;
@@ -71,7 +71,7 @@ interface GameState {
   setDate: (dateStr: string) => void;
   updateUserSettings: (updates: any) => Promise<void>;
   placeOrder: (
-    type: 'BUY' | 'SELL', 
+    type: 'BUY' | 'SELL',
     quantity: number,
     orderType?: string,
     price?: number,
@@ -82,8 +82,8 @@ interface GameState {
     symbol?: string
   ) => void;
   closePosition: (
-    tradeId: string | number, 
-    exitType?: 'MARKET' | 'LIMIT', 
+    tradeId: string | number,
+    exitType?: 'MARKET' | 'LIMIT',
     limitPrice?: number,
     simulatedTime?: string | Date
   ) => void;
@@ -150,7 +150,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
             const cDate = new Date(c.time * 1000).toISOString().split('T')[0];
             return cDate === date;
           });
-          
+
           if (firstCandleOfSelectedDay) {
             setCurrentTime(new Date(firstCandleOfSelectedDay.time * 1000));
             console.log(`🚀 Replay starting at ${new Date(firstCandleOfSelectedDay.time * 1000).toLocaleString()} (Start of ${date})`);
@@ -243,11 +243,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
         body: JSON.stringify(updates),
         credentials: 'include'
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to update settings');
       }
-      
+
       const data = await response.json();
       setUserSettings(data);
       toast.success('Settings updated successfully');
@@ -346,10 +346,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
         const newsEvent: NewsItem = { ...payload.data, analysis: "Analyzing impact...", sentiment: "NEUTRAL" };
         setNewsItems(prev => [newsEvent, ...prev]);
       }
-      
+
       if (payload.type === 'NEWS_ANALYSIS') {
         const { id, analysis, sentiment, predicted_impact } = payload.data;
-        setNewsItems(prev => prev.map(item => 
+        setNewsItems(prev => prev.map(item =>
           item.id === id ? { ...item, analysis, sentiment, predicted_impact, qa_history: [] } : item
         ));
         toast.success(`FinGPT Analysis: ${sentiment}`, { description: "News context updated." });
@@ -378,7 +378,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
 
       if (payload.type === 'NEWS_EXPLAINER') {
         const { id, explainer } = payload.data;
-        setNewsItems(prev => prev.map(item => 
+        setNewsItems(prev => prev.map(item =>
           item.id === id ? { ...item, explainer } : item
         ));
       }
@@ -398,7 +398,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
         };
         setCurrentCandle(newCandle);
         setReplayTicks(prev => ({ ...prev, [candleSymbol]: newCandle }));
-        
+
         // Only append to historicalCandles if it's the primary symbol
         if (candleSymbol === selectedSymbol) {
           setHistoricalCandles(prev => {
@@ -494,9 +494,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
     return () => {
       marketDataService.disconnect();
     };
-  // Note: `speed` is intentionally excluded from deps.
-  // Speed changes are handled by the dedicated effect below via marketDataService.setSpeed()
-  // to avoid full WebSocket reconnection (which destroys replay state, indicators, and drawings).
+    // Note: `speed` is intentionally excluded from deps.
+    // Speed changes are handled by the dedicated effect below via marketDataService.setSpeed()
+    // to avoid full WebSocket reconnection (which destroys replay state, indicators, and drawings).
   }, [isPlaying, selectedSymbol, selectedDate]);
 
   // Dynamic speed changes
@@ -590,7 +590,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
   };
 
   const placeOrder = async (
-    type: 'BUY' | 'SELL', 
+    type: 'BUY' | 'SELL',
     quantity: number,
     orderType: string = 'MARKET',
     price?: number,
@@ -618,12 +618,12 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
         }),
         credentials: 'include'
       });
-      
+
       if (!response.ok) {
         const err = await response.json();
         throw new Error(err.detail || 'Trade failed');
       }
-      
+
       const result = await response.json();
       toast.success(result.message);
     } catch (err: any) {
@@ -644,12 +644,12 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
         }),
         credentials: 'include'
       });
-      
+
       if (!response.ok) {
         const err = await response.json();
         throw new Error(err.detail || 'Failed to modify order');
       }
-      
+
       const result = await response.json();
       toast.success(result.message || 'Order modified');
     } catch (err: any) {

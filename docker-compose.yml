@@ -30,6 +30,17 @@ services:
       timeout: 5s
       retries: 5
 
+  # 2.1 Redis GUI
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: tradeshift_redis_commander
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+
   # 3. MinIO (S3 compatible storage)
   minio:
     image: minio/minio

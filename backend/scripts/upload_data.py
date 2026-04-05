@@ -12,18 +12,25 @@ from sqlalchemy import create_engine, text
 from minio import Minio
 from minio.error import S3Error
 
-# Add the parent directory to path for imports if needed
-sys.path.append(str(Path(__file__).parent.parent))
+from dotenv import load_dotenv
 
-# Configuration - using environment variables from docker-compose
-MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9000")
+# Add the parent directory to path for imports if needed
+BASE_DIR = Path(__file__).parent.parent
+sys.path.append(str(BASE_DIR))
+
+# Load environment variables from .env file
+load_dotenv(BASE_DIR / ".env")
+
+# Configuration - using environment variables
+# If run from host, MINIO_ENDPOINT usually needs to be localhost:9000
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9000").replace("minio:9000", "localhost:9000")
 MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
 MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
 BUCKET_NAME = os.getenv("MINIO_BUCKET", "market-data")
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5432/tradeshift")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Local path where parquet files are stored (mount this volume in docker-compose)
-DATA_PATH = "/data"  # This will be mounted from host to container
+# Local path where parquet files are stored
+DATA_PATH = str(BASE_DIR / "data")
 
 def initialize_minio_client():
     """Initialize MinIO client"""
@@ -63,7 +70,7 @@ def create_metadata_table(engine):
                 uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 bucket_name VARCHAR(100) NOT NULL,
                 object_name VARCHAR(255) NOT NULL,
-                UNIQUE(instrument, interval)
+                UNIQUE(instrument, interval, object_name)
             );
         """))
         conn.commit()
@@ -75,8 +82,10 @@ def upload_parquet_file(client, file_path, engine):
         file_name = os.path.basename(file_path)
         
         # Extract instrument name from filename
-        # Format: NIFTY_50_1min.parquet -> NIFTY_50
-        instrument = file_name.replace("_1min.parquet", "")
+        # Support formats like:
+        # NIFTY_50_1min.parquet -> NIFTY_50
+        # BANKNIFTY_2026-03-30.parquet -> BANKNIFTY
+        instrument = file_name.replace(".parquet", "").rsplit("_", 1)[0]
         
         # Object name in MinIO
         object_name = f"indices/{file_name}"
@@ -94,25 +103,46 @@ def upload_parquet_file(client, file_path, engine):
         # Read metadata from parquet file
         df = pd.read_parquet(file_path)
         
-        # Insert metadata into database
-        with engine.connect() as conn:
-            # Delete existing entry if exists
-            conn.execute(
-                text("DELETE FROM index_metadata WHERE instrument = :instrument AND interval = '1min'"),
-                {"instrument": instrument}
+        # Find time column
+        time_col = next((c for c in ['date', 'datetime', 'time', 'timestamp'] if c in df.columns), None)
+        if time_col is None:
+            print(f"❌ Error: Cannot find time column in {file_name}")
+            return False
+
+        # Clean timestamps (e.g., "Ok 30-03-2026 03:45:00")
+        try:
+            # Convert to string and strip "Ok " prefix if present, then parse
+            df[time_col] = pd.to_datetime(
+                df[time_col].astype(str).str.replace('Ok ', '', regex=False),
+                dayfirst=True,
+                errors='coerce'
             )
+            # Remove any NaT values that might have failed to parse
+            df = df.dropna(subset=[time_col])
+        except Exception as e:
+            print(f"⚠️ Warning: Could not fully clean timestamps: {e}")
             
-            # Insert new entry
+        start_date = df[time_col].min() if len(df) > 0 else datetime.now()
+        end_date = df[time_col].max() if len(df) > 0 else datetime.now()
+        
+        # Insert/Update metadata into database
+        with engine.connect() as conn:
+            # Insert new entry or update existing if same file (object_name)
             conn.execute(text("""
                 INSERT INTO index_metadata 
                 (instrument, interval, start_date, end_date, rows_count, 
                  parquet_path, bucket_name, object_name)
                 VALUES (:instrument, '1min', :start_date, :end_date, :rows_count,
                         :parquet_path, :bucket_name, :object_name)
+                ON CONFLICT (instrument, interval, object_name) DO UPDATE SET
+                    start_date = EXCLUDED.start_date,
+                    end_date = EXCLUDED.end_date,
+                    rows_count = EXCLUDED.rows_count,
+                    uploaded_at = CURRENT_TIMESTAMP
             """), {
                 'instrument': instrument,
-                'start_date': df['date'].min(),
-                'end_date': df['date'].max(),
+                'start_date': start_date,
+                'end_date': end_date,
                 'rows_count': len(df),
                 'parquet_path': object_name,
                 'bucket_name': BUCKET_NAME,

@@ -23,7 +23,7 @@ export const GlobalTicker = () => {
     const fetchIndices = async () => {
       try {
         const response = await axios.get(`/api/market/indices`);
-        
+
         // Fetch all indices and store them (we map them manually during render)
         setLiveIndices(response.data);
       } catch (err) {
@@ -47,7 +47,7 @@ export const GlobalTicker = () => {
   ];
 
   const displayIndices: IndexData[] = targetSymbols.map(target => {
-    const found = sourceData.find(idx => 
+    const found = sourceData.find(idx =>
       target.exactMatches.includes(idx.name?.toUpperCase()) ||
       target.exactMatches.includes((idx as any).symbol?.toUpperCase())
     );
@@ -66,11 +66,11 @@ export const GlobalTicker = () => {
 
   return (
     <div className="flex items-center gap-4 px-4 overflow-x-auto whitespace-nowrap hide-scrollbar text-[13px] font-sans">
-      
+
       {isPlaying && (
         <>
           <div className="flex items-center text-xs font-bold text-indigo-400 gap-1.5 animate-pulse shrink-0">
-              <span>SIM SYNC</span>
+            <span>SIM SYNC</span>
           </div>
           <Separator orientation="vertical" className="h-4 w-[3px] bg-tv-border/40 mx-2" />
         </>
@@ -82,7 +82,7 @@ export const GlobalTicker = () => {
         const sign = isPos ? '+' : '';
         return (
           <Fragment key={idx.name + i}>
-            <div 
+            <div
               className="flex items-center gap-2 shrink-0 cursor-pointer hover:bg-slate-100 dark:hover:bg-white/5 px-2 py-1 rounded transition-colors"
               onClick={() => {
                 updateChart(activeChartId, { symbol: idx.name });

@@ -356,6 +356,10 @@ async def fetch_news_for_date(symbol: str, target_date: str) -> list[dict]:
             # Map item to slot
             trigger_time = slots[i]
             
+            # Ensure naive datetime (no timezone)
+            if trigger_time.tzinfo is not None:
+                trigger_time = trigger_time.replace(tzinfo=None)
+            
             shifted_news.append({
                 **item,
                 "timestamp": trigger_time,
@@ -375,7 +379,7 @@ async def fetch_news_for_date(symbol: str, target_date: str) -> list[dict]:
                 "description": f"Initial volatility expected in {base_sym} as institutional desks adjust positions for the {target_date} session.",
                 "source": "FIN-GPT",
                 "url": "#",
-                "timestamp": market_open + timedelta(minutes=5),
+                "timestamp": (market_open + timedelta(minutes=5)).replace(tzinfo=None),
                 "time_str": "09:20:00",
                 "is_simulated": True,
                 "category": "indian",
@@ -387,7 +391,7 @@ async def fetch_news_for_date(symbol: str, target_date: str) -> list[dict]:
                 "description": f"Large block trades detected in {base_sym} as domestic funds increase allocation.",
                 "source": "REUTERS",
                 "url": "#",
-                "timestamp": market_open + timedelta(hours=1),
+                "timestamp": (market_open + timedelta(hours=1)).replace(tzinfo=None),
                 "time_str": "10:15:00",
                 "is_simulated": True,
                 "category": "indian",
@@ -399,7 +403,7 @@ async def fetch_news_for_date(symbol: str, target_date: str) -> list[dict]:
                 "description": "US Futures suggest a strong session ahead as inflation fears cool globally.",
                 "source": "BLOOMBERG",
                 "url": "#",
-                "timestamp": market_open + timedelta(hours=4),
+                "timestamp": (market_open + timedelta(hours=4)).replace(tzinfo=None),
                 "time_str": "13:15:00",
                 "is_simulated": True,
                 "category": "global",

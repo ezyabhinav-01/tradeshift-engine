@@ -114,6 +114,7 @@ async def mark_notification_read(
                 db.add(BroadcastRead(
                     user_id=current_user.id,
                     notification_id=notification_id,
+                    notification_created_at=notification.created_at,
                     read_at=datetime.utcnow()
                 ))
                 await db.commit()
@@ -167,9 +168,11 @@ async def mark_all_notifications_read(
 
         # 2. Mark all unread broadcasts as read for this user
         broadcast_result = await db.execute(
-            select(Notification.id).where(Notification.user_id.is_(None))
+            select(Notification.id, Notification.created_at).where(Notification.user_id.is_(None))
         )
-        all_broadcast_ids = {row[0] for row in broadcast_result.all()}
+        # Create a mapping of id -> created_at for all broadcasts
+        broadcast_map = {row[0]: row[1] for row in broadcast_result.all()}
+        all_broadcast_ids = set(broadcast_map.keys())
 
         already_read = await db.execute(
             select(BroadcastRead.notification_id).where(
@@ -183,6 +186,7 @@ async def mark_all_notifications_read(
             db.add(BroadcastRead(
                 user_id=current_user.id,
                 notification_id=bid,
+                notification_created_at=broadcast_map[bid],
                 read_at=datetime.utcnow()
             ))
         

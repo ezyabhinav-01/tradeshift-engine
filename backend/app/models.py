@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, Text, JSON
+from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, Text, JSON, ForeignKeyConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.database import Base  # Import Base from database.py
@@ -12,6 +12,7 @@ class TradeLog(Base):
     __tablename__ = "trade_logs"
 
     id = Column(Integer, primary_key=True, index=True)
+    entry_time = Column(DateTime, primary_key=True, default=datetime.utcnow)
 
     symbol = Column(String, index=True)
     direction = Column(String)
@@ -21,7 +22,6 @@ class TradeLog(Base):
     quantity = Column(Integer)
     pnl = Column(Float)
 
-    entry_time = Column(DateTime, default=datetime.utcnow)
     exit_time = Column(DateTime, default=datetime.utcnow)
 
     # 🔥 NEW BEHAVIOR FIELDS (INSIDE CLASS)
@@ -258,16 +258,6 @@ class HelpRequest(Base):
 # LEARNING / ACADEMY MODELS
 # ═══════════════════════════════════════════
 
-class ReplayScene(Base):
-    """
-    Saved market replay scenarios that users can practice on in the simulator.
-    """
-    __tablename__ = "replay_scenes"
-
-    id = Column(Integer, primary_key=True, index=True)
-    title = Column(String(255), nullable=False)
-    description = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
 
 class LearningProgress(Base):
     """
@@ -452,6 +442,7 @@ class Notification(Base):
     __tablename__ = "notifications"
 
     id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime, primary_key=True, default=datetime.utcnow)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True) # NULL means broadcast to all
     
     title = Column(String(255), nullable=False)
@@ -459,7 +450,6 @@ class Notification(Base):
     type = Column(String(50), default="info") # info, warning, success, error
     
     is_read = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="notifications")
 
@@ -470,10 +460,10 @@ class UserEvent(Base):
     __tablename__ = "user_events"
 
     id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime, primary_key=True, default=datetime.utcnow)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True)
     event_name = Column(String, index=True)
     event_data = Column(JSON, nullable=True) # Dict of arbitrary event metadata
-    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 # ═══════════════════════════════════════════
@@ -525,8 +515,17 @@ class BroadcastRead(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    notification_id = Column(Integer, ForeignKey("notifications.id", ondelete="CASCADE"), nullable=False, index=True)
+    notification_id = Column(Integer, nullable=False, index=True)
+    notification_created_at = Column(DateTime, nullable=False, index=True)
     read_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ['notification_id', 'notification_created_at'],
+            ['notifications.id', 'notifications.created_at'],
+            ondelete="CASCADE"
+        ),
+    )
 
 class MarketCandle(Base):
     """
@@ -536,11 +535,39 @@ class MarketCandle(Base):
     __tablename__ = "market_candles"
 
     id = Column(Integer, primary_key=True, index=True)
+    timestamp = Column(DateTime, primary_key=True, index=True)
     symbol = Column(String, index=True)
-    timestamp = Column(DateTime, index=True)
     open = Column(Float)
     high = Column(Float)
     low = Column(Float)
     close = Column(Float)
     volume = Column(Float)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+class PortfolioSnapshot(Base):
+    """
+    Daily/Weekly account balance tracking for users.
+    Partitioned monthly by timestamp.
+    """
+    __tablename__ = "portfolio_snapshots"
+    id = Column(Integer, primary_key=True, index=True)
+    timestamp = Column(DateTime, primary_key=True, default=datetime.utcnow)
+    user_id = Column(Integer, index=True)
+    total_balance = Column(Float)
+    equity_value = Column(Float)
+    cash_balance = Column(Float)
+    session_type = Column(String, default="LIVE")
+
+class SystemAlertLog(Base):
+    """
+    Logs of triggered price alerts.
+    Partitioned monthly by timestamp.
+    """
+    __tablename__ = "system_alerts_logs"
+    id = Column(Integer, primary_key=True, index=True)
+    timestamp = Column(DateTime, primary_key=True, default=datetime.utcnow)
+    user_id = Column(Integer, index=True)
+    symbol = Column(String, index=True)
+    alert_type = Column(String)  # PRICE_UP, PRICE_DOWN, CROSS_OVER
+    message = Column(String)
+    trigger_price = Column(Float)

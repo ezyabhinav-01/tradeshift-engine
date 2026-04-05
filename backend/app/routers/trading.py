@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, distinct
+from sqlalchemy import select, distinct, insert, text
 from app.database import get_db
-from app.models import User, TradeLog, Notification
+from app.models import User, TradeLog, Notification, UserEvent
 from app.schemas import TradeExecuteRequest, TradeResponse, OrderModifyRequest, TradeExitRequest, AlertTriggerRequest
 from app.trade_engine import TradeEngine
 from app.services.order_management import oms_service
@@ -74,6 +74,23 @@ async def execute_trade(
             type="success"
         )
         db.add(notification)
+        
+        # Log User Event
+        await db.execute(
+            insert(UserEvent).values(
+                user_id=user_id,
+                event_name="trade_order_placed",
+                event_data={
+                    "symbol": trade_request.symbol,
+                    "direction": trade_request.direction,
+                    "quantity": trade_request.quantity,
+                    "order_type": trade_request.order_type,
+                    "trade_id": result["trade_id"]
+                },
+                created_at=text("CURRENT_TIMESTAMP")
+            )
+        )
+        
         await db.commit()
             
         return TradeResponse(**result)
@@ -113,9 +130,19 @@ async def modify_order(
     if not order:
         raise HTTPException(status_code=404, detail="Pending order not found or not owned by user")
     
-    # Emit update
-    ws_payload = TradeEngine.build_order_update_payload(order)
-    await order_manager.emit_to_user(user_id, "order_update", ws_payload)
+    # Log User Event
+    await db.execute(
+        insert(UserEvent).values(
+            user_id=user_id,
+            event_name="trade_order_modified",
+            event_data={
+                "order_id": order_id,
+                "updates": updates
+            },
+            created_at=text("CURRENT_TIMESTAMP")
+        )
+    )
+    await db.commit()
     
     return TradeResponse(
         trade_id=order.id,
@@ -144,6 +171,17 @@ async def cancel_order(
     
     if not success:
         raise HTTPException(status_code=404, detail="Pending order not found or not owned by user")
+        
+    # Log User Event
+    await db.execute(
+        insert(UserEvent).values(
+            user_id=user_id,
+            event_name="trade_order_cancelled",
+            event_data={"order_id": order_id},
+            created_at=text("CURRENT_TIMESTAMP")
+        )
+    )
+    await db.commit()
         
     return {"message": "Order cancelled successfully", "order_id": order_id}
 
@@ -196,6 +234,21 @@ async def close_trade(
             closed_at,
             user.demat_id,
         )
+    
+    # Log User Event
+    await db.execute(
+        insert(UserEvent).values(
+            user_id=user_id,
+            event_name="trade_position_closed",
+            event_data={
+                "trade_id": trade.id,
+                "exit_price": exit_price,
+                "pnl": pnl if 'pnl' in locals() else None
+            },
+            created_at=text("CURRENT_TIMESTAMP")
+        )
+    )
+    await db.commit()
     
     return TradeResponse(
         trade_id=trade.id,
@@ -279,6 +332,20 @@ async def close_all_trades(
             type="system"
         )
         db.add(notification)
+        
+        # Log User Event
+        await db.execute(
+            insert(UserEvent).values(
+                user_id=user_id,
+                event_name="trade_position_closed",
+                event_data={
+                    "trade_id": trade.id,
+                    "exit_price": trade.exit_price or price_mapping.get(trade.symbol),
+                    "reason": "close_all"
+                },
+                created_at=text("CURRENT_TIMESTAMP")
+            )
+        )
     
     await db.commit()
     

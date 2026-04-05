@@ -515,3 +515,70 @@ async def send_badge_earned_email(
     {_cta_button("View My Badge Collection")}
     """
     await _send(email, f"New Achievement Unlocked: {badge_title} 🏆", _html_wrapper("Academy Achievement", content))
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 9.  AI PERSONALIZED WELCOME EMAIL
+# ═══════════════════════════════════════════════════════════════════════════
+
+PERSONALIZED_WELCOME_EMAIL_PROMPT = """Generate highly personalized HTML content for an email introduction.
+
+User profile data:
+{{userProfile}}
+
+REQUIREMENTS:
+- Reference their exact investment goals, risk tolerance, and preferred industries.
+- Return ONLY clean HTML content (no markdown, no backticks).
+- Use a single <p> tag with styling: <p class="mobile-text" style="margin: 0 0 30px 0; font-size: 16px; line-height: 1.6; color: #CCDADC;">
+- Word count: 35-50 words.
+"""
+
+async def send_personalized_welcome_email(email: str, first_name: str, demat_id: str, profile_data: dict):
+    """
+    Combines Gemini AI generation with the standard welcome email template.
+    """
+    from app.utils.gemini_pool import gemini_pool
+    
+    # 1. Generate the AI Intro
+    user_profile_str = f"""
+    -Investment goals: {profile_data.get('investment_goals', 'Growth')}
+    -Risk tolerance: {profile_data.get('risk_tolerance', 'Moderate')}
+    -Preferred industries: {profile_data.get('preferred_instruments', 'Equity')}
+    """
+    
+    prompt = PERSONALIZED_WELCOME_EMAIL_PROMPT.replace("{{userProfile}}", user_profile_str)
+    
+    try:
+        logger.info(f"🤖 [AI] Generating personalized intro for {email}...")
+        response = await gemini_pool.generate_content(prompt, is_async=True)
+        intro_text = response.text
+    except Exception as e:
+        logger.error(f"❌ [AI] Gemini generation failed: {e}")
+        intro_text = f"Welcome to TradeShift, {first_name}! We're excited to have you join our community of traders."
+
+    # 2. Build the final email content (reusing our existing template logic)
+    content = f"""
+    {_heading(f"Welcome aboard, {first_name}!")}
+    {intro_text}
+    
+    <div style="background:rgba(41,98,255,0.05); border:1px solid rgba(41,98,255,0.1); border-radius:8px; padding:14px; margin:24px 0; text-align:center;">
+      <span style="color:#9598A1; font-size:13px; vertical-align:middle;">Demat Account ID:</span>
+      <span style="color:{PRIMARY}; font-size:18px; font-weight:800; letter-spacing:1px; font-family:monospace; margin-left:10px; vertical-align:middle;">{demat_id}</span>
+    </div>
+
+    {_divider()}
+    {_badge("SECURITY ON", "#00C853")}
+    <p style="margin:16px 0 0;color:#fff;font-size:15px;font-weight:600;">Security PIN Setup Complete</p>
+    {_text("Your 4-digit Security PIN has been successfully configured. This PIN will be required for secure actions within the platform. Please keep it confidential.", 14)}
+    
+    {_divider()}
+    {_text("Here's what you can do:", 13, TEXT_LIGHT)}
+    <ul style="color:#C4C4C4;font-size:14px;line-height:2;padding-left:20px;margin:0 0 20px;">
+      <li>[&#8226;] Simulate real-time stock trading with live market data</li>
+      <li>[&#8226;] Get AI-powered market analysis and insights</li>
+      <li>[&#8226;] Track your portfolio performance and trade history</li>
+      <li>[&#8226;] Build your trading skills without any financial risk</li>
+    </ul>
+    {_cta_button("Start Trading Now")}
+    """
+    
+    await _send(email, "Welcome to TradeShift — Your AI Trading Journey Starts!", _html_wrapper("Welcome", content))

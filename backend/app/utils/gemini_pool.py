@@ -99,5 +99,43 @@ class GeminiPool:
         
         raise Exception("All Gemini API keys in the pool are currently exhausted or invalid.")
 
+    async def get_embeddings_async(self, texts: list, model_name: str = "models/text-embedding-004"):
+        """
+        Generates embeddings for a list of strings using the pool's keys.
+        Supports automatic rotation on rate limits.
+        """
+        if not self.keys:
+            raise Exception("No Gemini API keys configured.")
+
+        num_keys = len(self.keys)
+        start_index = self.current_index
+        
+        for attempt in range(num_keys):
+            idx = (start_index + attempt) % num_keys
+            key = self.keys[idx]
+            
+            try:
+                # Use the embed_content method on the library directly with the specific key
+                # This is preferred for batch operations
+                genai.configure(api_key=key)
+                response = await genai.embed_content_async(
+                    model=model_name,
+                    content=texts,
+                    task_type="retrieval_document" if len(texts) > 1 else "retrieval_query"
+                )
+                
+                self.current_index = (idx + 1) % num_keys
+                return response['embeddings']
+            except Exception as e:
+                error_msg = str(e).lower()
+                if "429" in error_msg or "resource_exhausted" in error_msg:
+                    print(f"⚠️ [GeminiPool-Embed] Key {idx+1} rate limited. Rotating...")
+                    continue
+                else:
+                    print(f"❌ [GeminiPool-Embed] Error with key {idx+1}: {e}")
+                    raise e
+                    
+        raise Exception("All Gemini API keys are exhausted for embeddings.")
+
 # Singleton instance
 gemini_pool = GeminiPool()

@@ -1,8 +1,7 @@
 fastapi
 uvicorn
-# NO TRANSFORMERS or TORCH here to prevent 9GB crash 
-sentence-transformers
-# chromadb needs sentence-transformers. By omitting full torch and accelerate, it uses cpu-only minimal
+# Removed sentence-transformers and torch to save 9GB
+# ChromaDB is used for vector storage
 chromadb
 pydantic
 pydantic-settings

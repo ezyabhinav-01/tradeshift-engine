@@ -1,13 +1,15 @@
 import os
 import json
 import chromadb
-from sentence_transformers import SentenceTransformer
+import asyncio
 
 # Need to run this as a standalone script or module
 try:
     from config import config
+    from app.utils.gemini_pool import gemini_pool
 except ImportError:
     from .config import config
+    from app.utils.gemini_pool import gemini_pool
 
 def ingest_data():
     # Initialize ChromaDB persistent client
@@ -21,10 +23,11 @@ def ingest_data():
     # Create or get the collection
     collection = client.get_or_create_collection(name="trade_knowledge")
     
-    # Load sentence transformer model
-    # all-MiniLM-L6-v2 is an extremely fast, high quality 384-dimensional embedding model
-    print("Loading embedding model (sentence-transformers/all-MiniLM-L6-v2)...")
-    model = SentenceTransformer('all-MiniLM-L6-v2')
+    # NEW: Clear old data to ensure a "Clean Sync" (prevents 'ghost' memory from removed articles)
+    print("Cleaning old embeddings for a fresh sync...")
+    collection.delete(where={})
+    
+    print("TradeGuide Ingest: Using Gemini Cloud Embeddings (text-embedding-004)...")
     
     data_dir = os.path.join(base_dir, "data")
     files = ["learn_articles.json", "platform_docs.json"]
@@ -59,9 +62,9 @@ def ingest_data():
             ids.append(doc_id)
             
     if documents:
-        print(f"Generating embeddings for {len(documents)} documents...")
-        # Encode all documents into vectors
-        embeddings = model.encode(documents).tolist()
+        print(f"Generating embeddings for {len(documents)} documents via Gemini API...")
+        # Encode all documents into vectors using Gemini Cloud API
+        embeddings = asyncio.run(gemini_pool.get_embeddings_async(documents))
         
         print("Upserting vectors into ChromaDB...")
         collection.upsert(

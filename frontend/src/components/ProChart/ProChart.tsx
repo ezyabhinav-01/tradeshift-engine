@@ -417,7 +417,10 @@ export const ProChart: React.FC<ProChartProps> = ({
       localization: {
         timeFormatter: (time: number) => {
           const d = new Date(time * 1000);
-          return d.toLocaleTimeString('en-IN', {
+          return d.toLocaleString('en-IN', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
             hour: '2-digit',
             minute: '2-digit',
             second: '2-digit',
@@ -452,7 +455,13 @@ export const ProChart: React.FC<ProChartProps> = ({
       borderUpColor: '#089981', borderDownColor: '#f23645',
       title: '',
       statusLineVisible: false,
+      priceLineVisible: true,
+      lastValueVisible: true,
+      priceLineColor: isDark ? '#787b86' : '#2962FF',
+      priceLineWidth: 1,
+      priceLineStyle: 2, // dashed
     } as any);
+
     seriesRef.current = series as any;
     setSeriesInstance(series as any);
 

@@ -132,11 +132,12 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
 
   // ── Load Available Dates & History ──────────────────────
   // ── Load Historical Candles ──────────────────────
-  const loadHistory = useCallback(async (symbol: string, date: string, lookbackDays: number = 0) => {
+  const loadHistory = useCallback(async (symbol: string, date: string, lookbackDays: number = 2) => {
     setIsLoadingHistory(true);
-    setHistoricalCandles([]);
+    // Don't clear immediately to avoid "1-second vanish" flicker. 
+    // The previous historicalCandles will stay on chart until replaced.
     try {
-      const candles = await fetchHistoricalCandles(symbol, 500, date, '1min', lookbackDays);
+      const candles = await fetchHistoricalCandles(symbol, 5000, date, '1min', lookbackDays);
       setHistoricalCandles(candles);
       if (candles.length > 0) {
         setCurrentPrice(candles[candles.length - 1].close);
@@ -173,26 +174,28 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
     } finally {
       setIsLoadingHistory(false);
     }
-  }, []);
+  }, [isReplayActive]);
 
   // ── Load Available Dates & History ──────────────────────
   const loadAvailableDatesAndHistory = useCallback(async (symbol: string, presetDate?: string) => {
     try {
       const dates = await fetchAvailableDates(symbol);
-      setAvailableDates(dates);
+      // Limit to only 5 latest available dates as per requirement
+      const latest5Dates = dates.slice(0, 5);
+      setAvailableDates(latest5Dates);
 
       let nextDate = '';
-      if (presetDate && dates.includes(presetDate)) {
+      if (presetDate && latest5Dates.includes(presetDate)) {
         nextDate = presetDate;
-      } else if (dates.length > 0) {
-        nextDate = dates[0];
+      } else if (latest5Dates.length > 0) {
+        nextDate = latest5Dates[0];
       }
 
       setSelectedDate(nextDate);
 
       if (nextDate) {
-        // Initial load (First Search) -> Load ALL data (-1)
-        loadHistory(symbol, nextDate, -1);
+        // Initial load (First Search) -> Load with 2-day historical lookback
+        loadHistory(symbol, nextDate, 2);
       } else {
         toast.error(`No trading data found for ${symbol}`);
         setHistoricalCandles([]);
@@ -263,19 +266,26 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
     }
 
     setSessionType('REPLAY');
-    // Clear ALL stale data so chart starts fresh from WebSocket CANDLE/TICK events.
-    // Without this, historicalCandles contains 376 end-of-day candles (up to 15:29),
-    // which causes ProChart's cutoff logic to break when ticks arrive at 09:15.
-    // setHistoricalCandles([]); // Let lookback data stay on chart
-    setCurrentCandle(null);
-    setCurrentTime(null);
+    // NOTE: We no longer clear currentTime or currentCandle here if they were 
+    // already set by toggleReplay or setDate. This prevents the "blank flash" 
+    // and ensures the chart starts precisely at 09:15.
+    if (!currentTime) {
+      setCurrentPrice(historicalCandles.length > 0 ? historicalCandles[historicalCandles.length - 1].close : 0);
+      setCurrentTime(historicalCandles.length > 0 ? new Date(historicalCandles[historicalCandles.length - 1].time * 1000) : null);
+    }
+    
     setReplayTicks({});
     setSimulatedIndices([]);
     setNewsItems([]);
 
     // Multi-symbol subscription: Send ALL symbols currently in layout
     const uniqueSymbols = Array.from(new Set([selectedSymbol, ...allChartSymbolsStr.split(',').filter(Boolean)]));
-    marketDataService.connect(speed, uniqueSymbols, selectedSymbol, selectedDate);
+    
+    // Resume from current time if we have it pinned
+    const startTimeStr = (isReplayActive && currentTime) ? currentTime.toISOString() : undefined;
+    marketDataService.connect(speed, uniqueSymbols, selectedSymbol, selectedDate, startTimeStr);
+
+
 
     marketDataService.onMessage((payload: any) => {
       if (payload.type === 'ERROR') {
@@ -293,17 +303,30 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
       // --- BACKFILL (History) ---
       if (payload.type === 'BACKFILL') {
         const { candles } = payload.data;
-        if (Array.isArray(candles)) {
-          setHistoricalCandles(candles);
-          if (candles.length > 0) {
-            const lastCandle = candles[candles.length - 1];
+        if (Array.isArray(candles) && candles.length > 0) {
+          // Merge logic: If we are resuming, we may already have part of this history.
+          // We use a Map to ensure unique timestamps.
+          setHistoricalCandles(prev => {
+            const combined = [...prev, ...candles];
+            const uniqueMap = new Map();
+            combined.forEach(c => uniqueMap.set(c.time, c));
+            return Array.from(uniqueMap.values()).sort((a, b) => a.time - b.time);
+          });
+          
+          const lastCandle = candles[candles.length - 1];
+          const backfillTime = new Date(lastCandle.time * 1000);
+          
+          // Only move clock forward if this backfill is ahead
+          if (!currentTime || currentTime < backfillTime) {
             setCurrentPrice(lastCandle.close);
-            setCurrentTime(new Date(lastCandle.time * 1000));
+            setCurrentTime(backfillTime);
           }
-          console.log(`📚 Received ${candles.length} backfill candles`);
+          console.log(`📚 Received and merged ${candles.length} backfill candles`);
         }
         return;
       }
+
+
 
       // --- NEWS EVENTS ---
       if (payload.type === 'NEWS_FLASH') {
@@ -486,29 +509,71 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
   const togglePlay = () => setIsPlaying(prev => !prev);
   const toggleReplay = () => {
     setIsReplayActive(prev => {
-      if (prev) {
-        // Turning off replay: stop playback and reload static history
+      const nextReplayState = !prev;
+      if (nextReplayState) {
+        // Turning ON replay: jump back to start of day
+        const firstCandle = historicalCandles.find(c => {
+          const cDate = new Date(c.time * 1000).toISOString().split('T')[0];
+          return cDate === (selectedDate || "");
+        });
+        if (firstCandle) {
+          setCurrentTime(new Date(firstCandle.time * 1000));
+          setCurrentPrice(firstCandle.open); // Initialize to open price of day
+          // Create a "pending" candle for 09:15
+          setCurrentCandle({
+            time: firstCandle.time,
+            open: firstCandle.open,
+            high: firstCandle.open,
+            low: firstCandle.open,
+            close: firstCandle.open,
+            volume: 0
+          });
+          console.log("⏱️ Replay initialized at start of day");
+        }
+      } else {
+
+        // Turning OFF replay: stop playback and reset session
         setIsPlaying(false);
         setSessionType('LIVE');
         setNewsItems([]);
         setSimulatedIndices([]);
-        // Reload the historical candles for the current symbol/date
-        loadHistory(selectedSymbol, selectedDate);
+        // Sync time to the end of history when turning off replay
+        if (historicalCandles.length > 0) {
+          setCurrentTime(new Date(historicalCandles[historicalCandles.length - 1].time * 1000));
+        }
       }
-      return !prev;
+      return nextReplayState;
     });
   };
   const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark');
 
   const setSymbol = (symbol: string, _token: string) => {
     setSelectedSymbol(symbol);
+    
+    // SYNC: Update all charts in multi-chart layout when primary instrument changes
+    const store = useMultiChartStore.getState();
+    store.charts.forEach(chart => {
+      store.updateChart(chart.id, { symbol });
+    });
+
     loadAvailableDatesAndHistory(symbol, selectedDate);
   };
 
   const setDate = (dateStr: string) => {
     setSelectedDate(dateStr);
-    // Specific Practice -> Load 2 days prior (2)
+    // Load exactly 2 days prior to the selected date (context for replay)
     loadHistory(selectedSymbol, dateStr, 2);
+    
+    // Pin time to start of new date if in replay mode
+    if (isReplayActive) {
+      const firstCandle = historicalCandles.find(c => {
+        const cDate = new Date(c.time * 1000).toISOString().split('T')[0];
+        return cDate === dateStr;
+      });
+      if (firstCandle) {
+        setCurrentTime(new Date(firstCandle.time * 1000));
+      }
+    }
   };
 
   const clearHistoryForReplay = () => {

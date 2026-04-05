@@ -110,7 +110,7 @@ const Home = () => {
           lastFetchedRef.current[chart.id] = fetchKey;
           try {
             console.log(`🌐 Fetching ${activeTimeframe} data for Slot ${chart.id}: ${chart.symbol}`);
-            const candles = await fetchHistoricalCandles(chart.symbol, 500, selectedDate || '', activeTimeframe);
+            const candles = await fetchHistoricalCandles(chart.symbol, 50000, selectedDate || '', activeTimeframe, -1);
             setChartData(chart.id, candles);
           } catch (err) {
             console.error(`❌ Failed to fetch data for ${chart.symbol} in slot ${chart.id}:`, err);

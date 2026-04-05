@@ -8,8 +8,9 @@ WebSocket event payloads for order lifecycle notifications.
 
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models import TradeLog
-from app.schemas import TradeExecuteRequest, OrderType
+from app.models import TradeLog, User
+from app.schemas import TradeExecuteRequest, OrderType, TradeDirection
+from sqlalchemy import update
 import logging
 
 logger = logging.getLogger(__name__)
@@ -108,6 +109,16 @@ class TradeEngine:
             
             if linked_orders:
                 db.add_all(linked_orders)
+            
+            # --- UPDATE CASH BALANCE ---
+            multiplier = -1 if request.direction == TradeDirection.BUY else 1
+            transaction_value = request.quantity * entry_price
+            
+            await db.execute(
+                update(User)
+                .where(User.id == user_id)
+                .values(balance=User.balance + (multiplier * transaction_value))
+            )
 
         await db.commit()
         await db.refresh(trade)

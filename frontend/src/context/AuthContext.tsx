@@ -15,6 +15,7 @@ interface User {
   risk_tolerance?: string;
   occupation?: string;
   city?: string;
+  balance: number;
 }
 
 interface AuthContextType {

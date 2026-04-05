@@ -57,7 +57,7 @@ const ReplayToolbar = () => {
                     value={selectedDate}
                     onChange={(e) => setDate(e.target.value)}
                 >
-                    {availableDates.map(d => (
+                    {availableDates.slice(0, 5).map(d => (
                         <option key={d} value={d} className="bg-[#1e222d] text-[#d1d4dc]">{d}</option>
                     ))}
                 </select>

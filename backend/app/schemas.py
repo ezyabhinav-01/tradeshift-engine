@@ -40,6 +40,7 @@ class User(BaseModel):
     city: Optional[str] = None
     how_heard_about: Optional[str] = None
     security_pin: Optional[str] = None
+    balance: float = 100000.0
     created_at: datetime
     last_active_at: Optional[datetime] = None
 
@@ -64,6 +65,7 @@ class UserCreate(UserBase):
     city: Optional[str] = None
     how_heard_about: Optional[str] = None
     security_pin: Optional[str] = None
+    balance: float = 100000.0
 
     @field_validator("email")
     def validate_gmail(cls, value):
@@ -180,6 +182,7 @@ class User(UserBase):
     occupation: Optional[str] = None
     city: Optional[str] = None
     demat_id: Optional[str] = None
+    balance: float = 100000.0
     created_at: datetime
     
     class Config:

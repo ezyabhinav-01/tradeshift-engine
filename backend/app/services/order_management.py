@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
-from app.models import TradeLog
+from app.models import TradeLog, User
 from app.database import get_session
 from app.websocket_manager import order_manager
 from app.trade_engine import TradeEngine
@@ -100,6 +100,16 @@ class OrderManagementSystem:
         order.entry_time = simulated_time or datetime.utcnow()
         order.triggered = True
         
+        # --- UPDATE CASH BALANCE (for triggered primary entries) ---
+        if not order.parent_trade_id:
+            multiplier = -1 if order.direction == "BUY" else 1
+            transaction_value = order.quantity * fill_price
+            await db.execute(
+                update(User)
+                .where(User.id == order.user_id)
+                .values(balance=User.balance + (multiplier * transaction_value))
+            )
+
         db.add(order)
         # No need for flush here if close_trade already commits/flushes, 
         # but close_trade handles its own commits currently which might be tricky.
@@ -210,6 +220,17 @@ class OrderManagementSystem:
             ).values(status="CANCELLED")
         )
 
+        # --- UPDATE CASH BALANCE ---
+        # For a BUY trade, closing (SELLING) adds cash.
+        # For a SELL trade, closing (BUYING) removes cash.
+        multiplier = 1 if trade.direction == "BUY" else -1
+        exit_value = trade.quantity * exit_price
+        await db.execute(
+            update(User)
+            .where(User.id == user_id)
+            .values(balance=User.balance + (multiplier * exit_value))
+        )
+
         await db.commit()
         await db.refresh(trade)
         return trade
@@ -245,6 +266,15 @@ class OrderManagementSystem:
                     TradeLog.parent_trade_id == trade.id,
                     TradeLog.status == "PENDING"
                 ).values(status="CANCELLED")
+            )
+            
+            # Update Cash Balance for each trade
+            multiplier = 1 if trade.direction == "BUY" else -1
+            exit_value = trade.quantity * exit_price
+            await db.execute(
+                update(User)
+                .where(User.id == user_id)
+                .values(balance=User.balance + (multiplier * exit_value))
             )
             
             closed_trades.append(trade)

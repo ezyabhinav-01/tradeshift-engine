@@ -1,7 +1,7 @@
 from typing import List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, distinct
-from app.models import PortfolioHolding, TradeLog
+from app.models import PortfolioHolding, TradeLog, User
 from app.market_service import market_service
 from app.sector_mapping import get_sector, get_sector_allocation, get_concentration_risks
 from datetime import datetime, timedelta
@@ -88,6 +88,10 @@ class PortfolioService:
         return sorted(results, key=lambda x: x["invested_value"], reverse=True)
 
     async def get_summary(self, db: AsyncSession, user_id: int, session_type: str = 'LIVE') -> Dict[str, Any]:
+        # Fetch user balance
+        res = await db.execute(select(User.balance).filter(User.id == user_id))
+        balance = res.scalars().first() or 0.0
+
         holdings = await self.get_holdings(db, user_id, session_type)
         
         total_invested = sum(h["invested_value"] for h in holdings)
@@ -139,7 +143,9 @@ class PortfolioService:
             "pnl_percent": round(total_pnl_pct, 2),
             "xirr_percent": round(calculated_xirr, 2),
             "is_positive": total_pnl >= 0,
-            "equity_curve": equity_curve
+            "equity_curve": equity_curve,
+            "cash_balance": round(balance, 2),
+            "total_value": round(total_current + balance, 2)
         }
 
     async def get_positions(self, db: AsyncSession, user_id: int, session_type: str = 'LIVE') -> List[Dict[str, Any]]:

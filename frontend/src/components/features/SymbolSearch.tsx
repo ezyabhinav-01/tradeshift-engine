@@ -76,8 +76,11 @@ export const SymbolSearch: React.FC<SymbolSearchProps> = ({ open, onOpenChange, 
                 // FALLBACK MOCK DATA (So user always sees something)
                 // This ensures the UI works even if backend connection fails
                 const mockSymbols: Instrument[] = [
-                    { token: '26000', symbol: 'NIFTY 50', name: 'Nifty 50 Index', instrument_type: 'INDEX' },
-                    { token: '26009', symbol: 'BANKNIFTY', name: 'Nifty Bank Index', instrument_type: 'INDEX' }
+                    { token: '26000', symbol: 'NIFTY', name: 'Nifty 50 Index', instrument_type: 'INDEX' },
+                    { token: '26009', symbol: 'BANKNIFTY', name: 'Nifty Bank Index', instrument_type: 'INDEX' },
+                    { token: '26010', symbol: 'SENSEX', name: 'BSE Sensex Index', instrument_type: 'INDEX' },
+                    { token: '1333', symbol: 'HDFCBANK', name: 'HDFC Bank Ltd', instrument_type: 'EQUITY' },
+                    { token: '2885', symbol: 'RELIANCE', name: 'Reliance Industries Ltd', instrument_type: 'EQUITY' }
                 ];
                 setAvailableSymbols(mockSymbols);
                 setResults(mockSymbols);

@@ -52,7 +52,8 @@ async def get_portfolio_summary(request: Request, session_type: str = 'LIVE', db
         logger.error(f"Error fetching portfolio summary: {e}")
         return {
             "total_invested": 0, "current_value": 0, "total_pnl": 0,
-            "pnl_percent": 0, "xirr_percent": 0, "is_positive": True, "equity_curve": []
+            "pnl_percent": 0, "xirr_percent": 0, "is_positive": True, "equity_curve": [],
+            "cash_balance": 0, "total_value": 0
         }
 
 

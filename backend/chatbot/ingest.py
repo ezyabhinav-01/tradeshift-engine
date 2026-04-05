@@ -3,13 +3,9 @@ import json
 import chromadb
 import asyncio
 
-# Need to run this as a standalone script or module
-try:
-    from config import config
-    from app.utils.gemini_pool import gemini_pool
-except ImportError:
-    from .config import config
-    from app.utils.gemini_pool import gemini_pool
+# Now using absolute imports facilitated by the shared /app structure
+from config import config
+from app.utils.gemini_pool import gemini_pool
 
 def ingest_data():
     # Initialize ChromaDB persistent client

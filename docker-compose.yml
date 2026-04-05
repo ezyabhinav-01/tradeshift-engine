@@ -153,11 +153,12 @@ services:
   # 8. AI ChatBot (FinGPT / RAG)
   chatbot:
     build:
-      context: ./backend/chatbot
-      dockerfile: Dockerfile
+      context: ./backend
+      dockerfile: chatbot/Dockerfile
     container_name: tradeshift_chatbot
     volumes:
       - ./backend/chatbot:/app
+      - ./backend/app:/app/app
       - ./backend/chatbot/chroma_db:/app/chroma_db
     ports:
       - "8001:8001"

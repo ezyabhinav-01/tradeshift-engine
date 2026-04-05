@@ -26,7 +26,6 @@ redis
 # === HTTP / Networking ===
 aiohttp
 requests
-httpx
 websockets
 
 # === Web Scraping & NLP ===
@@ -35,7 +34,6 @@ vaderSentiment
 
 # === AI / ML ===
 google-generativeai
-huggingface_hub
 
 # === Monitoring ===
 prometheus-fastapi-instrumentator
@@ -51,8 +49,6 @@ python-jose[cryptography]
 # === Email ===
 fastapi-mail==1.4.1
 
-# === Workflow ===
-inngest
 
 # === Broker API (Shoonya) ===
 NorenRestApiPy
@@ -62,5 +58,4 @@ pyotp
 # === Utilities ===
 python-dotenv
 apscheduler
-greenlet
 feedparser

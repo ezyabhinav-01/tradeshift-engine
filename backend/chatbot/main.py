@@ -68,7 +68,7 @@ async def chat_endpoint(request: Request, req: ChatRequest, x_api_key: Optional[
         history = sessions.get(session_id, [])
         
         bot = get_bot()
-        result = bot.get_response(req.message, history)
+        result = await bot.get_response(req.message, history)
         
         # Append bi-directional communication to memory
         history.append({"role": "user", "content": req.message})

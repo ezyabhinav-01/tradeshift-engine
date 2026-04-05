@@ -1,17 +1,19 @@
 import os
 import re
 import chromadb
-from sentence_transformers import SentenceTransformer
 from typing import List, Dict, Tuple, Optional, Any
+import asyncio
 
 try:
     from config import config
     from generator import generate_response
     from navigation_map import get_learn_navigation_hint
+    from app.utils.gemini_pool import gemini_pool
 except ImportError:
     from .config import config
     from .generator import generate_response
     from .navigation_map import get_learn_navigation_hint
+    from app.utils.gemini_pool import gemini_pool
 
 class TradeGuideBot:
     def __init__(self):
@@ -35,9 +37,8 @@ class TradeGuideBot:
         self.client = chromadb.PersistentClient(path=db_path)
         self.collection = self.client.get_or_create_collection(name="trade_knowledge")
         
-        print("TradeGuideBot: Loading query embedder (sentence-transformers/all-MiniLM-L6-v2)...")
-        # Embedding text string inputs efficiently so ChromaDB can match the math vectors
-        self.embedder = SentenceTransformer('all-MiniLM-L6-v2')
+        print("TradeGuideBot: Using Gemini Cloud Embeddings (text-embedding-004)...")
+        # No local embedder needed anymore.
         
     def _is_safe(self, text: str) -> bool:
         """
@@ -74,9 +75,10 @@ class TradeGuideBot:
         clean_text = re.sub(tag_pattern, "", text).strip()
         return clean_text, actions
 
-    def _retrieve_context(self, query: str, top_k: int = 2) -> Tuple[str, List[Dict[str, str]]]:
-        # Encode user query
-        query_embedding = self.embedder.encode([query]).tolist()
+    async def _retrieve_context(self, query: str, top_k: int = 2) -> Tuple[str, List[Dict[str, str]]]:
+        # Encode user query using Gemini API
+        embeddings = await gemini_pool.get_embeddings_async([query])
+        query_embedding = embeddings[0]
         
         # Search the database for nearest k neighbors (Cosine similarity via typical Chroma defaults)
         results = self.collection.query(
@@ -107,7 +109,7 @@ class TradeGuideBot:
             
         return context_str + "\n", sources
 
-    def get_response(self, user_query: str, history: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
+    async def get_response(self, user_query: str, history: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
         # 0. Pre-flight Safety Check
         if not self._is_safe(user_query):
             return {
@@ -119,7 +121,7 @@ class TradeGuideBot:
         history_list = history if history is not None else []
         
         # 1. RAG Retrieve
-        context_str, sources = self._retrieve_context(user_query)
+        context_str, sources = await self._retrieve_context(user_query)
         
         if context_str is None:
              context_str = "No specific local context found. Answer purely using your global knowledge base."

@@ -14,7 +14,6 @@ import ForgotPassword from './pages/auth/ForgotPassword';
 import Layout from './components/layout/layout';
 import Home from './pages/Home';
 import LandingPage from './pages/LandingPage';
-import Home1 from './pages/Home1';
 import ResearchHub from './pages/ResearchHub';
 import ScreenerPage from './pages/ScreenerPage';
 import MarketPage from './pages/MarketPage';
@@ -53,7 +52,6 @@ function AppContent() {
 
         <Route element={<Layout />}>
           <Route path="trade" element={<Home />} />
-          <Route path="home1" element={<Home1 />} />
           <Route path="markets" element={<MarketPage />} />
           <Route path="screener" element={<ScreenerPage />} />
           <Route path="portfolio" element={<PortfolioPage />} />

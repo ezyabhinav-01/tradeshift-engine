@@ -21,7 +21,8 @@ from redis import Redis
 from prometheus_fastapi_instrumentator import Instrumentator
 from app.oms import OrderManager
 from app import auth
-from app.routers import inngest, portfolio, history, trading, news, community, analytics, notifications, user, learn
+from app.routers import portfolio, history, trading, news, community, analytics, notifications, user, learn
+from app.tasks.scheduler import setup_scheduler
 from app.websocket_manager import order_manager
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -115,8 +116,10 @@ scheduler.add_job(refresh_market_cache, 'interval', minutes=15)
 # Rolling data refresh: Every day at 17:00 IST (5:00 PM)
 # This handles the daily fetch of today's data and pruning of the oldest day.
 scheduler.add_job(rolling_market_refresh, 'cron', hour=17, minute=0, timezone='Asia/Kolkata')
-
 scheduler.start()
+
+# --- Async Tasks Scheduler ---
+setup_scheduler()
 
 @app.on_event("startup")
 async def startup_event():
@@ -244,7 +247,6 @@ async def log_user_activity(request: Request, call_next):
         return await call_next(request)
 
 app.include_router(auth.router)
-app.include_router(inngest.router)
 app.include_router(portfolio.router)
 app.include_router(history.router)
 app.include_router(trading.router)

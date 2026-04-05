@@ -26,6 +26,7 @@ from .services.email_service import (
     send_pin_created_email,
     send_signup_otp_email,
     send_welcome_email,
+    send_personalized_welcome_email,
     send_otp_email,
     send_pin_reset_otp_email,
     send_password_reset_success_email,
@@ -218,7 +219,15 @@ async def register_set_pin(
     await db.refresh(user)
 
     await create_session(db, user.id, request, response)
-    background_tasks.add_task(send_welcome_email, user.email, user.full_name or "Trader", user.demat_id)
+    
+    # 3. Trigger Personalized Welcome Email (AI-Powered)
+    profile_data = {
+        "investment_goals": user.investment_goals,
+        "risk_tolerance": user.risk_tolerance,
+        "preferred_instruments": user.preferred_instruments
+    }
+    background_tasks.add_task(send_personalized_welcome_email, user.email, user.full_name or "Trader", user.demat_id, profile_data)
+    
     return user
 
 @router.post("/login")

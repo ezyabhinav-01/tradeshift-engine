@@ -7,7 +7,6 @@ import ChartArea from '../features/ChartArea';
 import OrderPanel from '../features/OrderPanel';
 import TradePanel from '../TradePanel/TradePanel';
 import PlaybackControls from '../features/PlaybackControls';
-import HistoryPage from '../../pages/HistoryPage';
 import SettingsPage from '../../pages/SettingsPage';
 import { useGame } from '../../context/GameContext';
 
@@ -86,11 +85,6 @@ const MainLayout = () => {
             </>
           )}
 
-          {page === 'history' && (
-            <div className="flex-1 overflow-auto">
-              <HistoryPage />
-            </div>
-          )}
 
           {page === 'settings' && (
             <div className="flex-1 overflow-auto">

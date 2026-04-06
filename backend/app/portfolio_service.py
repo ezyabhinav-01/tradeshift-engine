@@ -1,7 +1,7 @@
 from typing import List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, distinct
-from app.models import PortfolioHolding, TradeLog, User
+from app.models import PortfolioHolding, TradeLog, User, PortfolioSnapshot
 from app.market_service import market_service
 from app.sector_mapping import get_sector, get_sector_allocation, get_concentration_risks
 from datetime import datetime, timedelta
@@ -56,15 +56,15 @@ class PortfolioService:
         results = []
         for h in holdings:
             try:
-                import yfinance as yf
-                ticker = yf.Ticker(h.symbol)
-                # Note: yfinance is blocking, ideally should be run in a threadpool
-                # For this refactor we keep it as is or wrap in run_in_executor
-                loop = asyncio.get_event_loop()
-                hist = await loop.run_in_executor(None, lambda: ticker.history(period="1d"))
-                ltp = float(hist['Close'].iloc[-1]) if not hist.empty else h.average_cost * 1.05
+                from app.live_market import shoonya_live
+                cached_price = None
+                for key, data in shoonya_live.latest_data.items():
+                    if h.symbol in data.get("symbol", "") or h.symbol == data.get("name", ""):
+                        cached_price = data.get("price")
+                        break
+                ltp = cached_price if cached_price else h.average_cost * 1.0 # default to average cost
             except Exception:
-                ltp = h.average_cost * 1.05
+                ltp = h.average_cost * 1.0
                 
             invested = h.quantity * h.average_cost
             current_value = h.quantity * ltp
@@ -93,49 +93,60 @@ class PortfolioService:
         balance = res.scalars().first() or 0.0
 
         holdings = await self.get_holdings(db, user_id, session_type)
+        positions = await self.get_positions(db, user_id, session_type)
         
-        total_invested = sum(h["invested_value"] for h in holdings)
-        total_current = sum(h["current_value"] for h in holdings)
+        # Combine holdings and positions for total valuation
+        total_invested = sum(h["invested_value"] for h in holdings) + sum(p["entry_value"] for p in positions)
+        total_current = sum(h["current_value"] for h in holdings) + sum(p["current_value"] for p in positions)
         total_pnl = total_current - total_invested
         total_pnl_pct = (total_pnl / total_invested * 100) if total_invested > 0 else 0
         
+        # 1. Real Equity Curve from PortfolioSnapshots
+        snapshot_res = await db.execute(
+            select(PortfolioSnapshot)
+            .filter(PortfolioSnapshot.user_id == user_id, PortfolioSnapshot.session_type == session_type)
+            .order_by(PortfolioSnapshot.timestamp.desc())
+            .limit(30)
+        )
+        snapshots = snapshot_res.scalars().all()
+        snapshots.reverse() # chronologically for the chart
+        
+        equity_curve = []
+        if snapshots:
+            for s in snapshots:
+                equity_curve.append({
+                    "date": s.timestamp.strftime("%d %b"),
+                    "value": round(s.total_balance, 2)
+                })
+        
+        # Always add 'Today' if curve is empty or last entry isn't today
+        today_str = datetime.utcnow().strftime("%d %b")
+        total_value = total_current + balance
+        
+        if not equity_curve or equity_curve[-1]["date"] != today_str:
+            equity_curve.append({
+                "date": today_str,
+                "value": round(total_value, 2)
+            })
+
+        # 2. XIRR Calculation using cash flows
         cash_flows = []
         now = datetime.utcnow()
         for h in holdings:
             date_obj = datetime.strptime(h["first_purchase_date"], "%Y-%m-%d") if h["first_purchase_date"] else now
             cash_flows.append((date_obj, -h["invested_value"]))
+        for p in positions:
+            date_obj = datetime.strptime(p["entry_time"], "%Y-%m-%d %H:%M") if p["entry_time"] else now
+            cash_flows.append((date_obj, -p["entry_value"]))
             
+        calculated_xirr = 0.0
         if cash_flows:
             cash_flows.append((now, total_current))
-            calculated_xirr = xirr(cash_flows) * 100
-        else:
-            calculated_xirr = 0.0
-            
-        equity_curve = []
-        if cash_flows:
-            start_date = min(cf[0] for cf in cash_flows[:-1])
-            days_diff = (now - start_date).days
-            if days_diff < 30:
-                start_date = now - timedelta(days=30)
-                days_diff = 30
+            try:
+                calculated_xirr = xirr(cash_flows) * 100
+            except Exception:
+                calculated_xirr = 0.0
                 
-            daily_growth = (total_current / total_invested) ** (1.0 / days_diff) if total_invested > 0 else 1.0
-            
-            step = max(1, days_diff // 30)
-            current_dt = start_date
-            simulated_val = total_invested
-            for i in range(30):
-                equity_curve.append({
-                    "date": current_dt.strftime("%d %b"),
-                    "value": round(simulated_val, 2)
-                })
-                current_dt += timedelta(days=step)
-                noise = random.uniform(0.98, 1.02)
-                simulated_val *= daily_growth * noise
-                
-            equity_curve[-1]["value"] = round(total_current, 2)
-            equity_curve[-1]["date"] = "Today"
-            
         return {
             "total_invested": round(total_invested, 2),
             "current_value": round(total_current, 2),
@@ -145,7 +156,7 @@ class PortfolioService:
             "is_positive": total_pnl >= 0,
             "equity_curve": equity_curve,
             "cash_balance": round(balance, 2),
-            "total_value": round(total_current + balance, 2)
+            "total_value": round(total_value, 2)
         }
 
     async def get_positions(self, db: AsyncSession, user_id: int, session_type: str = 'LIVE') -> List[Dict[str, Any]]:
@@ -159,13 +170,15 @@ class PortfolioService:
         results = []
         for t in open_trades:
             try:
-                import yfinance as yf
-                ticker = yf.Ticker(t.symbol)
-                loop = asyncio.get_event_loop()
-                hist = await loop.run_in_executor(None, lambda: ticker.history(period="1d"))
-                ltp = float(hist['Close'].iloc[-1]) if not hist.empty else t.entry_price * 1.02
+                from app.live_market import shoonya_live
+                cached_price = None
+                for key, data in shoonya_live.latest_data.items():
+                    if t.symbol in data.get("symbol", "") or t.symbol == data.get("name", ""):
+                        cached_price = data.get("price")
+                        break
+                ltp = cached_price if cached_price else t.entry_price * 1.0 # default to entry price
             except Exception:
-                ltp = t.entry_price * 1.02 if t.entry_price else 0
+                ltp = t.entry_price * 1.0 if t.entry_price else 0
 
             entry_val = (t.quantity or 0) * (t.entry_price or 0)
             current_val = (t.quantity or 0) * ltp
@@ -198,12 +211,24 @@ class PortfolioService:
 
     async def get_sector_analysis(self, db: AsyncSession, user_id: int, session_type: str = 'LIVE') -> Dict[str, Any]:
         holdings = await self.get_holdings(db, user_id, session_type)
+        positions = await self.get_positions(db, user_id, session_type)
 
+        combined_assets = []
         for h in holdings:
-            h["sector"] = get_sector(h["symbol"])
+            combined_assets.append({
+                "symbol": h["symbol"],
+                "current_value": h["current_value"],
+                "sector": get_sector(h["symbol"])
+            })
+        for p in positions:
+            combined_assets.append({
+                "symbol": p["symbol"],
+                "current_value": p["current_value"],
+                "sector": p["sector"]
+            })
 
-        allocation = get_sector_allocation(holdings)
-        risks = get_concentration_risks(allocation, holdings)
+        allocation = get_sector_allocation(combined_assets)
+        risks = get_concentration_risks(allocation, combined_assets)
 
         num_sectors = len(allocation)
         max_sector_pct = max((s["percent"] for s in allocation), default=0)
@@ -218,6 +243,25 @@ class PortfolioService:
             "total_sectors": num_sectors,
             "risk_level": "Low" if diversity_score > 70 else ("Medium" if diversity_score > 40 else "High"),
         }
+    
+    async def save_portfolio_snapshot(self, db: AsyncSession, user_id: int, session_type: str = 'LIVE'):
+        """Capture a snapshot of the user's total equity."""
+        try:
+            summary = await self.get_summary(db, user_id, session_type)
+            snapshot = PortfolioSnapshot(
+                user_id=user_id,
+                total_balance=summary["total_value"],
+                equity_value=summary["current_value"],
+                cash_balance=summary["cash_balance"],
+                session_type=session_type,
+                timestamp=datetime.utcnow()
+            )
+            db.add(snapshot)
+            await db.commit()
+            logger.info(f"✅ Portfolio snapshot saved for user {user_id}")
+        except Exception as e:
+            logger.error(f"❌ Failed to save portfolio snapshot: {e}")
+            await db.rollback()
 
     async def get_trade_research(self, db: AsyncSession, user_id: int, session_type: str = 'LIVE') -> Dict[str, Any]:
         result = await db.execute(select(TradeLog).filter(

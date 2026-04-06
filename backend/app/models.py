@@ -11,7 +11,7 @@ class TradeLog(Base):
     """
     __tablename__ = "trade_logs"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     entry_time = Column(DateTime, primary_key=True, default=datetime.utcnow)
 
     symbol = Column(String, index=True)
@@ -441,7 +441,7 @@ class Notification(Base):
     """
     __tablename__ = "notifications"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     created_at = Column(DateTime, primary_key=True, default=datetime.utcnow)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True) # NULL means broadcast to all
     
@@ -459,7 +459,7 @@ class UserEvent(Base):
     """
     __tablename__ = "user_events"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     created_at = Column(DateTime, primary_key=True, default=datetime.utcnow)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True)
     event_name = Column(String, index=True)
@@ -534,7 +534,7 @@ class MarketCandle(Base):
     """
     __tablename__ = "market_candles"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     timestamp = Column(DateTime, primary_key=True, index=True)
     symbol = Column(String, index=True)
     open = Column(Float)
@@ -550,7 +550,7 @@ class PortfolioSnapshot(Base):
     Partitioned monthly by timestamp.
     """
     __tablename__ = "portfolio_snapshots"
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     timestamp = Column(DateTime, primary_key=True, default=datetime.utcnow)
     user_id = Column(Integer, index=True)
     total_balance = Column(Float)
@@ -564,7 +564,7 @@ class SystemAlertLog(Base):
     Partitioned monthly by timestamp.
     """
     __tablename__ = "system_alerts_logs"
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     timestamp = Column(DateTime, primary_key=True, default=datetime.utcnow)
     user_id = Column(Integer, index=True)
     symbol = Column(String, index=True)

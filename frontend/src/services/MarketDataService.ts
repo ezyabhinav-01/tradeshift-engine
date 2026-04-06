@@ -12,14 +12,14 @@ export class MarketDataService {
     private reconnectAttempts = 0;
     private maxReconnectAttempts = 3;
     private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    private lastConnectArgs: { speed: number; symbols?: string[]; symbol?: string; date?: string; startTime?: string } | null = null;
+    private lastConnectArgs: { speed: number; userId?: number; symbols?: string[]; symbol?: string; date?: string; startTime?: string } | null = null;
 
 
     constructor(url?: string) {
         if (url) this.url = url;
     }
 
-    connect(speed: number, symbols?: string[], symbol?: string, date?: string, startTime?: string) {
+    connect(speed: number, userId?: number, symbols?: string[], symbol?: string, date?: string, startTime?: string) {
 
         // Clear any pending reconnect
         if (this.reconnectTimer) {
@@ -34,17 +34,18 @@ export class MarketDataService {
         }
 
         // Save args for potential reconnect
-        this.lastConnectArgs = { speed, symbols, symbol, date, startTime };
+        this.lastConnectArgs = { speed, userId, symbols, symbol, date, startTime };
 
 
         this.ws = new WebSocket(this.url);
 
         this.ws.onopen = () => {
-            console.log('🟢 Connected to Market Data Service');
+            console.log(`🟢 Connected to Market Data Service (User: ${userId || 'Guest'})`);
             this.reconnectAttempts = 0; // Reset on successful connect
             this.sendMessage({
                 command: 'START',
                 speed,
+                user_id: userId,
                 ...(symbols ? { symbols } : {}),
                 ...(symbol ? { symbol } : {}),
                 ...(date ? { date } : {}),
@@ -78,8 +79,8 @@ export class MarketDataService {
                 console.log(`🔄 Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
                 this.reconnectTimer = setTimeout(() => {
                     if (this.lastConnectArgs) {
-                        const { speed, symbols, symbol, date, startTime } = this.lastConnectArgs;
-                        this.connect(speed, symbols, symbol, date, startTime);
+                        const { speed, userId, symbols, symbol, date, startTime } = this.lastConnectArgs;
+                        this.connect(speed, userId, symbols, symbol, date, startTime);
                     }
                 }, delay);
 

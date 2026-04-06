@@ -12,6 +12,8 @@ from app.services.email_service import send_trade_confirmation_email, send_trade
 import jwt
 import logging
 from datetime import datetime
+from app.live_market import live_market_service
+from app.portfolio_service import portfolio_service
 
 logger = logging.getLogger(__name__)
 
@@ -19,9 +21,37 @@ router = APIRouter(prefix="/api/trade", tags=["trading"])
 
 from app.dependencies import get_current_user
 
-async def _get_user_id(request: Request, db: AsyncSession) -> int:
-    """Helper to extract user_id from the authenticated user."""
-    user = await get_current_user(request, db)
+async def get_optional_user(request: Request, db: AsyncSession = Depends(get_db)):
+    """Try to get current user from cookie/header, return None if unauthenticated."""
+    token = request.cookies.get("access_token")
+    if not token:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email = payload.get("sub")
+        if not email:
+            return None
+        result = await db.execute(select(User).filter(User.email == email))
+        user = result.scalars().first()
+        return user
+    except Exception:
+        return None
+
+
+async def _get_user_id(request: Request, db: AsyncSession, session_type_arg: str = None) -> int:
+    """Helper to extract user_id. Allows fallback to user 1 for REPLAY mode."""
+    # Check session_type from query, headers, or passed argument
+    session_type = session_type_arg or request.query_params.get("session_type") or request.headers.get("X-Session-Type")
+    
+    user = await get_optional_user(request, db)
+    if not user:
+        if session_type == 'REPLAY':
+            return 1  # Default simulation user
+        raise HTTPException(status_code=401, detail="Authentication required")
     return user.id
 
 @router.post("/", response_model=TradeResponse)
@@ -34,7 +64,7 @@ async def execute_trade(
     """
     Execute a new trade (Async).
     """
-    user_id = await _get_user_id(request, db)
+    user_id = await _get_user_id(request, db, trade_request.session_type)
     try:
         result = await TradeEngine.execute_trade(trade_request, user_id, db)
         
@@ -66,11 +96,15 @@ async def execute_trade(
                 user.demat_id,
             )
         
+        notification_price = result.get('entry_price')
+        if notification_price is None or notification_price == 0:
+            notification_price = "market price"
+            
         # Add Notification
         notification = Notification(
             user_id=user_id,
             title="Order Executed",
-            message=f"Filled {trade_request.direction} for {trade_request.quantity}x {trade_request.symbol} at {result.get('entry_price', 'market price')}.",
+            content=f"Filled {trade_request.direction} for {trade_request.quantity}x {trade_request.symbol} at {notification_price}.",
             type="success"
         )
         db.add(notification)
@@ -92,18 +126,23 @@ async def execute_trade(
         )
         
         await db.commit()
+        
+        # 🔥 Snapshot: Update equity curve after trade execution
+        background_tasks.add_task(portfolio_service.save_portfolio_snapshot, db, user_id, session_type)
             
         return TradeResponse(**result)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Error executing trade: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        import traceback
+        error_details = traceback.format_exc()
+        logger.error(f"Error executing trade: {error_details}")
+        raise HTTPException(status_code=500, detail=error_details)
 
 @router.get("/orders")
 async def get_active_orders(request: Request, db: AsyncSession = Depends(get_db)):
     """Return all active orders (Async)."""
-    user_id = await _get_user_id(request, db)
+    user_id = await _get_user_id(request, db, request.query_params.get("session_type"))
     result = await db.execute(
         select(TradeLog).filter(
             TradeLog.user_id == user_id,
@@ -123,7 +162,7 @@ async def modify_order(
     """
     Modify a pending order (Async).
     """
-    user_id = await _get_user_id(request, db)
+    user_id = await _get_user_id(request, db, modify_request.session_type)
     updates = modify_request.model_dump(exclude_unset=True)
     
     order = await oms_service.modify_order(db, order_id, user_id, updates)
@@ -166,7 +205,7 @@ async def cancel_order(
     """
     Cancel a pending order (Async).
     """
-    user_id = await _get_user_id(request, db)
+    user_id = await _get_user_id(request, db, request.query_params.get("session_type"))
     success = await oms_service.cancel_order(db, order_id, user_id)
     
     if not success:
@@ -196,12 +235,13 @@ async def close_trade(
     """
     Close an open trade (Async).
     """
-    user_id = await _get_user_id(request, db)
+    user_id = await _get_user_id(request, db, exit_request.session_type)
     
-    from app.services.live_market import live_market_service
-    current_price = live_market_service.get_last_price()
-    
-    exit_price = exit_request.limit_price if exit_request.exit_type == "LIMIT" else current_price
+    # Priority for simulation consistency: exit_price from request
+
+    # Priority for simulation consistency: exit_price from request
+    current_market_price = live_market_service.get_last_price()
+    exit_price = exit_request.exit_price or (exit_request.limit_price if exit_request.exit_type == "LIMIT" else current_market_price)
 
     trade = await oms_service.close_trade(db, trade_id, user_id, exit_price, exit_request.exit_type)
     if not trade:
@@ -272,7 +312,13 @@ async def close_all_trades(
     """
     Close all open trades (Async).
     """
-    user_id = await _get_user_id(request, db)
+    try:
+        body = await request.json()
+    except:
+        body = {}
+    
+    exit_price_req = body.get("exit_price")
+    user_id = await _get_user_id(request, db, body.get("session_type"))
     
     result = await db.execute(
         select(distinct(TradeLog.symbol)).filter(
@@ -285,10 +331,10 @@ async def close_all_trades(
     if not symbols:
         return {"message": "No open positions to close", "closed_ids": []}
 
-    from app.services.live_market import live_market_service
     price_mapping = {}
     for sym in symbols:
-        price_mapping[sym] = live_market_service.get_last_price(sym)
+        # Priority for simulation consistency: exit_price from request body
+        price_mapping[sym] = exit_price_req or live_market_service.get_last_price(sym)
 
     closed_trades = await oms_service.close_all_trades(db, user_id, price_mapping)
     
@@ -328,7 +374,7 @@ async def close_all_trades(
         notification = Notification(
             user_id=user_id,
             title="Position Closed",
-            message=f"Closed {trade.direction} for {trade.quantity or 1}x {trade.symbol} at {trade.exit_price or price_mapping.get(trade.symbol)}.",
+            content=f"Closed {trade.direction} for {trade.quantity or 1}x {trade.symbol} at {trade.exit_price or price_mapping.get(trade.symbol)}.",
             type="system"
         )
         db.add(notification)
@@ -348,6 +394,10 @@ async def close_all_trades(
         )
     
     await db.commit()
+
+    # 🔥 Snapshot: Update equity curve after closing all trades
+    session_type_val = body.get("session_type", "LIVE")
+    background_tasks.add_task(portfolio_service.save_portfolio_snapshot, db, user_id, session_type_val)
     
     return {
         "message": f"Successfully closed {len(closed_ids)} positions",
@@ -364,7 +414,7 @@ async def trigger_price_alert(
     """
     Trigger a price alert email (Async).
     """
-    user_id = await _get_user_id(request, db)
+    user_id = await _get_user_id(request, db, request.query_params.get("session_type"))
     
     # We allow fallback to 999 for local dev but we can't email without a real user
     result = await db.execute(select(User).filter(User.id == user_id))
@@ -392,7 +442,7 @@ async def trigger_price_alert(
     notification = Notification(
         user_id=user_id,
         title="Price Alert Triggered",
-        message=f"{alert_request.symbol} alert triggered at {alert_request.current_price}",
+        content=f"{alert_request.symbol} alert triggered at {alert_request.current_price}",
         type="alert"
     )
     db.add(notification)

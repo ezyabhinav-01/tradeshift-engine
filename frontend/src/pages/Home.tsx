@@ -159,13 +159,13 @@ const Home = () => {
     currentPrice, currentCandle, isPlaying, selectedSymbol,
     togglePlay, isReplayActive, toggleReplay,
     selectedDate, availableDates, setDate,
-    speed, setSpeed, trades, modifyOrder,
+    speed, setSpeed, trades, modifyOrder, closePosition, closeAllPositions,
     currentTime, simulatedIndices, replayTicks
   } as GameData), [
     currentPrice, currentCandle, isPlaying, selectedSymbol,
     togglePlay, isReplayActive, toggleReplay,
     selectedDate, availableDates, setDate,
-    speed, setSpeed, trades, modifyOrder,
+    speed, setSpeed, trades, modifyOrder, closePosition, closeAllPositions,
     currentTime, simulatedIndices, replayTicks
   ]);
 
@@ -192,9 +192,9 @@ const Home = () => {
     onToggleIndicatorsCb, onToggleAlertsCb, handleIndicatorStateChange,
   ]);
 
-  const handleExecuteOrder = (orderData: any) => {
+  const handleExecuteOrder = (orderData: any, skipConfirm: boolean = false) => {
     if (!checkAccess()) return;
-    if (userSettings?.one_click_trading_enabled) {
+    if (userSettings?.one_click_trading_enabled || skipConfirm) {
       executeOrder(orderData);
     } else {
       setPendingOrder(orderData);
@@ -303,7 +303,7 @@ const Home = () => {
       {selectedPrice !== null && (
         <TradePanel
           price={selectedPrice}
-          onExecute={handleExecuteOrder}
+          onExecute={(data) => handleExecuteOrder(data, true)}
           onClose={() => setSelectedPrice(null)}
         />
       )}
@@ -495,8 +495,8 @@ const Home = () => {
               key={tf}
               onClick={() => setActiveTimeframe(tf)}
               className={`px-2 py-0.5 rounded cursor-pointer transition-all duration-200 font-semibold text-[11px] uppercase tracking-wider ${activeTimeframe === tf
-                  ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40 shadow-[0_0_8px_rgba(59,130,246,0.15)]'
-                  : 'hover:text-blue-400 hover:bg-white/5 text-tv-text-secondary'
+                ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40 shadow-[0_0_8px_rgba(59,130,246,0.15)]'
+                : 'hover:text-blue-400 hover:bg-white/5 text-tv-text-secondary'
                 }`}
             >
               {tf}

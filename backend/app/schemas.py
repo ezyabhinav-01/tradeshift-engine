@@ -261,7 +261,7 @@ class TradeResponse(BaseModel):
     symbol: str
     direction: str
     quantity: int
-    entry_price: float
+    entry_price: Optional[float] = None
     order_type: str
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
@@ -277,7 +277,7 @@ class OrderUpdatePayload(BaseModel):
     status: str
     symbol: str
     direction: str
-    entry_price: float
+    entry_price: Optional[float] = None
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
     quantity: int
@@ -288,6 +288,8 @@ class TradeExitRequest(BaseModel):
     """Request body for POST /api/trade/close/{trade_id}"""
     exit_type: Literal["MARKET", "LIMIT"] = "MARKET"
     limit_price: Optional[float] = None
+    exit_price: Optional[float] = None # NEW: for simulation market exits
+    simulated_time: Optional[datetime] = None # NEW: for simulation consistency
 
 
 # ─── User Settings Schemas ──────────────────────────────────────

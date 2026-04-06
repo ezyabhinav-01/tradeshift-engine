@@ -207,17 +207,21 @@ async def analyze_stock_fundamentals(symbol: str, fund_data: dict) -> str:
 
     try:
         if gemini_pool.keys:
-            response = await gemini_pool.generate_content(prompt, is_async=True)
-            return response.text.strip()
-        else:
-            messages = [
-                {"role": "system", "content": "You are a Senior Portfolio Manager and world-class financial educator (FinGPT)."},
-                {"role": "user", "content": prompt}
-            ]
-            return await _call_hf_inference(messages)
+            try:
+                response = await gemini_pool.generate_content(prompt, is_async=True)
+                return response.text.strip()
+            except Exception as e:
+                print(f"Gemini unavailable: {e}. Falling back to HuggingFace...")
+                pass # Fall through to HF
+                
+        messages = [
+            {"role": "system", "content": "You are a Senior Portfolio Manager and world-class financial educator (FinGPT)."},
+            {"role": "user", "content": prompt}
+        ]
+        return await _call_hf_inference(messages)
     except Exception as e:
         print(f"❌ Stock Analysis Error: {e}")
-        return f"Error performing stock analysis: {str(e)}"
+        return f"FIN_GPT_ERROR: {str(e)}\nPlease check your GEMINI_API_KEY or HUGGINGFACE_API_KEY configuration."
 
 async def explain_in_layman(symbol: str, complex_info: str) -> str:
     """
@@ -281,14 +285,18 @@ async def chat_about_stock(symbol: str, fund_data: dict, question: str, chat_his
 
     try:
         if gemini_pool.keys:
-            response = await gemini_pool.generate_content(prompt, is_async=True)
-            return response.text.strip()
-        else:
-            messages = [{"role": "system", "content": "You are a financial educator."}]
-            for msg in chat_history[-6:]:
-                messages.append({"role": "user" if msg["role"] == "user" else "assistant", "content": msg["content"]})
-            messages.append({"role": "user", "content": prompt})
-            return await _call_hf_inference(messages)
+            try:
+                response = await gemini_pool.generate_content(prompt, is_async=True)
+                return response.text.strip()
+            except Exception as e:
+                print(f"Gemini unavailable: {e}. Falling back to HuggingFace...")
+                pass
+                
+        messages = [{"role": "system", "content": "You are a financial educator."}]
+        for msg in chat_history[-6:]:
+            messages.append({"role": "user" if msg["role"] == "user" else "assistant", "content": msg["content"]})
+        messages.append({"role": "user", "content": prompt})
+        return await _call_hf_inference(messages)
     except Exception as e:
         print(f"❌ Equity Chat Error: {e}")
         return f"Sorry, I couldn't generate an answer right now. Error: {str(e)}"

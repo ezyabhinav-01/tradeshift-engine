@@ -86,7 +86,24 @@ SECTOR_COLORS: Dict[str, str] = {
 
 def get_sector(symbol: str) -> str:
     """Get the sector for a given NSE symbol."""
-    return SECTOR_MAP.get(symbol, "Other")
+    if not symbol:
+        return "Other"
+    
+    # Try exact match
+    if symbol in SECTOR_MAP:
+        return SECTOR_MAP[symbol]
+    
+    # Try without suffix
+    clean_sym = symbol.replace(".NS", "")
+    if clean_sym in SECTOR_MAP:
+        return SECTOR_MAP[clean_sym]
+    
+    # Try adding suffix
+    suffixed_sym = f"{clean_sym}.NS"
+    if suffixed_sym in SECTOR_MAP:
+        return SECTOR_MAP[suffixed_sym]
+        
+    return "Other"
 
 
 def get_sector_allocation(holdings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

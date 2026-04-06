@@ -41,12 +41,18 @@ class TradeEngine:
         order_type = request.order_type.value
         is_market = order_type == "MARKET"
 
-        # Determination of entry time - use simulated time if provided
-        entry_time = request.simulated_time or datetime.utcnow()
+        # Determination of entry time - use simulated time if provided and strip tzinfo
+        entry_time = request.simulated_time.replace(tzinfo=None) if request.simulated_time else datetime.utcnow()
 
-        # Determine status and effective prices
+        # Determine status and effective prices - MARKET orders are OPEN immediately
         status = "OPEN" if is_market else "PENDING"
         entry_price = request.price
+        
+        # If MARKET order and price is missing/0, try to get from live market service
+        if is_market and (not entry_price or entry_price == 0):
+            from app.live_market import live_market_service
+            entry_price = live_market_service.get_last_price(request.symbol)
+            logger.info(f"Fallbacked to market price for {request.symbol}: {entry_price}")
 
         # For MARKET orders, ignore limit_price/stop_price
         limit_price = None if is_market else request.limit_price

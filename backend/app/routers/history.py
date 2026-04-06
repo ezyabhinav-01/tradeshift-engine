@@ -20,9 +20,34 @@ router = APIRouter(prefix="/api/history", tags=["history"])
 
 from app.dependencies import get_current_user
 
-async def _get_user_id(request: Request, db: AsyncSession) -> int:
-    """Helper to extract user_id from the authenticated user."""
-    user = await get_current_user(request, db)
+async def get_optional_user(request: Request, db: AsyncSession = Depends(get_db)):
+    """Try to get current user from cookie/header, return None if unauthenticated."""
+    token = request.cookies.get("access_token")
+    if not token:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email = payload.get("sub")
+        if not email:
+            return None
+        result = await db.execute(select(User).filter(User.email == email))
+        user = result.scalars().first()
+        return user
+    except Exception:
+        return None
+
+
+async def _get_user_id(request: Request, db: AsyncSession, session_type: str = 'LIVE') -> int:
+    """Helper to extract user_id. Allows fallback to user 1 for REPLAY mode."""
+    user = await get_optional_user(request, db)
+    if not user:
+        if session_type == 'REPLAY':
+            return 1  # Default simulation user
+        raise HTTPException(status_code=401, detail="Authentication required")
     return user.id
 
 
@@ -74,7 +99,7 @@ async def get_trade_history(
 ):
     """Paginated, filterable trade history."""
     try:
-        user_id = await _get_user_id(request, db)
+        user_id = await _get_user_id(request, db, session_type)
         
         stmt = select(TradeLog).filter(
             TradeLog.user_id == user_id,
@@ -154,7 +179,7 @@ async def export_trades_csv(
 ):
     """Export filtered trades as CSV download."""
     try:
-        user_id = await _get_user_id(request, db)
+        user_id = await _get_user_id(request, db, session_type)
         stmt = select(TradeLog).filter(
             TradeLog.user_id == user_id,
             TradeLog.exit_price.isnot(None),
@@ -203,7 +228,7 @@ async def get_monthly_summary(
 ):
     """Monthly aggregated trade stats."""
     try:
-        user_id = await _get_user_id(request, db)
+        user_id = await _get_user_id(request, db, session_type)
         stmt = select(TradeLog).filter(
             TradeLog.user_id == user_id,
             TradeLog.session_type == session_type,

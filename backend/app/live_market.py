@@ -101,6 +101,24 @@ class ShoonyaLiveService:
         # Trigger reconnection if not intentional
         self._ensure_reconnect_loop()
 
+    def update_symbol_price(self, symbol: str, price: float, timestamp: Optional[datetime.datetime] = None):
+        """
+        Manually update the cached price for a symbol. 
+        Used primarily by the simulation engine to ensure Portfolio/Trade calculations 
+        stay in sync with the replay time.
+        """
+        if not symbol:
+            return
+        
+        # We store it in the same format as on_feed would
+        self.latest_data[symbol] = {
+            "symbol": symbol,
+            "name": symbol,
+            "price": float(price),
+            "timestamp": timestamp or datetime.datetime.now(),
+            "source": "REPLAY"
+        }
+
     def on_error(self, err):
         # Some versions might pass (ws, err), but NorenApi usually wraps it
         logger.error(f"⚠️ Shoonya WebSocket Error: {err}")
@@ -215,3 +233,11 @@ class ShoonyaLiveService:
 
 
 shoonya_live = ShoonyaLiveService()
+
+class LiveMarketWrapper:
+    def get_last_price(self, symbol: str = "NIFTY 50") -> float:
+        """Helper to get the latest price for a symbol from Shoonya feeds."""
+        data = shoonya_live.latest_data.get(symbol, {})
+        return data.get("price", 0.0)
+
+live_market_service = LiveMarketWrapper()

@@ -45,20 +45,20 @@ import app.models
 try:
     engine_sync = connect_to_database_sync()
     Base.metadata.create_all(bind=engine_sync)
-    print("✅ Database Tables Created/Verified")
+    logger.info("✅ Database Tables Created/Verified")
     
     # 🔎 Double-check the tables in metadata
     logger.info(f"Registered Tables: {Base.metadata.tables.keys()}")
 except Exception as e:
-    print(f"❌ Database Initialization Failed: {e}")
+    logger.error(f"❌ Database Initialization Failed: {e}")
 
 
 # --- 1. ROBUST IMPORT FOR SIMULATION ---
 try:
     from app.simulation import TickSynthesizer
-    print("✅ Brownian Bridge Engine Loaded")
+    logger.info("✅ Brownian Bridge Engine Loaded")
 except ImportError:
-    print("⚠️ Warning: simulation.py not found. Using Mock Fallback.")
+    logger.warning("⚠️ Warning: simulation.py not found. Using Mock Fallback.")
     class TickSynthesizer:
         def generate_ticks(self, o, h, l, c, num_ticks=60):
             return [o] * num_ticks
@@ -152,7 +152,7 @@ async def seed_community_channels():
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     error_msg = f"🔥 UNHANDLED EXCEPTION: {str(exc)}\n{traceback.format_exc()}"
-    print(error_msg)
+    logger.error(error_msg)
     return JSONResponse(
         status_code=500,
         content={"message": "Internal Server Error", "detail": str(exc)},
@@ -327,19 +327,26 @@ def load_parquet_for_symbol(symbol: str, target_date: str = None, allow_fallback
             
         bucket_name, object_name = row
         
-        # 2. Fetch from MinIO
-        if not minio_client:
-            raise Exception("MinIO client not initialized")
+        # 2. Fetch from MinIO (or Local Fallback)
+        if bucket_name == "local":
+            logger.info(f"📁 Fetching from Local File: {object_name}")
+            try:
+                df = pd.read_parquet(object_name)
+            except Exception as e:
+                raise Exception(f"Local Parquet load failed: {e}")
+        else:
+            if not minio_client:
+                raise Exception("MinIO client not initialized and no local fallback found.")
+                
+            logger.info(f"📦 Fetching from MinIO: {bucket_name}/{object_name}")
+            response = minio_client.get_object(bucket_name, object_name)
             
-        print(f"📦 Fetching from MinIO: {bucket_name}/{object_name}")
-        response = minio_client.get_object(bucket_name, object_name)
-        
-        try:
-            # Load the Parquet file from memory
-            df = pd.read_parquet(io.BytesIO(response.data))
-        finally:
-            response.close()
-            response.release_conn()
+            try:
+                # Load the Parquet file from memory
+                df = pd.read_parquet(io.BytesIO(response.data))
+            finally:
+                response.close()
+                response.release_conn()
             
         # 3. Clean and map columns
         df.columns = df.columns.str.lower()
@@ -371,7 +378,7 @@ def load_parquet_for_symbol(symbol: str, target_date: str = None, allow_fallback
         if 'datetime' in df.columns:
             df = df.sort_values('datetime')
             
-        print(f"✅ Loaded {len(df)} rows from MinIO for {symbol}.")
+        logger.info(f"✅ Loaded {len(df)} rows from MinIO for {symbol}.")
         return df, object_name, symbol
 
     except Exception as e:
@@ -421,7 +428,7 @@ async def search_instruments(query: str):
         return {"results": instruments}
         
     except Exception as e:
-        print(f"❌ Search error: {e}")
+        logger.error(f"❌ Search error: {e}")
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 @app.get("/api/available-symbols")
@@ -460,9 +467,6 @@ async def get_available_symbols():
     except Exception as e:
         logger.error(f"❌ Error getting available symbols from Supabase: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get symbols: {str(e)}")
-    except Exception as e:
-        print(f"❌ Error getting available symbols: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get symbols: {str(e)}")
 
 @app.get("/api/available-dates/{symbol}")
 async def get_available_dates(symbol: str):
@@ -486,14 +490,11 @@ async def get_available_dates(symbol: str):
             rows = result.fetchall()
             
         dates = [row[0] for row in rows]
-        print(f"📅 Found {len(dates)} dates for {base_symbol} in metadata.")
+        logger.info(f"📅 Found {len(dates)} dates for {base_symbol} in metadata.")
         
         return {"symbol": symbol, "dates": dates}
     except Exception as e:
         logger.error(f"❌ Error getting available dates for {symbol}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get dates: {str(e)}")
-    except Exception as e:
-        print(f"❌ Error getting available dates for {symbol}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get dates: {str(e)}")
 
 
@@ -514,7 +515,7 @@ async def get_historical_candles(
         try:
             cached_data = redis_client.get(cache_key)
             if cached_data:
-                print(f"⚡ Redis Cache Hit: {cache_key}")
+                logger.info(f"⚡ Redis Cache Hit: {cache_key}")
                 return json.loads(cached_data)
         except Exception as e:
             logger.warning(f"⚠️ Redis read error: {e}")
@@ -624,7 +625,7 @@ async def get_historical_candles(
         if redis_client:
             try:
                 redis_client.setex(cache_key, 86400, json.dumps(response_data))
-                print(f"✅ Redis Cache Set: {cache_key}")
+                logger.info(f"✅ Redis Cache Set: {cache_key}")
             except Exception as e:
                 logger.warning(f"⚠️ Redis write error: {e}")
 
@@ -637,7 +638,16 @@ async def get_historical_candles(
 # --- 7. STOCK RESEARCH HUB ENDPOINTS ---
 from app.fundamental_service import FundamentalService
 from app.screener_service import ScreenerService
-from app.nlp_engine import analyze_stock_fundamentals, explain_in_layman, chat_about_stock
+from app.nlp_engine import (
+    analyze_stock_fundamentals, 
+    explain_in_layman, 
+    chat_about_stock,
+    analyze_news_impact,
+    generate_news_explainer,
+    ask_news_question
+)
+from app.news_service import fetch_news_for_date
+from app.trade_engine import TradeEngine
 from pydantic import BaseModel
 
 class StockChatRequest(BaseModel):
@@ -821,7 +831,7 @@ async def orders_websocket(websocket: WebSocket):
 @app.websocket("/ws/live_indices")
 async def live_indices_websocket(websocket: WebSocket):
     await websocket.accept()
-    print("🟢 Live Indices Client Connected")
+    logger.info("🟢 Live Indices Client Connected")
     
     # Send latest cached data immediately
     if shoonya_live.latest_data:
@@ -836,7 +846,7 @@ async def live_indices_websocket(websocket: WebSocket):
             # Send the entire dictionary so the frontend gets all indices at once
             await websocket.send_json(shoonya_live.latest_data)
         except Exception as e:
-            print(f"🔴 Live Indices Send Error: {e}")
+            logger.error(f"🔴 Live Indices Send Error: {e}")
             raise e # Trigger disconnect handling
 
     shoonya_live.add_callback(push_update)
@@ -856,7 +866,7 @@ async def live_indices_websocket(websocket: WebSocket):
                         await websocket.send_json(payload)
                 await asyncio.sleep(15) # Refresh every 15 seconds in fallback mode
             except Exception as e:
-                print(f"⚠️ Live Indices Fallback Error: {e}")
+                logger.warning(f"⚠️ Live Indices Fallback Error: {e}")
                 break
 
     fallback_task = asyncio.create_task(fallback_loop())
@@ -866,9 +876,9 @@ async def live_indices_websocket(websocket: WebSocket):
             # Just keep connection alive, optionally handle basic ping/pong
             msg = await websocket.receive_text()
     except WebSocketDisconnect:
-        print("🔴 Live Indices Client Disconnected")
+        logger.info("🔴 Live Indices Client Disconnected")
     except Exception as e:
-        print(f"🔴 Live Indices Error: {e}")
+        logger.error(f"🔴 Live Indices Error: {e}")
     finally:
         shoonya_live.remove_callback(push_update)
         fallback_task.cancel()
@@ -878,7 +888,7 @@ async def live_indices_websocket(websocket: WebSocket):
 @app.websocket("/ws/ticker")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    print("🟢 Client Connected", flush=True)
+    logger.info("🟢 Client Connected")
 
     # State
     is_running       = False
@@ -909,7 +919,14 @@ async def websocket_endpoint(websocket: WebSocket):
                 command = message.get("command")
 
                 if command == "START":
+                    # Register this WebSocket with the global order_manager to receive trade fill notifications
                     current_user_id = message.get("user_id") or 1
+                    room = f"user-{current_user_id}"
+                    if room not in order_manager.active_connections:
+                        order_manager.active_connections[room] = []
+                    order_manager.active_connections[room].append(websocket)
+                    logger.info(f"🔗 WebSocket Registered to Room: {room} (Simulation Mode)")
+
                     symbols_req = message.get("symbols") or []
                     single_symbol = message.get("symbol")
                     if single_symbol and single_symbol not in symbols_req:
@@ -940,9 +957,9 @@ async def websocket_endpoint(websocket: WebSocket):
                             # Only use if it's on the target date
                             if req_ts.date() == pd.to_datetime(target_date).date():
                                 start_dt_limit = max(start_dt_limit, req_ts)
-                                print(f"📍 Resuming from (NAIVE): {start_dt_limit}")
+                                logger.info(f"📍 Resuming from (NAIVE): {start_dt_limit}")
                         except Exception as te:
-                            print(f"⚠️ StartTime Parse Error: {te}")
+                            logger.warning(f"⚠️ StartTime Parse Error: {te}")
 
 
                     # Load data for each requested symbol
@@ -985,9 +1002,9 @@ async def websocket_endpoint(websocket: WebSocket):
                             if not f_df.empty:
                                 main_iterators[symbol] = iter(f_df.to_dict(orient="records"))
                                 success_count += 1
-                                print(f"✅ Loaded {len(f_df)} candles for {symbol} starting from {start_dt_limit}")
+                                logger.info(f"✅ Loaded {len(f_df)} candles for {symbol} starting from {start_dt_limit}")
                         except Exception as e:
-                            print(f"⚠️ Failed to load {symbol}: {e}")
+                            logger.error(f"⚠️ Failed to load {symbol}: {e}")
 
                     if success_count == 0:
                         await websocket.send_json({"type": "ERROR", "message": f"No data found for any requested symbols on {target_date}"})
@@ -1052,10 +1069,10 @@ async def websocket_endpoint(websocket: WebSocket):
 
                                 
                                 if backfill_candles:
-                                    print(f"📚 Sending {len(backfill_candles)} backfill candles (including lookback) for {primary_symbol}")
+                                    logger.info(f"📚 Sending {len(backfill_candles)} backfill candles (including lookback) for {primary_symbol}")
                                     await websocket.send_json({"type": "BACKFILL", "data": {"symbol": primary_symbol, "candles": backfill_candles}})
                     except Exception as be:
-                        print(f"⚠️ Backfill error: {be}")
+                        logger.error(f"⚠️ Backfill error: {be}")
                     
                     # --- Load Benchmark Indices for Sync ---
                     indices_iterators = {}
@@ -1090,14 +1107,14 @@ async def websocket_endpoint(websocket: WebSocket):
                                 if not f_idx_df.empty:
                                     indices_iterators[idx_name] = iter(f_idx_df.to_dict(orient="records"))
                                     indices_opens[idx_name] = float(f_idx_df.iloc[0]['open'])
-                                    print(f"✅ Loaded {len(f_idx_df)} sync candles for {idx_name}")
+                                    logger.info(f"✅ Loaded {len(f_idx_df)} sync candles for {idx_name}")
                                 else:
-                                    print(f"⚠️ Index {idx_name} matched no time rows for {target_dt}")
+                                    logger.warning(f"⚠️ Index {idx_name} matched no time rows for {target_dt}")
                         except Exception as e:
-                            print(f"⚠️ Could not sync index {idx_name}: {e}")
+                            logger.error(f"⚠️ Could not sync index {idx_name}: {e}")
 
                     is_running = True
-                    print(f"▶️  Simulation Started | Symbols: {list(main_iterators.keys())} | Speed: {speed}x")
+                    logger.info(f"▶️  Simulation Started | Symbols: {list(main_iterators.keys())} | Speed: {speed}x")
 
                     # Fetch today's news for alignment with simulation ticks
                     try:
@@ -1108,9 +1125,9 @@ async def websocket_endpoint(websocket: WebSocket):
                             n["triggered"] = False
                              # Trust n["timestamp"] is already a naive datetime from news_service.py
                             active_news.append(n)
-                        print(f"✅ Simulation Ready: Prepared {len(active_news)} shifted news items for {target_date}")
+                        logger.info(f"✅ Simulation Ready: Prepared {len(active_news)} shifted news items for {target_date}")
                     except Exception as e:
-                        print(f"⚠️ Failed to prepare news for simulation on {target_date}: {e}")
+                        logger.error(f"⚠️ Failed to prepare news for simulation on {target_date}: {e}")
                         active_news = []
 
                 elif command == "BUY":
@@ -1127,7 +1144,13 @@ async def websocket_endpoint(websocket: WebSocket):
                     from app.database import get_session
                     db = await get_session()
                     try:
-                        await TradeEngine.execute_trade(request, current_user_id, db)
+                        result = await TradeEngine.execute_trade(request, current_user_id, db)
+                        # Emit WebSocket update to refresh UI
+                        res_trade = await db.execute(select(app.models.TradeLog).filter(app.models.TradeLog.id == result["trade_id"]))
+                        trade = res_trade.scalars().first()
+                        if trade:
+                            ws_payload = TradeEngine.build_order_update_payload(trade)
+                            await order_manager.emit_to_user(current_user_id, "order_update", ws_payload)
                     finally:
                         await db.close()
 
@@ -1146,13 +1169,19 @@ async def websocket_endpoint(websocket: WebSocket):
                     from app.database import get_session
                     db = await get_session()
                     try:
-                        await TradeEngine.execute_trade(request, current_user_id, db)
+                        result = await TradeEngine.execute_trade(request, current_user_id, db)
+                        # Emit WebSocket update to refresh UI
+                        res_trade = await db.execute(select(app.models.TradeLog).filter(app.models.TradeLog.id == result["trade_id"]))
+                        trade = res_trade.scalars().first()
+                        if trade:
+                            ws_payload = TradeEngine.build_order_update_payload(trade)
+                            await order_manager.emit_to_user(current_user_id, "order_update", ws_payload)
                     finally:
                         await db.close()
 
                 elif command == "STOP":
                     is_running = False
-                    print("⏹️ Simulation Stopped by client")
+                    logger.info("⏹️ Simulation Stopped by client")
 
                 elif command == "NEWS_QUESTION":
                     q_text = message.get("question")
@@ -1174,7 +1203,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 elif command == "SPEED":
                     speed = float(message.get("speed", 1.0))
-                    print(f"⏩ Speed dynamically updated to {speed}x")
+                    logger.info(f"⏩ Speed dynamically updated to {speed}x")
 
             except asyncio.TimeoutError:
                 pass  # No command — continue streaming
@@ -1193,7 +1222,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     del main_iterators[sym]
             
             if not main_iterators and not main_current_rows:
-                print("🏁 End of data for all symbols — stopping.")
+                logger.info("🏁 End of data for all symbols — stopping.")
                 await websocket.send_json({"type": "END", "message": "Data finished for all symbols"})
                 is_running = False
                 continue
@@ -1212,7 +1241,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 if hasattr(base_time, "tzinfo") and base_time.tzinfo is not None:
                     base_time = base_time.replace(tzinfo=None)
             except Exception as e:
-                print(f"❌ Ref row parse error: {e}")
+                logger.error(f"❌ Ref row parse error: {e}")
                 continue
 
             # Generate ticks for ALL main symbols
@@ -1227,7 +1256,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         num_ticks=60
                     )
                 except Exception as e:
-                    print(f"⚠️ Ticks Error ({sym}): {e}")
+                    logger.error(f"⚠️ Ticks Error ({sym}): {e}")
                     all_symbol_ticks[sym] = [float(row.get('close', 0))] * 60
 
             # Advance and generate ticks for indices
@@ -1243,7 +1272,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 except StopIteration:
                     del indices_iterators[idx_name]
                 except Exception as e:
-                    print(f"⚠️ Index Error ({idx_name}): {e}")
+                    logger.error(f"⚠️ Index Error ({idx_name}): {e}")
 
             # Stream each tick (second by second)
             try:
@@ -1388,6 +1417,11 @@ async def websocket_endpoint(websocket: WebSocket):
 
                                     }
                                 })
+                                
+                                # --- SYNC WITH PORTFOLIO/OMS ENGINE ---
+                                # This ensures /api/portfolio/positions sees the simulated price as the LTP
+                                shoonya_live.update_symbol_price(primary_symbol, interp_price, tick_time)
+                                
                                 # Update Global Ticker (simulatedIndices)
                                 interp_indices = {**indices_payload}
                                 interp_indices[primary_symbol] = {
@@ -1409,7 +1443,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             
                             if not n_item.get("triggered") and sub_tick_time >= n_timestamp:
                                 active_news[idx]["triggered"] = True
-                                print(f"📰 FLASHING NEWS: {n_item['title']} at simulated time {sub_tick_time.strftime('%H:%M:%S')}", flush=True)
+                                logger.info(f"📰 FLASHING NEWS: {n_item['title']} at simulated time {sub_tick_time.strftime('%H:%M:%S')}")
                                 
                                 # Ensure time_str matches the EXACT trigger time for visual sync
                                 display_time = sub_tick_time.strftime("%H:%M:%S")
@@ -1447,7 +1481,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                             "data": { "id": item_idx, "explainer": explainer_res }
                                         })
                                     except Exception as ex:
-                                        print(f"⚠️ Error in News AI: {ex}", flush=True)
+                                        logger.error(f"⚠️ Error in News AI: {ex}")
                                         
                                 asyncio.create_task(perform_analysis(n_item, idx, primary_symbol))
 
@@ -1483,7 +1517,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     break
 
             except Exception as e:
-                print(f"❌ CRITICAL error in ticker loop: {e}", flush=True)
+                logger.error(f"❌ CRITICAL error in ticker loop: {e}")
                 import traceback
                 traceback.print_exc()
                 await asyncio.sleep(1.0) # Prevent tight loop on error
@@ -1506,12 +1540,13 @@ async def websocket_endpoint(websocket: WebSocket):
                     })
                 except Exception: break
 
-    except WebSocketDisconnect:
-        print("🔴 Client Disconnected", flush=True)
-    except Exception as e:
-        print(f"⚠️ Unhandled WS Error: {e}", flush=True)
-        import traceback
-        traceback.print_exc()
+    finally:
+        # Cleanup: Unregister from order_manager and stop simulation
+        if 'current_user_id' in locals():
+            try:
+                order_manager.disconnect(websocket, current_user_id)
+            except Exception: pass
+        logger.info("🔴 Simulation Client Disconnected")
 
 
 if __name__ == "__main__":

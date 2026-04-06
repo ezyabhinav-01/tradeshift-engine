@@ -50,29 +50,20 @@ const TradePanel = ({ price, onExecute, onClose }: TradePanelProps) => {
   const [alertEnabled, setAlertEnabled] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
+  const [isReady, setIsReady] = useState(false);
 
   // Animate in
   useEffect(() => {
     requestAnimationFrame(() => setIsVisible(true));
+    const timer = setTimeout(() => setIsReady(true), 500);
+    return () => clearTimeout(timer);
   }, []);
 
   // Sync prices when target price changes
   useEffect(() => {
     setLimitPrice(price);
     setStopPrice(price);
-    
-    // Auto-suggest SL/TP (0.5% / 1% ranges)
-    const slOffset = price * 0.005;
-    const tpOffset = price * 0.01;
-    
-    if (direction === 'BUY') {
-      setStopLoss((price - slOffset).toFixed(2));
-      setTakeProfit((price + tpOffset).toFixed(2));
-    } else {
-      setStopLoss((price + slOffset).toFixed(2));
-      setTakeProfit((price - tpOffset).toFixed(2));
-    }
-  }, [price, direction]);
+  }, [price]);
 
   const validate = (): string | null => {
     if (qty <= 0) return "Quantity must be greater than zero";
@@ -146,10 +137,13 @@ const TradePanel = ({ price, onExecute, onClose }: TradePanelProps) => {
     <>
       <div 
         className={`fixed inset-0 z-40 bg-black/60 backdrop-blur-[2px] transition-opacity duration-300 ${isVisible ? 'opacity-100' : 'opacity-0'}`}
-        onClick={handleClose}
+        onClick={() => isReady && handleClose()}
       />
 
-      <div className={`fixed bottom-0 left-0 right-0 z-50 transform transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isVisible ? 'translate-y-0' : 'translate-y-full'}`}>
+      <div 
+        className={`fixed bottom-0 left-0 right-0 z-50 transform transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isVisible ? 'translate-y-0' : 'translate-y-full'}`}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="mx-auto max-w-3xl bg-[#0a0c10] border-t border-white/10 rounded-t-[2.5rem] shadow-[0_-20px_50px_-20px_rgba(0,0,0,0.8)] overflow-hidden">
           
           {/* Drag Handle */}
@@ -325,7 +319,7 @@ const TradePanel = ({ price, onExecute, onClose }: TradePanelProps) => {
                       <Info size={14} />
                       <span className="text-xs font-medium">Estimated Margin</span>
                     </div>
-                    <span className="text-sm font-mono font-black text-white">₹{((limitPrice * qty) / 5).toLocaleString()}</span>
+                    <span className="text-sm font-mono font-black text-white">₹{(((orderType === 'MARKET' ? price : limitPrice) * qty) / 5).toLocaleString()}</span>
                   </div>
                 </div>
 

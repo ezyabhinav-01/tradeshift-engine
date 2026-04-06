@@ -8,6 +8,7 @@ from app.models import TradeLog, User
 from app.database import get_session
 from app.websocket_manager import order_manager
 from app.trade_engine import TradeEngine
+from app.portfolio_service import portfolio_service
 
 logger = logging.getLogger(__name__)
 
@@ -55,21 +56,21 @@ class OrderManagementSystem:
         triggered = False
         
         # 1. Handle LIMIT Orders
-        if order.order_type == "LIMIT":
+        if order.order_type == "LIMIT" and order.limit_price is not None:
             if order.direction == "BUY" and current_price <= order.limit_price:
                 triggered = True
             elif order.direction == "SELL" and current_price >= order.limit_price:
                 triggered = True
 
         # 2. Handle STOP Orders
-        elif order.order_type == "STOP":
+        elif order.order_type == "STOP" and order.stop_price is not None:
             if order.direction == "BUY" and current_price >= order.stop_price:
                 triggered = True
             elif order.direction == "SELL" and current_price <= order.stop_price:
                 triggered = True
 
         # 3. Handle GTT / Conditionals
-        elif order.order_type == "GTT":
+        elif order.order_type == "GTT" and order.limit_price is not None:
              if order.direction == "BUY" and current_price <= order.limit_price:
                 triggered = True
              elif order.direction == "SELL" and current_price >= order.limit_price:
@@ -121,6 +122,8 @@ class OrderManagementSystem:
         
         if order.user_id:
             await order_manager.emit_to_user(order.user_id, "order_update", payload)
+            # 🔥 Snapshot: Update equity curve after triggered order fill
+            asyncio.create_task(portfolio_service.save_portfolio_snapshot(db, order.user_id, order.session_type))
 
     async def cancel_order(self, db: AsyncSession, order_id: int, user_id: int) -> bool:
         """Cancel a pending order (Async)."""
@@ -233,6 +236,10 @@ class OrderManagementSystem:
 
         await db.commit()
         await db.refresh(trade)
+        
+        # 🔥 Snapshot: Update equity curve after closing a trade
+        asyncio.create_task(portfolio_service.save_portfolio_snapshot(db, user_id, trade.session_type or "LIVE"))
+        
         return trade
 
     async def close_all_trades(self, db: AsyncSession, user_id: int, exit_price_mapping: dict[str, float], session_type: str = "LIVE", simulated_time: Optional[datetime] = None) -> list[TradeLog]:
@@ -282,6 +289,11 @@ class OrderManagementSystem:
         await db.commit()
         for t in closed_trades:
             await db.refresh(t)
+            
+        # 🔥 Snapshot: Update equity curve after closing all trades
+        if closed_trades:
+            asyncio.create_task(portfolio_service.save_portfolio_snapshot(db, user_id, session_type))
+            
         return closed_trades
 
 # Singleton instance

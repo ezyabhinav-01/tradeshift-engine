@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -38,10 +38,10 @@ export default function PortfolioPage() {
   const [sectors, setSectors] = useState<any>(null);
   const [research, setResearch] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const { sessionType } = useGame();
+  const { sessionType, closeAllPositions, currentPrice, balance: liveBalance, selectedSymbol, trades, replayTicks } = useGame();
   const { user } = useAuth();
   const { checkAccess } = useAccessControl();
-  const isGuest = !user;
+  const isGuest = !user && sessionType !== 'REPLAY';
 
   const fallback = {
     current_value: 0, total_invested: 0, total_pnl: 0,
@@ -86,26 +86,91 @@ export default function PortfolioPage() {
 
   useEffect(() => {
     fetchAll();
-  }, [sessionType]);
+  }, [sessionType, trades.length]); // Refresh on trades changes
 
-  const s = summary || fallback;
+  // ─── Live Data Augmentation ──────────────────────────────────
+  const liveSummary = useMemo(() => {
+    const s = summary || fallback;
+    if (isGuest) return s;
+
+    // Update cash balance from GameContext (synced with DB)
+    const updatedCash = liveBalance || s.cash_balance;
+
+    // Recalculate live current value for ALL positions using latest prices
+    let livePositionsCurrentValue = 0;
+    let livePositionsInvestedValue = 0;
+    
+    positions.forEach(p => {
+      const livePrice = (p.symbol === selectedSymbol && currentPrice > 0) 
+        ? currentPrice 
+        : (replayTicks[p.symbol]?.close || p.ltp);
+
+      livePositionsCurrentValue += p.quantity * livePrice;
+      livePositionsInvestedValue += p.quantity * p.entry_price;
+    });
+
+    // Holdings static value (re-fetched from API)
+    // Summary from API already includes holdings at fetch time.
+    // If we want to be truly live for holdings too, we'd need their live ticks.
+    // For now, we update the Positions portion which is the most volatile.
+
+    // Better approach: s.total_invested is fixed. s.current_value is static from fetch.
+    // We replace the static positions portion with our live calculation.
+    
+    const dynamicCurrentValue = (s.current_value - (positions.reduce((acc, p) => acc + (p.ltp * p.quantity), 0))) + livePositionsCurrentValue;
+    const dynamicPnL = dynamicCurrentValue - s.total_invested;
+    const dynamicPnLPct = s.total_invested > 0 ? (dynamicPnL / s.total_invested * 100).toFixed(2) : '0.00';
+    
+    return {
+      ...s,
+      cash_balance: updatedCash,
+      current_value: dynamicCurrentValue,
+      total_pnl: dynamicPnL,
+      pnl_percent: dynamicPnLPct,
+      is_positive: dynamicPnL >= 0,
+      total_value: dynamicCurrentValue + updatedCash
+    };
+  }, [summary, liveBalance, currentPrice, positions, replayTicks, selectedSymbol, isGuest]);
+
+  const livePositions = useMemo(() => {
+    return positions.map(p => {
+      const livePrice = (p.symbol === selectedSymbol && currentPrice > 0)
+        ? currentPrice
+        : (replayTicks[p.symbol]?.close || p.ltp);
+
+      const entryVal = p.quantity * p.entry_price;
+      const currentVal = p.quantity * livePrice;
+      const diff = currentVal - entryVal;
+      const pnl = (p.direction === 'BUY' ? 1 : -1) * diff;
+      
+      return {
+        ...p,
+        ltp: livePrice,
+        unrealized_pnl: pnl.toFixed(2),
+        pnl_percent: entryVal > 0 ? (pnl / entryVal * 100).toFixed(2) : '0.00',
+        is_positive: pnl >= 0
+      };
+    });
+  }, [positions, currentPrice, replayTicks, selectedSymbol]);
+
+  const s = liveSummary;
 
   return (
     <div className="p-4 md:p-8 w-full max-w-7xl mx-auto space-y-8 font-sans pb-20">
-      
+
       {/* ─── Header & Summary ─── */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-4">
         <div className="space-y-1">
           <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-3">
-             Portfolio <span className="text-sidebar-primary text-sm bg-sidebar-primary/10 px-2 py-0.5 rounded uppercase tracking-widest">{sessionType}</span>
+            Portfolio <span className="text-sidebar-primary text-sm bg-sidebar-primary/10 px-2 py-0.5 rounded uppercase tracking-widest">{sessionType}</span>
           </h2>
           <p className="text-muted-foreground text-sm">Real-time asset tracking and behavioral analytics.</p>
         </div>
-        <button 
+        <button
           onClick={() => {
             if (checkAccess()) fetchAll();
-          }} 
-          disabled={loading} 
+          }}
+          disabled={loading}
           className="p-2.5 rounded-full bg-sidebar-accent/50 hover:bg-sidebar-accent text-sidebar-primary transition-colors disabled:opacity-50"
           title={isGuest ? "Sign in to refresh live data" : "Refresh Portfolio"}
         >
@@ -134,11 +199,11 @@ export default function PortfolioPage() {
             <div className="flex justify-between items-end">
               <span className="text-xs text-gray-500 dark:text-muted-foreground">Total Profit/Loss</span>
               <div className={`flex flex-col items-end`}>
-                 <div className={`flex items-center gap-1 font-black font-mono text-xl ${s.is_positive ? 'text-green-500' : 'text-red-500'}`}>
-                    {s.is_positive ? <TrendingUp size={20} /> : <TrendingDown size={20} />}
-                    {s.is_positive ? '+' : ''}{s.total_pnl.toLocaleString('en-IN')}
-                 </div>
-                 <span className={`text-xs font-bold ${s.is_positive ? 'text-green-500/80' : 'text-red-500/80'}`}>{s.pnl_percent}% absolute</span>
+                <div className={`flex items-center gap-1 font-black font-mono text-xl ${s.is_positive ? 'text-green-500' : 'text-red-500'}`}>
+                  {s.is_positive ? <TrendingUp size={20} /> : <TrendingDown size={20} />}
+                  {s.is_positive ? '+' : ''}{s.total_pnl.toLocaleString('en-IN')}
+                </div>
+                <span className={`text-xs font-bold ${s.is_positive ? 'text-green-500/80' : 'text-red-500/80'}`}>{s.pnl_percent}% absolute</span>
               </div>
             </div>
           </div>
@@ -169,34 +234,34 @@ export default function PortfolioPage() {
 
         {/* Equity Curve Chart */}
         <div className="lg:col-span-2 border border-gray-200 dark:border-white/10 bg-white dark:bg-[#121212] rounded-md p-6 min-h-[300px]">
-           <div className="flex justify-between items-center mb-6">
-              <div className="flex items-center gap-2">
-                 <BarChart3 className="w-4 h-4 text-sidebar-primary" />
-                 <span className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">Equity Growth (30D)</span>
+          <div className="flex justify-between items-center mb-6">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="w-4 h-4 text-sidebar-primary" />
+              <span className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">Equity Growth (30D)</span>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <p className="text-[10px] text-gray-500 dark:text-muted-foreground uppercase font-black tracking-widest">XIRR (Annualized)</p>
+                <p className="text-lg font-black font-mono text-sidebar-primary">{s.xirr_percent}%</p>
               </div>
-              <div className="flex items-center gap-4">
-                 <div className="text-right">
-                    <p className="text-[10px] text-gray-500 dark:text-muted-foreground uppercase font-black tracking-widest">XIRR (Annualized)</p>
-                    <p className="text-lg font-black font-mono text-sidebar-primary">{s.xirr_percent}%</p>
-                 </div>
-              </div>
-           </div>
-           <div className="h-[200px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={s.equity_curve}>
-                  <defs>
-                    <linearGradient id="curveColor" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={s.is_positive ? '#22c55e' : '#f43f5e'} stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor={s.is_positive ? '#22c55e' : '#f43f5e'} stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="date" hide />
-                  <YAxis hide domain={['auto', 'auto']} />
-                  <Tooltip contentStyle={{ backgroundColor: '#171717', border: '1px solid #262626', borderRadius: '8px', color: '#fff' }} />
-                  <Area type="monotone" dataKey="value" stroke={s.is_positive ? '#22c55e' : '#f43f5e'} fillOpacity={1} fill="url(#curveColor)" strokeWidth={3} />
-                </AreaChart>
-              </ResponsiveContainer>
-           </div>
+            </div>
+          </div>
+          <div className="h-[200px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={s.equity_curve}>
+                <defs>
+                  <linearGradient id="curveColor" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={s.is_positive ? '#22c55e' : '#f43f5e'} stopOpacity={0.3} />
+                    <stop offset="95%" stopColor={s.is_positive ? '#22c55e' : '#f43f5e'} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="date" hide />
+                <YAxis hide domain={['auto', 'auto']} />
+                <Tooltip contentStyle={{ backgroundColor: '#171717', border: '1px solid #262626', borderRadius: '8px', color: '#fff' }} />
+                <Area type="monotone" dataKey="value" stroke={s.is_positive ? '#22c55e' : '#f43f5e'} fillOpacity={1} fill="url(#curveColor)" strokeWidth={3} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       </div>
 
@@ -211,14 +276,14 @@ export default function PortfolioPage() {
         </TabsList>
 
         <TabsContent value="holdings">
-          <HoldingsTab 
-            holdings={holdings} 
-            isGuest={isGuest} 
-            checkAccess={checkAccess} 
+          <HoldingsTab
+            holdings={holdings}
+            isGuest={isGuest}
+            checkAccess={checkAccess}
           />
         </TabsContent>
         <TabsContent value="positions">
-          <PositionsTab positions={positions} />
+          <PositionsTab positions={livePositions} onCloseAll={closeAllPositions} refresh={fetchAll} />
         </TabsContent>
         <TabsContent value="history">
           <HistoryTab history={history} sessionType={sessionType} />
@@ -237,14 +302,14 @@ export default function PortfolioPage() {
 // ═══════════════════════════════════════════════════════════════
 // TAB 1: HOLDINGS (Equity Portfolio)
 // ═══════════════════════════════════════════════════════════════
-function HoldingsTab({ 
-  holdings, 
-  isGuest, 
-  checkAccess 
-}: { 
-  holdings: any[], 
-  isGuest: boolean, 
-  checkAccess: () => boolean 
+function HoldingsTab({
+  holdings,
+  isGuest,
+  checkAccess
+}: {
+  holdings: any[],
+  isGuest: boolean,
+  checkAccess: () => boolean
 }) {
   return (
     <div className="border border-gray-200 dark:border-white/10 bg-white dark:bg-[#121212] rounded-md overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -263,21 +328,21 @@ function HoldingsTab({
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-white/5">
             {holdings.length === 0 ? (
-               <tr>
-                 <td colSpan={7} className="px-6 py-12 text-center">
-                   <div className="flex flex-col items-center gap-2">
-                     <p className="text-sm text-gray-400">No equity holdings found.</p>
-                     {isGuest && (
-                       <button 
-                         onClick={() => checkAccess()}
-                         className="text-xs font-bold text-sidebar-primary hover:underline"
-                       >
-                         Sign in to track your real investments
-                       </button>
-                     )}
-                   </div>
-                 </td>
-               </tr>
+              <tr>
+                <td colSpan={7} className="px-6 py-12 text-center">
+                  <div className="flex flex-col items-center gap-2">
+                    <p className="text-sm text-gray-400">No equity holdings found.</p>
+                    {isGuest && (
+                      <button
+                        onClick={() => checkAccess()}
+                        className="text-xs font-bold text-sidebar-primary hover:underline"
+                      >
+                        Sign in to track your real investments
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
             ) : holdings.map((h) => (
               <tr key={h.symbol} className="hover:bg-sidebar-accent/20 transition-colors">
                 <td className="px-6 py-5">
@@ -306,13 +371,30 @@ function HoldingsTab({
 // ═══════════════════════════════════════════════════════════════
 // TAB 2: OPEN POSITIONS (Active Trades)
 // ═══════════════════════════════════════════════════════════════
-function PositionsTab({ positions }: { positions: any[] }) {
+function PositionsTab({ positions, onCloseAll, refresh }: { positions: any[], onCloseAll: () => Promise<void>, refresh: () => void }) {
+  const handleCloseAll = async () => {
+    if (window.confirm("Are you sure you want to close ALL open positions?")) {
+      await onCloseAll();
+      setTimeout(refresh, 500); // small delay to let backend process
+    }
+  };
+
   return (
     <div className="space-y-4 animate-in fade-in duration-300">
       <div className="border border-gray-200 dark:border-white/10 bg-white dark:bg-[#121212] rounded-md overflow-hidden">
         <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
+          <div className="flex items-center gap-3">
             <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider">Active Intraday / Swing Positions</h3>
             <span className="text-[10px] bg-sidebar-primary/20 text-sidebar-primary px-2 py-0.5 rounded font-bold">{positions.length} Open</span>
+          </div>
+          {positions.length > 0 && (
+            <button
+              onClick={handleCloseAll}
+              className="text-xs font-bold bg-red-500/10 text-red-500 hover:bg-red-500/20 px-4 py-1.5 rounded transition-colors"
+            >
+              Close All
+            </button>
+          )}
         </div>
         {positions.length === 0 ? (
           <div className="p-12 text-center text-sm text-muted-foreground">No open positions in the current session.</div>
@@ -372,8 +454,8 @@ function HistoryTab({ history, sessionType }: { history: any[], sessionType: str
     <div className="space-y-4 animate-in fade-in duration-300">
       <div className="flex justify-between items-center px-1">
         <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider">Completed Trades ({sessionType})</h3>
-        <a 
-          href={`/api/history/trades/export?session_type=${sessionType}`} 
+        <a
+          href={`/api/history/trades/export?session_type=${sessionType}`}
           className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 bg-sidebar-accent/50 hover:bg-sidebar-accent rounded-lg border border-sidebar-border/30 transition-all text-sidebar-primary"
         >
           Download CSV
@@ -395,7 +477,7 @@ function HistoryTab({ history, sessionType }: { history: any[], sessionType: str
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-white/5">
               {history.length === 0 ? (
-                 <tr><td colSpan={7} className="px-6 py-12 text-center text-sm text-gray-400">No historical trades found for this session.</td></tr>
+                <tr><td colSpan={7} className="px-6 py-12 text-center text-sm text-gray-400">No historical trades found for this session.</td></tr>
               ) : history.map((t) => (
                 <tr key={t.id} className="hover:bg-sidebar-accent/10 transition-colors">
                   <td className="px-6 py-4">

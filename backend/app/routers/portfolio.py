@@ -34,10 +34,12 @@ async def get_optional_user(request: Request, db: AsyncSession = Depends(get_db)
         return None
 
 
-async def _get_user_id(request: Request, db: AsyncSession) -> int:
-    """Helper to extract user_id, strictly requires authentication."""
+async def _get_user_id(request: Request, db: AsyncSession, session_type: str = 'LIVE') -> int:
+    """Helper to extract user_id. Allows fallback to user 1 for REPLAY mode."""
     user = await get_optional_user(request, db)
     if not user:
+        if session_type == 'REPLAY':
+            return 1
         raise HTTPException(status_code=401, detail="Authentication required")
     return user.id
 
@@ -46,7 +48,7 @@ async def _get_user_id(request: Request, db: AsyncSession) -> int:
 async def get_portfolio_summary(request: Request, session_type: str = 'LIVE', db: AsyncSession = Depends(get_db)):
     """Portfolio summary: XIRR, total invested, P&L, equity curve."""
     try:
-        user_id = await _get_user_id(request, db)
+        user_id = await _get_user_id(request, db, session_type)
         return await portfolio_service.get_summary(db, user_id, session_type)
     except Exception as e:
         logger.error(f"Error fetching portfolio summary: {e}")
@@ -61,7 +63,7 @@ async def get_portfolio_summary(request: Request, session_type: str = 'LIVE', db
 async def get_portfolio_holdings(request: Request, session_type: str = 'LIVE', db: AsyncSession = Depends(get_db)):
     """All held equity positions with LTP and P&L."""
     try:
-        user_id = await _get_user_id(request, db)
+        user_id = await _get_user_id(request, db, session_type)
         holdings = await portfolio_service.get_holdings(db, user_id, session_type)
         return {"holdings": holdings}
     except Exception as e:
@@ -73,7 +75,7 @@ async def get_portfolio_holdings(request: Request, session_type: str = 'LIVE', d
 async def get_portfolio_positions(request: Request, session_type: str = 'LIVE', db: AsyncSession = Depends(get_db)):
     """Open trade positions from TradeLog."""
     try:
-        user_id = await _get_user_id(request, db)
+        user_id = await _get_user_id(request, db, session_type)
         positions = await portfolio_service.get_positions(db, user_id, session_type)
         return {"positions": positions}
     except Exception as e:
@@ -85,7 +87,7 @@ async def get_portfolio_positions(request: Request, session_type: str = 'LIVE', 
 async def get_sector_analysis(request: Request, session_type: str = 'LIVE', db: AsyncSession = Depends(get_db)):
     """Sector allocation breakdown with concentration risk alerts."""
     try:
-        user_id = await _get_user_id(request, db)
+        user_id = await _get_user_id(request, db, session_type)
         return await portfolio_service.get_sector_analysis(db, user_id, session_type)
     except Exception as e:
         logger.error(f"Error fetching sector analysis: {e}")
@@ -96,7 +98,7 @@ async def get_sector_analysis(request: Request, session_type: str = 'LIVE', db: 
 async def get_trade_research(request: Request, session_type: str = 'LIVE', db: AsyncSession = Depends(get_db)):
     """Trade behavior analytics and insights."""
     try:
-        user_id = await _get_user_id(request, db)
+        user_id = await _get_user_id(request, db, session_type)
         return await portfolio_service.get_trade_research(db, user_id, session_type)
     except Exception as e:
         logger.error(f"Error fetching trade research: {e}")

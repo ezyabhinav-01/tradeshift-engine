@@ -6,6 +6,7 @@ import { marketDataService, fetchHistoricalCandles, fetchAvailableDates } from '
 import { toast } from 'sonner';
 import { useMultiChartStore } from '../store/useMultiChartStore';
 import { useTheme } from './ThemeContext';
+import { useAuth } from './AuthContext';
 
 export interface NewsItem {
   id: number;
@@ -111,6 +112,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
   const [currentPrice, setCurrentPrice] = useState(0);
   const [currentCandle, setCurrentCandle] = useState<CandleData | null>(null);
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
+  const { user, checkAuth } = useAuth();
   const [historicalCandles, setHistoricalCandles] = useState<CandleData[]>([]);
   const [replayTicks, setReplayTicks] = useState<Record<string, CandleData>>({});
   const [trades, setTrades] = useState<Trade[]>([]);
@@ -118,8 +120,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
   const [simulatedIndices, setSimulatedIndices] = useState<IndexData[]>([]);
   const [selectedSymbol, setSelectedSymbol] = useState(DEFAULT_SYMBOL);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
-  const [isReplayActive, setIsReplayActive] = useState(false);
-  const [sessionType, setSessionType] = useState<'LIVE' | 'REPLAY'>('LIVE');
+  const [isReplayActive, setIsReplayActive] = useState(() => sessionStorage.getItem('isReplayActive') === 'true');
+  const [sessionType, setSessionType] = useState<'LIVE' | 'REPLAY'>(() => (sessionStorage.getItem('sessionType') as any) || 'LIVE');
   const [userSettings, setUserSettings] = useState<any>(null);
 
   // NEW: Track all active symbols from the multi-chart store (joined as string for stable dependency)
@@ -129,6 +131,12 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
 
   const [selectedDate, setSelectedDate] = useState('');
   const [availableDates, setAvailableDates] = useState<string[]>([]);
+  
+  // Persist session type and replay status
+  useEffect(() => {
+    sessionStorage.setItem('sessionType', sessionType);
+    sessionStorage.setItem('isReplayActive', isReplayActive.toString());
+  }, [sessionType, isReplayActive]);
 
   // ── Load Available Dates & History ──────────────────────
   // ── Load Historical Candles ──────────────────────
@@ -215,11 +223,38 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
     }
   }, []);
 
+  const fetchActiveTrades = useCallback(async () => {
+    try {
+      const response = await fetch('/api/trade/orders', { credentials: 'include' });
+      if (response.ok) {
+        const orders = await response.json();
+        const formattedTrades: Trade[] = orders.map((o: any) => ({
+          id: o.trade_id,
+          symbol: o.symbol,
+          direction: o.direction,
+          type: o.direction,
+          entryPrice: o.entry_price,
+          quantity: o.quantity,
+          pnl: o.pnl,
+          status: o.status,
+          stopLoss: o.stop_loss,
+          takeProfit: o.take_profit,
+          sessionType: o.session_type,
+          timestamp: new Date(),
+        }));
+        setTrades(formattedTrades);
+      }
+    } catch (err) {
+      console.error('Failed to fetch active trades:', err);
+    }
+  }, []);
+
   // Load on mount
   useEffect(() => {
     loadAvailableDatesAndHistory(DEFAULT_SYMBOL);
     fetchUserSettings();
-  }, [loadAvailableDatesAndHistory, fetchUserSettings]);
+    fetchActiveTrades();
+  }, [loadAvailableDatesAndHistory, fetchUserSettings, fetchActiveTrades]);
 
   // ── Heartbeat tracking for Admin Dashboard ────────────────
   useEffect(() => {
@@ -273,17 +308,20 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
       setCurrentPrice(historicalCandles.length > 0 ? historicalCandles[historicalCandles.length - 1].close : 0);
       setCurrentTime(historicalCandles.length > 0 ? new Date(historicalCandles[historicalCandles.length - 1].time * 1000) : null);
     }
-    
+
     setReplayTicks({});
     setSimulatedIndices([]);
     setNewsItems([]);
 
     // Multi-symbol subscription: Send ALL symbols currently in layout
     const uniqueSymbols = Array.from(new Set([selectedSymbol, ...allChartSymbolsStr.split(',').filter(Boolean)]));
-    
+
     // Resume from current time if we have it pinned
     const startTimeStr = (isReplayActive && currentTime) ? currentTime.toISOString() : undefined;
-    marketDataService.connect(speed, uniqueSymbols, selectedSymbol, selectedDate, startTimeStr);
+    
+    // Pass user ID (or fallback to 1 for Guest) to ensure correct event room registration
+    const userId = user?.id || 1;
+    marketDataService.connect(speed, userId, uniqueSymbols, selectedSymbol, selectedDate, startTimeStr);
 
 
 
@@ -312,10 +350,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
             combined.forEach(c => uniqueMap.set(c.time, c));
             return Array.from(uniqueMap.values()).sort((a, b) => a.time - b.time);
           });
-          
+
           const lastCandle = candles[candles.length - 1];
           const backfillTime = new Date(lastCandle.time * 1000);
-          
+
           // Only move clock forward if this backfill is ahead
           if (!currentTime || currentTime < backfillTime) {
             setCurrentPrice(lastCandle.close);
@@ -427,6 +465,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
 
       if (payload.type === 'order_update') {
         const order = payload.data;
+        
+        // 🔥 Refresh user balance if trade was filled or closed
+        if (order.status === 'FILLED' || order.status === 'CLOSED' || order.status === 'OPEN') {
+           checkAuth();
+        }
         setTrades(prev => {
           const index = prev.findIndex(t => t.id === order.trade_id);
           const updatedTrade: Trade = {
@@ -549,7 +592,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
 
   const setSymbol = (symbol: string, _token: string) => {
     setSelectedSymbol(symbol);
-    
+
     // SYNC: Update all charts in multi-chart layout when primary instrument changes
     const store = useMultiChartStore.getState();
     store.charts.forEach(chart => {
@@ -563,7 +606,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
     setSelectedDate(dateStr);
     // Load exactly 2 days prior to the selected date (context for replay)
     loadHistory(selectedSymbol, dateStr, 2);
-    
+
     // Pin time to start of new date if in replay mode
     if (isReplayActive) {
       const firstCandle = historicalCandles.find(c => {
@@ -608,7 +651,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
           symbol: symbol || selectedSymbol,
           direction: type,
           quantity,
-          price: price || currentPrice,
+          price: price || currentPrice || (historicalCandles.length > 0 ? historicalCandles[historicalCandles.length - 1].close : 0),
           order_type: orderType,
           stop_loss: stopLoss,
           take_profit: takeProfit,
@@ -666,6 +709,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
         body: JSON.stringify({
           exit_type: exitType,
           limit_price: limitPrice,
+          exit_price: currentPrice, // Pass the current simulated price for accuracy
           simulated_time: simulatedTime || (sessionType === 'REPLAY' ? currentTime : undefined)
         }),
         credentials: 'include'
@@ -691,6 +735,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           session_type: sessionType,
+          exit_price: currentPrice, // Pass current price for bulk exit consistency
           simulated_time: sessionType === 'REPLAY' ? currentTime : undefined
         }),
         credentials: 'include'

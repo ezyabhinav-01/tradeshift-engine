@@ -157,12 +157,13 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
         ) : (
           <div className="prose prose-sm max-w-none dark:prose-invert">
             <div className="text-black dark:text-gray-300 leading-relaxed whitespace-pre-wrap">
-              {currentContent?.includes('<!DOCTYPE html>') || currentContent?.includes('<html') || currentContent?.includes('401') ? (
+              {currentContent?.includes('<!DOCTYPE html>') || currentContent?.includes('<html') || currentContent?.includes('401') || currentContent?.includes('FIN_GPT_ERROR') ? (
                 <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm flex flex-col gap-2">
                   <span className="font-bold flex items-center gap-2">
                     <ShieldCheck className="w-4 h-4" /> AI Engine Unavailable
                   </span>
-                  <span>The AI analysis engine is currently unavailable. This is usually caused by missing or invalid API keys (e.g., HuggingFace). Please check your backend configuration.</span>
+                  <span>The AI analysis engine is currently unavailable. This is usually caused by missing or invalid API keys (e.g., GEMINI_API_KEY or HUGGINGFACE_API_KEY) in the backend `.env` file. Please check your backend configuration.</span>
+                  <div className="mt-2 text-xs opacity-80 whitespace-pre-wrap">{currentContent}</div>
                 </div>
               ) : currentContent?.split('###').map((section, idx) => {
                 if (!section.trim()) return null;

@@ -4,7 +4,7 @@ import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 
 const HEARTBEAT_INTERVAL = 60000; // 60 seconds
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const ANALYTICS_BASE_URL = '/api/analytics';
 
 export const usePageTracking = () => {
     const location = useLocation();
@@ -22,14 +22,21 @@ export const usePageTracking = () => {
             session_id: window.sessionStorage.getItem('analytics_session_id') || undefined
         };
 
-        // Use sendBeacon for more reliable delivery on unmount/page hide
-        const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
-        navigator.sendBeacon(`${API_BASE_URL}/analytics/page-engagement`, blob);
+        // keepalive + credentials preserves auth cookies during unload/visibility changes
+        fetch(`${ANALYTICS_BASE_URL}/page-engagement`, {
+            method: 'POST',
+            credentials: 'include',
+            keepalive: true,
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data),
+        }).catch(() => {});
     };
 
     const sendHeartbeat = () => {
         if (!user) return;
-        axios.post(`${API_BASE_URL}/analytics/heartbeat`, {}, { withCredentials: true }).catch(() => {});
+        axios.post(`${ANALYTICS_BASE_URL}/heartbeat`, {}, { withCredentials: true }).catch(() => {});
     }
 
     useEffect(() => {
@@ -55,15 +62,18 @@ export const usePageTracking = () => {
             }
         };
 
-        window.addEventListener('visibilitychange', handleVisibilityChange);
-        window.addEventListener('beforeunload', () => {
+        const handleBeforeUnload = () => {
             const duration = Date.now() - startTimeRef.current;
             sendEngagementData(lastPathRef.current, duration);
-        });
+        };
+
+        window.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('beforeunload', handleBeforeUnload);
 
         return () => {
             clearInterval(heartbeatTimer);
             window.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('beforeunload', handleBeforeUnload);
             const duration = Date.now() - startTimeRef.current;
             sendEngagementData(lastPathRef.current, duration);
         };

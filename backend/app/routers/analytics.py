@@ -8,7 +8,7 @@ from datetime import datetime
 from pydantic import BaseModel
 from typing import Optional
 
-router = APIRouter(prefix="/analytics", tags=["analytics"])
+router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
 class PageEngagementRequest(BaseModel):
     page_path: str

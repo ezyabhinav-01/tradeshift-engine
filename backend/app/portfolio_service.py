@@ -95,9 +95,9 @@ class PortfolioService:
         holdings = await self.get_holdings(db, user_id, session_type)
         positions = await self.get_positions(db, user_id, session_type)
         
-        # Combine holdings and positions for total valuation
-        total_invested = sum(h["invested_value"] for h in holdings) + sum(p["entry_value"] for p in positions)
-        total_current = sum(h["current_value"] for h in holdings) + sum(p["current_value"] for p in positions)
+        # Combine holdings for total valuation (mirroring positions into holdings)
+        total_invested = sum(h["invested_value"] for h in holdings)
+        total_current = sum(h["current_value"] for h in holdings)
         total_pnl = total_current - total_invested
         total_pnl_pct = (total_pnl / total_invested * 100) if total_invested > 0 else 0
         
@@ -244,8 +244,10 @@ class PortfolioService:
             "risk_level": "Low" if diversity_score > 70 else ("Medium" if diversity_score > 40 else "High"),
         }
     
-    async def save_portfolio_snapshot(self, db: AsyncSession, user_id: int, session_type: str = 'LIVE'):
+    async def save_portfolio_snapshot(self, user_id: int, session_type: str = 'LIVE'):
         """Capture a snapshot of the user's total equity."""
+        from app.database import get_session
+        db = await get_session()
         try:
             summary = await self.get_summary(db, user_id, session_type)
             snapshot = PortfolioSnapshot(
@@ -262,6 +264,8 @@ class PortfolioService:
         except Exception as e:
             logger.error(f"❌ Failed to save portfolio snapshot: {e}")
             await db.rollback()
+        finally:
+            await db.close()
 
     async def get_trade_research(self, db: AsyncSession, user_id: int, session_type: str = 'LIVE') -> Dict[str, Any]:
         result = await db.execute(select(TradeLog).filter(

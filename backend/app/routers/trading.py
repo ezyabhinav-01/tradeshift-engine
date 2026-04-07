@@ -128,7 +128,7 @@ async def execute_trade(
         await db.commit()
         
         # 🔥 Snapshot: Update equity curve after trade execution
-        background_tasks.add_task(portfolio_service.save_portfolio_snapshot, db, user_id, session_type)
+        background_tasks.add_task(portfolio_service.save_portfolio_snapshot, user_id, trade_request.session_type)
             
         return TradeResponse(**result)
     except ValueError as e:
@@ -397,7 +397,7 @@ async def close_all_trades(
 
     # 🔥 Snapshot: Update equity curve after closing all trades
     session_type_val = body.get("session_type", "LIVE")
-    background_tasks.add_task(portfolio_service.save_portfolio_snapshot, db, user_id, session_type_val)
+    background_tasks.add_task(portfolio_service.save_portfolio_snapshot, user_id, session_type_val)
     
     return {
         "message": f"Successfully closed {len(closed_ids)} positions",

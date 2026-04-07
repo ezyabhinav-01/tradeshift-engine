@@ -9,6 +9,7 @@ from app.database import get_session
 from app.websocket_manager import order_manager
 from app.trade_engine import TradeEngine
 from app.portfolio_service import portfolio_service
+from app.utils.portfolio_utils import sync_portfolio_holding
 
 logger = logging.getLogger(__name__)
 
@@ -112,9 +113,21 @@ class OrderManagementSystem:
             )
 
         db.add(order)
-        # No need for flush here if close_trade already commits/flushes, 
-        # but close_trade handles its own commits currently which might be tricky.
-        # Wait, close_trade calls db.commit().
+        
+        # 🔥 NEW: SYNC TO PORTFOLIO HOLDINGS
+        # Only for primary entries (not children as they will trigger close_trade)
+        if not order.parent_trade_id:
+            await sync_portfolio_holding(
+                db=db,
+                user_id=order.user_id,
+                symbol=order.symbol,
+                quantity_delta=order.quantity,
+                price=fill_price,
+                direction=order.direction,
+                session_type=order.session_type
+            )
+
+        # No need for flush here...
         
         # Prepare WS payload
         payload = TradeEngine.build_order_update_payload(order)
@@ -123,7 +136,7 @@ class OrderManagementSystem:
         if order.user_id:
             await order_manager.emit_to_user(order.user_id, "order_update", payload)
             # 🔥 Snapshot: Update equity curve after triggered order fill
-            asyncio.create_task(portfolio_service.save_portfolio_snapshot(db, order.user_id, order.session_type))
+            asyncio.create_task(portfolio_service.save_portfolio_snapshot(order.user_id, order.session_type))
 
     async def cancel_order(self, db: AsyncSession, order_id: int, user_id: int) -> bool:
         """Cancel a pending order (Async)."""
@@ -234,11 +247,24 @@ class OrderManagementSystem:
             .values(balance=User.balance + (multiplier * exit_value))
         )
 
+        # 🔥 NEW: SYNC TO PORTFOLIO HOLDINGS (CLOSING)
+        # To close, we perform an opposite action to the holding pool
+        close_direction = "SELL" if trade.direction == "BUY" else "BUY"
+        await sync_portfolio_holding(
+            db=db,
+            user_id=user_id,
+            symbol=trade.symbol,
+            quantity_delta=trade.quantity,
+            price=exit_price,
+            direction=close_direction,
+            session_type=trade.session_type or "LIVE"
+        )
+
         await db.commit()
         await db.refresh(trade)
         
         # 🔥 Snapshot: Update equity curve after closing a trade
-        asyncio.create_task(portfolio_service.save_portfolio_snapshot(db, user_id, trade.session_type or "LIVE"))
+        asyncio.create_task(portfolio_service.save_portfolio_snapshot(user_id, trade.session_type or "LIVE"))
         
         return trade
 
@@ -292,7 +318,7 @@ class OrderManagementSystem:
             
         # 🔥 Snapshot: Update equity curve after closing all trades
         if closed_trades:
-            asyncio.create_task(portfolio_service.save_portfolio_snapshot(db, user_id, session_type))
+            asyncio.create_task(portfolio_service.save_portfolio_snapshot(user_id, session_type))
             
         return closed_trades
 

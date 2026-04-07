@@ -73,10 +73,10 @@ async def connect_to_database():
         db_url = get_database_url_async()
         
         # Determine if SSL is needed (skip for local Docker/localhost)
-        is_local = "localhost" in db_url or "@db:" in db_url
+        is_local = "localhost" in db_url or "@db:" in db_url or "127.0.0.1" in db_url
         
         connect_args = {}
-        if not is_local:
+        if not is_local or "supabase.com" in db_url or "supabase.co" in db_url:
             ssl_ctx = ssl.create_default_context()
             ssl_ctx.check_hostname = False
             ssl_ctx.verify_mode = ssl.CERT_NONE
@@ -154,9 +154,9 @@ def connect_to_database_sync():
     logger.info("🔄 Establishing new sync database connection...")
     
     # Determine if SSL is needed
-    is_local = "localhost" in url or "@db:" in url
+    is_local = "localhost" in url or "@db:" in url or "127.0.0.1" in url
     connect_args = {}
-    if not is_local:
+    if not is_local or "supabase.com" in url or "supabase.co" in url:
         # Explicitly require SSL for psycopg2 connections to remote like Supabase
         connect_args["sslmode"] = "require"
         

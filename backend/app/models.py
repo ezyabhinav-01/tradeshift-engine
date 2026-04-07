@@ -12,7 +12,7 @@ class TradeLog(Base):
     __tablename__ = "trade_logs"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    entry_time = Column(DateTime, primary_key=True, default=datetime.utcnow)
+    entry_time = Column(DateTime, index=True, default=datetime.utcnow)
 
     symbol = Column(String, index=True)
     direction = Column(String)
@@ -442,7 +442,7 @@ class Notification(Base):
     __tablename__ = "notifications"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    created_at = Column(DateTime, primary_key=True, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True) # NULL means broadcast to all
     
     title = Column(String(255), nullable=False)
@@ -460,7 +460,7 @@ class UserEvent(Base):
     __tablename__ = "user_events"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    created_at = Column(DateTime, primary_key=True, default=datetime.utcnow)
+    created_at = Column(DateTime, index=True, default=datetime.utcnow)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True)
     event_name = Column(String, index=True)
     event_data = Column(JSON, nullable=True) # Dict of arbitrary event metadata
@@ -515,17 +515,10 @@ class BroadcastRead(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    notification_id = Column(Integer, nullable=False, index=True)
-    notification_created_at = Column(DateTime, nullable=False, index=True)
+    notification_id = Column(Integer, ForeignKey("notifications.id", ondelete="CASCADE"), nullable=False, index=True)
     read_at = Column(DateTime, default=datetime.utcnow)
 
-    __table_args__ = (
-        ForeignKeyConstraint(
-            ['notification_id', 'notification_created_at'],
-            ['notifications.id', 'notifications.created_at'],
-            ondelete="CASCADE"
-        ),
-    )
+    # (Removed composite foreign key constraint)
 
 class MarketCandle(Base):
     """
@@ -535,7 +528,7 @@ class MarketCandle(Base):
     __tablename__ = "market_candles"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    timestamp = Column(DateTime, primary_key=True, index=True)
+    timestamp = Column(DateTime, index=True)
     symbol = Column(String, index=True)
     open = Column(Float)
     high = Column(Float)
@@ -551,7 +544,7 @@ class PortfolioSnapshot(Base):
     """
     __tablename__ = "portfolio_snapshots"
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    timestamp = Column(DateTime, primary_key=True, default=datetime.utcnow)
+    timestamp = Column(DateTime, index=True, default=datetime.utcnow)
     user_id = Column(Integer, index=True)
     total_balance = Column(Float)
     equity_value = Column(Float)
@@ -565,7 +558,7 @@ class SystemAlertLog(Base):
     """
     __tablename__ = "system_alerts_logs"
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    timestamp = Column(DateTime, primary_key=True, default=datetime.utcnow)
+    timestamp = Column(DateTime, index=True, default=datetime.utcnow)
     user_id = Column(Integer, index=True)
     symbol = Column(String, index=True)
     alert_type = Column(String)  # PRICE_UP, PRICE_DOWN, CROSS_OVER

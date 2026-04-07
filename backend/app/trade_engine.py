@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import TradeLog, User
 from app.schemas import TradeExecuteRequest, OrderType, TradeDirection
 from sqlalchemy import update
+from app.utils.portfolio_utils import sync_portfolio_holding
 import logging
 
 logger = logging.getLogger(__name__)
@@ -124,6 +125,17 @@ class TradeEngine:
                 update(User)
                 .where(User.id == user_id)
                 .values(balance=User.balance + (multiplier * transaction_value))
+            )
+
+            # 🔥 NEW: SYNC TO PORTFOLIO HOLDINGS
+            await sync_portfolio_holding(
+                db=db,
+                user_id=user_id,
+                symbol=request.symbol,
+                quantity_delta=request.quantity,
+                price=entry_price,
+                direction=request.direction.value,
+                session_type=request.session_type
             )
 
         await db.commit()

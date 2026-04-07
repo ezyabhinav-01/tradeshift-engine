@@ -21,6 +21,18 @@ class OrderManagementSystem:
     def __init__(self):
         self._lock = asyncio.Lock()
 
+    @staticmethod
+    def _normalize_db_timestamp(ts: Optional[datetime]) -> Optional[datetime]:
+        """
+        Convert aware datetimes to naive UTC-like values because our DB columns
+        are TIMESTAMP WITHOUT TIME ZONE.
+        """
+        if ts is None:
+            return None
+        if ts.tzinfo is not None:
+            return ts.replace(tzinfo=None)
+        return ts
+
     async def on_price_update(self, symbol: str, current_price: float, simulated_time: Optional[datetime] = None, session_type: str = "LIVE"):
         """
         Main entry point for price updates (Async).
@@ -83,6 +95,7 @@ class OrderManagementSystem:
     async def _execute_triggered_order(self, db: AsyncSession, order: TradeLog, fill_price: float, simulated_time: Optional[datetime] = None):
         """Transition order and notify (Async)."""
         logger.info(f"🎯 ORDER TRIGGERED: {order.direction} {order.quantity} {order.symbol} @ {fill_price} (Session: {order.session_type})")
+        normalized_time = self._normalize_db_timestamp(simulated_time)
         
         if order.parent_trade_id:
             # If it's a child order (SL/TP), it should close the parent trade
@@ -93,19 +106,20 @@ class OrderManagementSystem:
                 order.user_id, 
                 fill_price, 
                 exit_type=order.order_type,
-                simulated_time=simulated_time or order.entry_time
+                simulated_time=normalized_time or order.entry_time
             )
         else:
             order.status = "OPEN"
             
         order.entry_price = fill_price
-        order.entry_time = simulated_time or datetime.utcnow()
+        order.entry_time = normalized_time or datetime.utcnow()
         order.triggered = True
         
         # --- UPDATE CASH BALANCE (for triggered primary entries) ---
         if not order.parent_trade_id:
             multiplier = -1 if order.direction == "BUY" else 1
             transaction_value = order.quantity * fill_price
+            
             await db.execute(
                 update(User)
                 .where(User.id == order.user_id)
@@ -208,6 +222,8 @@ class OrderManagementSystem:
 
     async def close_trade(self, db: AsyncSession, trade_id: int, user_id: int, exit_price: float, exit_type: str = "MARKET", simulated_time: Optional[datetime] = None) -> Optional[TradeLog]:
         """Close an open trade (Async)."""
+        normalized_time = self._normalize_db_timestamp(simulated_time)
+        close_time = normalized_time or datetime.utcnow()
         result = await db.execute(
             select(TradeLog).filter(
                 TradeLog.id == trade_id,
@@ -220,13 +236,25 @@ class OrderManagementSystem:
         if not trade:
             return None
 
-        trade.status = "CLOSED"
-        trade.exit_price = exit_price
-        trade.exit_time = simulated_time or datetime.utcnow()
-        
         # Calculate PnL
         multiplier = 1 if trade.direction == "BUY" else -1
-        trade.pnl = (exit_price - trade.entry_price) * trade.quantity * multiplier
+        pnl = (exit_price - trade.entry_price) * trade.quantity * multiplier
+        holding_time = None
+        if trade.entry_time:
+            holding_time = max(0.0, (close_time - trade.entry_time).total_seconds())
+
+        await db.execute(
+            update(TradeLog)
+            .where(TradeLog.id == trade.id)
+            .values(
+                status="CLOSED",
+                exit_price=exit_price,
+                exit_time=close_time,
+                exit_reason=f"manual_{exit_type.lower()}",
+                pnl=pnl,
+                holding_time=holding_time,
+            )
+        )
 
         # Cancel any linked PENDING orders (SL/TP)
         await db.execute(
@@ -261,7 +289,8 @@ class OrderManagementSystem:
         )
 
         await db.commit()
-        await db.refresh(trade)
+        result = await db.execute(select(TradeLog).filter(TradeLog.id == trade.id))
+        trade = result.scalars().first()
         
         # 🔥 Snapshot: Update equity curve after closing a trade
         asyncio.create_task(portfolio_service.save_portfolio_snapshot(user_id, trade.session_type or "LIVE"))
@@ -270,6 +299,8 @@ class OrderManagementSystem:
 
     async def close_all_trades(self, db: AsyncSession, user_id: int, exit_price_mapping: dict[str, float], session_type: str = "LIVE", simulated_time: Optional[datetime] = None) -> list[TradeLog]:
         """Close all open/triggered trades (Async)."""
+        normalized_time = self._normalize_db_timestamp(simulated_time)
+        close_time = normalized_time or datetime.utcnow()
         result = await db.execute(
             select(TradeLog).filter(
                 TradeLog.user_id == user_id,
@@ -284,14 +315,26 @@ class OrderManagementSystem:
             exit_price = exit_price_mapping.get(trade.symbol)
             if exit_price is None:
                 continue
-                
-            trade.status = "CLOSED"
-            trade.exit_price = exit_price
-            trade.exit_time = simulated_time or datetime.utcnow()
             
             # Calculate PnL
             multiplier = 1 if trade.direction == "BUY" else -1
-            trade.pnl = (exit_price - trade.entry_price) * trade.quantity * multiplier
+            pnl = (exit_price - trade.entry_price) * trade.quantity * multiplier
+            holding_time = None
+            if trade.entry_time:
+                holding_time = max(0.0, (close_time - trade.entry_time).total_seconds())
+
+            await db.execute(
+                update(TradeLog)
+                .where(TradeLog.id == trade.id)
+                .values(
+                    status="CLOSED",
+                    exit_price=exit_price,
+                    exit_time=close_time,
+                    exit_reason="manual_bulk",
+                    pnl=pnl,
+                    holding_time=holding_time,
+                )
+            )
 
             # Cancel any linked PENDING orders (SL/TP)
             await db.execute(
@@ -309,12 +352,27 @@ class OrderManagementSystem:
                 .where(User.id == user_id)
                 .values(balance=User.balance + (multiplier * exit_value))
             )
+
+            close_direction = "SELL" if trade.direction == "BUY" else "BUY"
+            await sync_portfolio_holding(
+                db=db,
+                user_id=user_id,
+                symbol=trade.symbol,
+                quantity_delta=trade.quantity,
+                price=exit_price,
+                direction=close_direction,
+                session_type=trade.session_type or session_type
+            )
             
             closed_trades.append(trade)
 
         await db.commit()
-        for t in closed_trades:
-            await db.refresh(t)
+        if closed_trades:
+            result = await db.execute(
+                select(TradeLog).filter(TradeLog.id.in_([t.id for t in closed_trades]))
+            )
+            refreshed = {trade.id: trade for trade in result.scalars().all()}
+            closed_trades = [refreshed[t.id] for t in closed_trades if t.id in refreshed]
             
         # 🔥 Snapshot: Update equity curve after closing all trades
         if closed_trades:

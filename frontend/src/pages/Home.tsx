@@ -10,7 +10,6 @@ import { fetchHistoricalCandles } from '../services/MarketDataService';
 import TradePanel from '../components/TradePanel/TradePanel';
 import NewsPanel from '../components/features/NewsPanel';
 import ObjectTreePanel from '../components/ProChart/ObjectTreePanel';
-import ReplayToolbar from '../components/features/ReplayToolbar';
 import { useGame } from '../hooks/useGame';
 import type { DrawingToolId } from '../hooks/useDrawingTools';
 import { useAccessControl } from '../hooks/useAccessControl';
@@ -211,7 +210,9 @@ const Home = () => {
       orderData.take_profit,
       orderData.alert,
       undefined, // simulatedTime
-      orderData.symbol
+      orderData.symbol,
+      orderData.limit_price,
+      orderData.stop_price
     );
     setPendingOrder(null);
   };
@@ -232,7 +233,7 @@ const Home = () => {
     setShowExitAllConfirm(false);
   };
 
-  const openTradesCount = trades.filter(t => t.status === 'OPEN' || t.status === 'TRIGGERED').length;
+  const openTradesCount = trades.filter(t => !t.parentTradeId && (t.status === 'OPEN' || t.status === 'TRIGGERED')).length;
 
   return (
     <div className="flex flex-col flex-1 min-h-0 w-full bg-transparent text-tv-text-primary overflow-hidden font-sans border-t-3 border-tv-border">
@@ -310,67 +311,119 @@ const Home = () => {
 
       {/* EXIT TRADE DIALOG */}
       {tradeToExit && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 p-4">
-          <div className="bg-[#121212] border border-white/10 rounded-xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
-            {/* Header */}
-            <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
-              <h3 className="font-black text-sm uppercase tracking-widest text-primary">Exit Position</h3>
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/70 backdrop-blur-md animate-in fade-in duration-200 p-4">
+          <div className="relative w-full max-w-lg overflow-hidden rounded-[28px] border border-white/10 bg-[#0d1016] shadow-[0_30px_80px_rgba(0,0,0,0.55)] animate-in zoom-in-95 duration-200">
+            <div className="absolute inset-x-0 top-0 h-24 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.18),_transparent_65%)] pointer-events-none" />
+
+            <div className="relative px-7 py-6 border-b border-white/6 flex items-start justify-between">
+              <div className="space-y-2">
+                <div className="text-[11px] font-black uppercase tracking-[0.28em] text-white/35">
+                  Order Actions
+                </div>
+                <h3 className="text-3xl font-black tracking-tight text-white">
+                  Exit Position
+                </h3>
+                <p className="text-sm text-white/45">
+                  Close this trade instantly at market or place a precise exit limit.
+                </p>
+              </div>
               <button
                 onClick={() => setTradeToExit(null)}
-                className="p-1 hover:bg-white/5 rounded-md transition-colors"
+                className="mt-1 flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/45 transition-all hover:bg-white/10 hover:text-white"
               >
-                <X className="w-4 h-4 text-white/40" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Content */}
-            <div className="p-6 flex flex-col gap-5">
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center justify-between text-xs font-bold uppercase tracking-tighter opacity-40">
-                  <span>Symbol</span>
-                  <span>Position</span>
+            <div className="relative p-7 flex flex-col gap-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-5">
+                  <div className="text-[10px] font-black uppercase tracking-[0.24em] text-white/35 mb-3">
+                    Symbol
+                  </div>
+                  <div className="text-4xl font-black italic tracking-tight text-white">
+                    {tradeToExit.symbol}
+                  </div>
                 </div>
-                <div className="flex items-center justify-between font-black text-lg italic">
-                  <span>{tradeToExit.symbol}</span>
-                  <span className={tradeToExit.direction === 'BUY' ? 'text-[#089981]' : 'text-[#f23645]'}>
-                    {tradeToExit.direction} {tradeToExit.quantity}x
-                  </span>
+
+                <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-5">
+                  <div className="text-[10px] font-black uppercase tracking-[0.24em] text-white/35 mb-3">
+                    Position
+                  </div>
+                  <div className={`text-3xl font-black tracking-tight ${tradeToExit.direction === 'BUY' ? 'text-[#34d399]' : 'text-[#f87171]'}`}>
+                    {tradeToExit.direction}
+                  </div>
+                  <div className="text-sm font-bold text-white/55 mt-1">
+                    {tradeToExit.quantity} {tradeToExit.quantity > 1 ? 'Lots' : 'Lot'}
+                  </div>
                 </div>
               </div>
 
-              <div className="flex flex-col gap-3">
-                <div className="text-[10px] font-black uppercase tracking-widest opacity-30">Select Exit Strategy</div>
+              <div className="rounded-2xl border border-white/8 bg-[#101521] p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.24em] text-white/35">
+                      Fast Exit
+                    </div>
+                    <div className="text-sm text-white/55 mt-1">
+                      Best for immediate closing at the current replay price.
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] font-black uppercase tracking-[0.24em] text-white/35">
+                      Current Entry
+                    </div>
+                    <div className="text-lg font-black text-[#fcd34d] mt-1">
+                      ₹{tradeToExit.entryPrice.toFixed(2)}
+                    </div>
+                  </div>
+                </div>
 
                 <button
                   onClick={() => handleConfirmExit('MARKET')}
-                  className="w-full py-4 bg-primary text-black font-black uppercase tracking-widest text-xs rounded-lg hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                  className="w-full h-14 rounded-2xl bg-gradient-to-r from-[#facc15] via-[#fbbf24] to-[#f59e0b] text-[#111827] font-black uppercase tracking-[0.24em] text-xs shadow-[0_10px_30px_rgba(245,158,11,0.25)] transition-all hover:brightness-105 active:scale-[0.99]"
                 >
-                  Exit Market
+                  Exit At Market
                 </button>
+              </div>
 
-                <div className="flex flex-col gap-2 mt-2">
-                  <div className="flex items-center gap-2 flex-1">
+              <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-5">
+                <div className="text-[10px] font-black uppercase tracking-[0.24em] text-white/35 mb-1">
+                  Precision Exit
+                </div>
+                <div className="text-sm text-white/50 mb-4">
+                  Set your own exit price and close only at that level.
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="relative flex-1">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/25 font-mono text-sm">₹</span>
                     <input
                       type="number"
                       step="0.05"
                       value={exitLimitPrice}
                       onChange={(e) => setExitLimitPrice(e.target.value)}
-                      placeholder="Limit Price"
-                      className="w-full h-12 bg-white/5 border border-white/10 rounded-lg px-4 text-sm font-black focus:outline-none focus:border-primary/50"
+                      placeholder="Enter limit price"
+                      className="w-full h-14 rounded-2xl border border-white/10 bg-[#171b23] pl-9 pr-4 text-lg font-mono font-bold text-white placeholder:text-white/18 focus:outline-none focus:border-[#60a5fa]/50 focus:bg-[#191f29] transition-colors"
                     />
-                    <button
-                      onClick={() => handleConfirmExit('LIMIT')}
-                      className="h-12 px-6 border border-primary/40 text-primary font-black uppercase tracking-widest text-xs rounded-lg hover:bg-primary/10 active:scale-[0.98] transition-all shrink-0"
-                    >
-                      Limit
-                    </button>
                   </div>
+                  <button
+                    onClick={() => handleConfirmExit('LIMIT')}
+                    className="h-14 px-7 rounded-2xl border border-[#60a5fa]/40 bg-[#60a5fa]/10 text-[#93c5fd] font-black uppercase tracking-[0.24em] text-xs transition-all hover:bg-[#60a5fa]/16 hover:border-[#60a5fa]/60 active:scale-[0.99]"
+                  >
+                    Limit Exit
+                  </button>
                 </div>
               </div>
             </div>
 
-            <div className="px-6 py-4 bg-white/[0.02] border-t border-white/5 text-[10px] text-white/30 font-bold uppercase tracking-tighter text-center">
-              Current Entry: ₹{tradeToExit.entryPrice.toFixed(2)}
+            <div className="px-7 py-4 border-t border-white/6 bg-white/[0.02] flex items-center justify-between">
+              <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/30">
+                Click market for instant exit
+              </div>
+              <div className="text-sm font-mono font-bold text-white/55">
+                Entry ₹{tradeToExit.entryPrice.toFixed(2)}
+              </div>
             </div>
           </div>
         </div>
@@ -484,7 +537,6 @@ const Home = () => {
         </div>
       )}
 
-      {!isGuest && <ReplayToolbar />}
 
       {/* BOTTOM FOOTER */}
       <div className="h-8 border-t-4 border-tv-border bg-tv-bg-base flex items-center justify-between px-4 text-xs font-semibold text-tv-text-secondary select-none flex-shrink-0">

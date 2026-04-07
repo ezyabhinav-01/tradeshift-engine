@@ -14,9 +14,9 @@ from redis import Redis
 
 from sqlalchemy.orm import joinedload
 from app.database import get_db
-from app.models import LearningProgress, UserStreak, UserBadge, Track, Module, SubModule, Lesson, MarketSecret, UserSecretReveal, User
-from app.services.badge_service import check_and_grant_badges
+from app.models import LearningProgress, UserStreak, UserBadge, Track, Module, SubModule, Lesson, MarketSecret, UserSecretReveal, User, ChapterComment
 from app.dependencies import get_current_user, admin_required
+from app.schemas import ChapterCommentCreate, ChapterCommentResponse
 
 router = APIRouter(prefix="/api/learn", tags=["learn"])
 
@@ -283,6 +283,7 @@ async def get_tracks(db: AsyncSession = Depends(get_db)):
                 "id": str(track.id),
                 "title": track.title,
                 "description": track.description,
+                "createdAt": track.created_at.isoformat() if track.created_at else None,
                 "modules": [],
                 "totalLessons": 0
             }
@@ -293,6 +294,7 @@ async def get_tracks(db: AsyncSession = Depends(get_db)):
                     "id": str(module.id),
                     "title": module.title,
                     "description": module.description,
+                    "createdAt": module.created_at.isoformat() if module.created_at else None,
                     "estimatedMinutes": 0,
                     "subModules": [],
                     "lessons": [] # Direct lessons if any
@@ -306,6 +308,7 @@ async def get_tracks(db: AsyncSession = Depends(get_db)):
                         "title": sm.title,
                         "description": sm.description,
                         "subModuleNumber": sm.sub_module_number,
+                        "createdAt": sm.created_at.isoformat() if sm.created_at else None,
                         "lessons": []
                     }
                     
@@ -601,7 +604,9 @@ async def get_module_detail(module_id: int, db: AsyncSession = Depends(get_db)):
                     "description": _get_lesson_preview(lesson),
                     "duration": lesson.read_time or 5,
                     "xpReward": lesson.xp_reward or 50,
-                    "type": "quiz" if lesson.quiz_questions else "article"
+                    "type": "quiz" if lesson.quiz_questions else "article",
+                    "createdAt": lesson.created_at.isoformat() if lesson.created_at else None,
+                    "practiceSceneId": lesson.practice_scene_id
                 })
                 total_lessons_count += 1
             
@@ -609,6 +614,7 @@ async def get_module_detail(module_id: int, db: AsyncSession = Depends(get_db)):
                 "id": str(sm.id),
                 "title": sm.title,
                 "description": sm.description,
+                "createdAt": sm.created_at.isoformat() if sm.created_at else None,
                 "lessons": sm_lessons
             })
 
@@ -624,7 +630,9 @@ async def get_module_detail(module_id: int, db: AsyncSession = Depends(get_db)):
                 "description": _get_lesson_preview(lesson),
                 "duration": lesson.read_time or 5,
                 "xpReward": lesson.xp_reward or 50,
-                "type": "quiz" if lesson.quiz_questions else "article"
+                "type": "quiz" if lesson.quiz_questions else "article",
+                "createdAt": lesson.created_at.isoformat() if lesson.created_at else None,
+                "practiceSceneId": lesson.practice_scene_id
             })
             total_lessons_count += 1
         
@@ -635,6 +643,7 @@ async def get_module_detail(module_id: int, db: AsyncSession = Depends(get_db)):
             "moduleNumber": module.module_number,
             "trackId": str(module.track_id),
             "trackTitle": module.track.title if module.track else "",
+            "createdAt": module.created_at.isoformat() if module.created_at else None,
             "subModules": sub_modules_data,
             "directLessons": direct_lessons_data,
             "totalLessons": total_lessons_count
@@ -691,12 +700,6 @@ async def get_sub_module_detail(sub_module_id: int, db: AsyncSession = Depends(g
         for lesson in sorted(published_lessons, key=lambda x: (getattr(x, 'sort_order', 0), x.id)):
             # Convert TipTap JSON to HTML
             content_html = tiptap_to_html(lesson.content) if lesson.content else ""
-            if not content_html:
-                parts = []
-                if lesson.opening_hook: parts.append(f"<p>{lesson.opening_hook}</p>")
-                if lesson.core_explanation: parts.append(lesson.core_explanation)
-                if lesson.real_life_application: parts.append(f"<h3>Application</h3>{lesson.real_life_application}")
-                content_html = "".join(parts)
 
             lessons_data.append({
                 "id": str(lesson.id),
@@ -707,7 +710,8 @@ async def get_sub_module_detail(sub_module_id: int, db: AsyncSession = Depends(g
                 "xpReward": lesson.xp_reward or 50,
                 "type": "quiz" if lesson.quiz_questions else "article",
                 "quizQuestions": lesson.quiz_questions if lesson.quiz_questions else [],
-                "practiceSceneId": getattr(lesson, 'practice_scene_id', None)
+                "practiceSceneId": getattr(lesson, 'practice_scene_id', None),
+                "createdAt": lesson.created_at.isoformat() if lesson.created_at else None,
             })
             
         # ═══════════════════════════════════════════
@@ -735,6 +739,7 @@ async def get_sub_module_detail(sub_module_id: int, db: AsyncSession = Depends(g
             "title": sub_module.title,
             "description": sub_module.description,
             "subModuleNumber": sub_module.sub_module_number,
+            "createdAt": sub_module.created_at.isoformat() if sub_module.created_at else None,
             "moduleId": str(sub_module.module_id),
             "moduleTitle": sub_module.module.title,
             "moduleNumber": sub_module.module.module_number,
@@ -766,17 +771,6 @@ async def get_lesson(lesson_id: int, db: AsyncSession = Depends(get_db)):
         
         # Convert TipTap JSON to HTML
         content_html = tiptap_to_html(lesson.content) if lesson.content else ""
-        
-        # If content_html is empty, try the legacy fields
-        if not content_html:
-            parts = []
-            if lesson.opening_hook:
-                parts.append(lesson.opening_hook)
-            if lesson.core_explanation:
-                parts.append(lesson.core_explanation)
-            if lesson.real_life_application:
-                parts.append(f"<h2>Real-World Application</h2>{lesson.real_life_application}")
-            content_html = "".join(parts)
         
         # Get module info and sibling lessons for navigation
         module_title = ""
@@ -819,12 +813,66 @@ async def get_lesson(lesson_id: int, db: AsyncSession = Depends(get_db)):
             "type": "quiz" if lesson.quiz_questions else "article",
             "quizQuestions": lesson.quiz_questions if lesson.quiz_questions else [],
             "practiceSceneId": getattr(lesson, 'practice_scene_id', None),
+            "createdAt": lesson.created_at.isoformat() if lesson.created_at else None,
             "siblings": siblings
         }
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch lesson: {str(e)}")
+
+# ═══════════════════════════════════════════
+# CHAPTER COMMENTS (DISCUSSIONS)
+# ═══════════════════════════════════════════
+
+@router.get("/sub-modules/{sub_module_id}/comments", response_model=List[ChapterCommentResponse])
+async def get_chapter_comments(sub_module_id: int, db: AsyncSession = Depends(get_db)):
+    """Fetch all discussions for a specific chapter."""
+    result = await db.execute(
+        select(ChapterComment)
+        .options(joinedload(ChapterComment.user))
+        .where(ChapterComment.sub_module_id == sub_module_id)
+        .order_by(ChapterComment.created_at.asc())
+    )
+    comments = result.scalars().all()
+    
+    return [
+        ChapterCommentResponse(
+            id=c.id,
+            user_id=c.user_id,
+            user_full_name=c.user.full_name or c.user.email,
+            sub_module_id=c.sub_module_id,
+            content=c.content,
+            created_at=c.created_at
+        ) for c in comments
+    ]
+
+@router.post("/sub-modules/{sub_module_id}/comments", response_model=ChapterCommentResponse)
+async def create_chapter_comment(
+    sub_module_id: int,
+    comment: ChapterCommentCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Post a new comment in a chapter discussion."""
+    db_comment = ChapterComment(
+        sub_module_id=sub_module_id,
+        user_id=current_user.id,
+        content=comment.content,
+        created_at=datetime.utcnow()
+    )
+    db.add(db_comment)
+    await db.commit()
+    await db.refresh(db_comment)
+    
+    return ChapterCommentResponse(
+        id=db_comment.id,
+        user_id=db_comment.user_id,
+        user_full_name=current_user.full_name or current_user.email,
+        sub_module_id=db_comment.sub_module_id,
+        content=db_comment.content,
+        created_at=db_comment.created_at
+    )
 
 # ═══════════════════════════════════════════
 # HELPERS
@@ -920,6 +968,7 @@ async def get_secrets(current_user: User = Depends(get_current_user), db: AsyncS
                 "hasQuiz": has_quiz,
                 "quizCompleted": reveal.quiz_completed if reveal else False,
                 "xpEarned": reveal.xp_earned if reveal else 0,
+                "createdAt": s.created_at.isoformat() if s.created_at else None,
             }
             # Only send answer if revealed
             if is_revealed:

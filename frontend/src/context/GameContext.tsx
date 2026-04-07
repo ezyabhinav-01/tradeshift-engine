@@ -80,7 +80,9 @@ interface GameState {
     takeProfit?: number,
     alert?: boolean,
     simulatedTime?: string | Date,
-    symbol?: string
+    symbol?: string,
+    limitPrice?: number,
+    stopPrice?: number
   ) => void;
   closePosition: (
     tradeId: string | number,
@@ -106,12 +108,15 @@ export const useGame = (): GameState => {
 const DEFAULT_SYMBOL = 'RELIANCE';
 
 export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ children }) => {
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(() => sessionStorage.getItem('isPlaying') === 'true');
   const [speed, setSpeed] = useState(1);
   const [balance, setBalance] = useState(100000);
   const [currentPrice, setCurrentPrice] = useState(0);
   const [currentCandle, setCurrentCandle] = useState<CandleData | null>(null);
-  const [currentTime, setCurrentTime] = useState<Date | null>(null);
+  const [currentTime, setCurrentTime] = useState<Date | null>(() => {
+    const savedTime = sessionStorage.getItem('currentTime');
+    return savedTime ? new Date(savedTime) : null;
+  });
   const { user, checkAuth } = useAuth();
   const [historicalCandles, setHistoricalCandles] = useState<CandleData[]>([]);
   const [replayTicks, setReplayTicks] = useState<Record<string, CandleData>>({});
@@ -136,7 +141,16 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
   useEffect(() => {
     sessionStorage.setItem('sessionType', sessionType);
     sessionStorage.setItem('isReplayActive', isReplayActive.toString());
-  }, [sessionType, isReplayActive]);
+    sessionStorage.setItem('isPlaying', isPlaying.toString());
+  }, [sessionType, isReplayActive, isPlaying]);
+
+  useEffect(() => {
+    if (currentTime) {
+      sessionStorage.setItem('currentTime', currentTime.toISOString());
+    } else {
+      sessionStorage.removeItem('currentTime');
+    }
+  }, [currentTime]);
 
   // ── Load Available Dates & History ──────────────────────
   // ── Load Historical Candles ──────────────────────
@@ -233,12 +247,15 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
           symbol: o.symbol,
           direction: o.direction,
           type: o.direction,
+          parentTradeId: o.parent_trade_id,
           entryPrice: o.entry_price,
           quantity: o.quantity,
           pnl: o.pnl,
           status: o.status,
           stopLoss: o.stop_loss,
           takeProfit: o.take_profit,
+          limitPrice: o.limit_price,
+          stopPrice: o.stop_price,
           sessionType: o.session_type,
           timestamp: new Date(),
         }));
@@ -296,11 +313,12 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
   useEffect(() => {
     if (!isPlaying) {
       marketDataService.disconnect();
-      setSessionType('LIVE');
       return;
     }
 
-    setSessionType('REPLAY');
+    if (isReplayActive) {
+      setSessionType('REPLAY');
+    }
     // NOTE: We no longer clear currentTime or currentCandle here if they were 
     // already set by toggleReplay or setDate. This prevents the "blank flash" 
     // and ensures the chart starts precisely at 09:15.
@@ -477,12 +495,15 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
             symbol: order.symbol,
             direction: order.direction,
             type: order.direction,
+            parentTradeId: order.parent_trade_id,
             entryPrice: order.entry_price,
             quantity: order.quantity,
             pnl: order.pnl,
             status: order.status,
             stopLoss: order.stop_loss,
             takeProfit: order.take_profit,
+            limitPrice: order.limit_price,
+            stopPrice: order.stop_price,
             sessionType: order.session_type,
             timestamp: new Date(),
           };
@@ -641,7 +662,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
     takeProfit?: number,
     alert: boolean = false,
     simulatedTime?: string | Date,
-    symbol?: string
+    symbol?: string,
+    limitPrice?: number,
+    stopPrice?: number
   ) => {
     try {
       const response = await fetch(`/api/trade/`, {
@@ -653,6 +676,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
           quantity,
           price: price || currentPrice || (historicalCandles.length > 0 ? historicalCandles[historicalCandles.length - 1].close : 0),
           order_type: orderType,
+          limit_price: limitPrice,
+          stop_price: stopPrice,
           stop_loss: stopLoss,
           take_profit: takeProfit,
           alert,
@@ -668,6 +693,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
       }
 
       const result = await response.json();
+      await fetchActiveTrades();
       toast.success(result.message);
     } catch (err: any) {
       console.error('Trading Error:', err);
@@ -710,6 +736,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
           exit_type: exitType,
           limit_price: limitPrice,
           exit_price: currentPrice, // Pass the current simulated price for accuracy
+          session_type: sessionType,
           simulated_time: simulatedTime || (sessionType === 'REPLAY' ? currentTime : undefined)
         }),
         credentials: 'include'
@@ -721,6 +748,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
       }
 
       const result = await response.json();
+      await fetchActiveTrades();
       toast.success(result.message || 'Position closing initiated');
     } catch (err: any) {
       console.error('Close Position Error:', err);
@@ -747,6 +775,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
       }
 
       const result = await response.json();
+      await fetchActiveTrades();
       toast.success(result.message || 'All positions closed successfully');
     } catch (err: any) {
       console.error('Close All Positions Error:', err);

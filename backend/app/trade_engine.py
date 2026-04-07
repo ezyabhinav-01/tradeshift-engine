@@ -149,12 +149,12 @@ class TradeEngine:
 
         return {
             "trade_id": trade.id,
-            "status": trade.status,
+            "status": status,
             "symbol": trade.symbol,
             "direction": trade.direction,
             "quantity": trade.quantity,
             "entry_price": trade.entry_price,
-            "order_type": trade.order_type,
+            "order_type": order_type,
             "stop_loss": trade.stop_loss,
             "take_profit": trade.take_profit,
             "message": f"Order {status_label} successfully",
@@ -173,6 +173,10 @@ class TradeEngine:
             "entry_price": trade.entry_price or 0.0,
             "stop_loss": trade.stop_loss,
             "take_profit": trade.take_profit,
+            "limit_price": trade.limit_price,
+            "stop_price": trade.stop_price,
             "quantity": trade.quantity or 0,
             "pnl": trade.pnl or 0.0,
+            "parent_trade_id": trade.parent_trade_id,
+            "session_type": trade.session_type,
         }

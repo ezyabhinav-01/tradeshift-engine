@@ -88,9 +88,9 @@ class PortfolioService:
         return sorted(results, key=lambda x: x["invested_value"], reverse=True)
 
     async def get_summary(self, db: AsyncSession, user_id: int, session_type: str = 'LIVE') -> Dict[str, Any]:
-        # Fetch user balance
+        # Consolidated balance: Replay trades directly affect main user balance
         res = await db.execute(select(User.balance).filter(User.id == user_id))
-        balance = res.scalars().first() or 0.0
+        balance = res.scalars().first() or 100000.0
 
         holdings = await self.get_holdings(db, user_id, session_type)
         positions = await self.get_positions(db, user_id, session_type)
@@ -163,7 +163,8 @@ class PortfolioService:
         result = await db.execute(select(TradeLog).filter(
             TradeLog.user_id == user_id,
             TradeLog.session_type == session_type,
-            (TradeLog.exit_price == None) | (TradeLog.exit_price == 0)
+            TradeLog.parent_trade_id.is_(None),
+            TradeLog.status.in_(["OPEN", "TRIGGERED"])
         ))
         open_trades = result.scalars().all()
 

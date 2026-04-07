@@ -15,16 +15,20 @@ class ScreenerService:
         3. Debt to Equity < 0.5 (Solvency)
         4. Revenue Growth (5Y) > 15% (Growth)
         """
-        # Always start with our high-quality featured mock stocks to ensure a rich list
-        mock_candidates = ScreenerService._get_mock_candidates()
-        final_results = {c["symbol"]: c for c in mock_candidates}
+        # Initialize results
+        final_results = {}
         
         try:
             if db is None:
-                return list(final_results.values())
+                mock_candidates = ScreenerService._get_mock_candidates()
+                return mock_candidates
                 
             result = await db.execute(select(StockFundamental))
             db_candidates = result.scalars().all()
+            
+            if not db_candidates:
+                logger.warning("⚠️ Screener DB is empty. Serving mock candidates. Run admin sync!")
+                return ScreenerService._get_mock_candidates()
             
             for c in db_candidates:
                 roce = c.roce if c.roce is not None else 0

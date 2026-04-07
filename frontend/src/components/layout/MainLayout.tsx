@@ -17,7 +17,19 @@ const MainLayout = () => {
 
   const handleExecuteOrder = (orderData: any) => {
     console.log('🚀 Executing Order (Terminal):', orderData);
-    placeOrder(orderData.direction, orderData.quantity);
+    placeOrder(
+      orderData.direction,
+      orderData.quantity,
+      orderData.order_type,
+      orderData.price,
+      orderData.stop_loss,
+      orderData.take_profit,
+      orderData.alert,
+      undefined,
+      orderData.symbol,
+      orderData.limit_price,
+      orderData.stop_price
+    );
   };
 
   return (

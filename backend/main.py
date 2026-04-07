@@ -21,7 +21,7 @@ from redis import Redis
 from prometheus_fastapi_instrumentator import Instrumentator
 from app.oms import OrderManager
 from app import auth
-from app.routers import portfolio, history, trading, news, community, analytics, notifications, user, learn
+from app.routers import portfolio, history, trading, news, community, analytics, notifications, user, learn, admin
 from app.tasks.scheduler import setup_scheduler
 from app.websocket_manager import order_manager
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -29,7 +29,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from app.fundamental_service import FundamentalService
 from app.models import User, UserEvent
-from app.database import Base, get_db, get_session, connect_to_database, connect_to_database_sync, get_db_sync
+from app.database import Base, get_db, get_session, connect_to_database, connect_to_database_sync, get_db_sync, sync_schema_hotpatch
 import jwt
 from app.config import SECRET_KEY, ALGORITHM
 
@@ -47,6 +47,13 @@ try:
     Base.metadata.create_all(bind=engine_sync)
     logger.info("✅ Database Tables Created/Verified")
     
+    # 🔥 HOT PATCH: Sync missing columns for remote Supabase DB
+    try:
+        sync_schema_hotpatch(engine_sync)
+        logger.info("✅ Database Hot-Patch Complete")
+    except Exception as patch_err:
+        logger.warning(f"⚠️ Hot-patching failed (this might be fine if DB is local): {patch_err}")
+
     # 🔎 Double-check the tables in metadata
     logger.info(f"Registered Tables: {Base.metadata.tables.keys()}")
 except Exception as e:
@@ -110,12 +117,45 @@ def rolling_market_refresh():
     except Exception as e:
         logger.error(f"❌ Error in daily market data refresh: {e}")
 
+def periodical_fundamental_sync():
+    """Sync stock fundamentals and financials every 15 days."""
+    try:
+        logger.info("📅 Running 15-day periodic stock fundamental sync...")
+        from app.database import get_session
+        from sqlalchemy import text
+        from app.services.fundamental_fetcher import FundamentalFetcherService
+        import asyncio
+
+        async def run_sync():
+            async with await get_session() as db:
+                query = text("SELECT DISTINCT instrument FROM index_metadata LIMIT 50")
+                try:
+                    result = await db.execute(query)
+                    symbols = [row[0] for row in result.all()]
+                except:
+                    symbols = []
+                    
+                if not symbols:
+                    symbols = ["RELIANCE", "HDFCBANK", "TCS", "ICICIBANK", "INFY", "BHARTIARTL", "SBIN", "ITC", "HINDUNILVR", "BAJFINANCE"]
+                
+                await FundamentalFetcherService.sync_stock_data(db, symbols)
+
+        # BackgroundScheduler runs in a separate thread, so we can use asyncio.run
+        asyncio.run(run_sync())
+        logger.info("✅ 15-day fundamental sync complete.")
+    except Exception as e:
+        logger.error(f"❌ Error in periodic fundamental sync: {e}")
+
 # Run every 15 minutes
 scheduler.add_job(refresh_market_cache, 'interval', minutes=15)
 
 # Rolling data refresh: Every day at 17:00 IST (5:00 PM)
 # This handles the daily fetch of today's data and pruning of the oldest day.
 scheduler.add_job(rolling_market_refresh, 'cron', hour=17, minute=0, timezone='Asia/Kolkata')
+
+# 15-day Fundamental Sync
+scheduler.add_job(periodical_fundamental_sync, 'interval', days=15)
+
 scheduler.start()
 
 # --- Async Tasks Scheduler ---
@@ -256,6 +296,7 @@ app.include_router(community.router)
 app.include_router(learn.router)
 app.include_router(analytics.router)
 app.include_router(notifications.router)
+app.include_router(admin.router)
 
 # --- 3. INFRASTRUCTURE CONNECTIONS ---
 
@@ -295,95 +336,135 @@ except Exception as e:
     redis_client = None
 
 # --- 4. HELPER FUNCTION: Load Parquet by Symbol ---
-def load_parquet_for_symbol(symbol: str, target_date: str = None, allow_fallback: bool = False):
+def load_market_data_tiered(symbol: str, target_date: str = None, allow_fallback: bool = True):
     """
-    Load data for a specific symbol from MinIO storage using Supabase metadata.
+    Production-grade tiered data loader:
+    1. Level 1 (Redis): Check for cached pre-processed data.
+    2. Level 2 (MinIO): Primary storage. Fetch Parquet using metadata resolution.
+    3. Level 3 (PostgreSQL): Fallback to market_candles table for the rolling backup.
     """
-    try:
-        # 1. Resolve Instrument Metadata from Supabase
-        if target_date:
-            query = text("""
-                SELECT bucket_name, object_name FROM index_metadata 
-                WHERE instrument = :symbol AND TO_CHAR(start_date, 'YYYY-MM-DD') = :target_date
-                LIMIT 1
-            """)
-            params = {"symbol": symbol, "target_date": target_date}
-        else:
-            # Fallback: Get the most recent date for this symbol
-            query = text("""
-                SELECT bucket_name, object_name FROM index_metadata 
-                WHERE instrument = :symbol 
-                ORDER BY start_date DESC LIMIT 1
-            """)
-            params = {"symbol": symbol}
+    base_symbol = symbol.split('-')[0] if '-' in symbol else symbol
+    # Default to today if no date provided
+    date_str = target_date if target_date else datetime.date.today().strftime('%Y-%m-%d')
+    cache_key = f"market_data_v2:{base_symbol}:{date_str}"
 
-        with engine_sync.connect() as conn:
-            row = conn.execute(query, params).fetchone()
-            
-        if not row:
-            if allow_fallback and target_date: # Try without date
-                 return load_parquet_for_symbol(symbol, None, False)
-            raise FileNotFoundError(f"No metadata found for symbol '{symbol}' (date: {target_date}) in Supabase")
-            
-        bucket_name, object_name = row
-        
-        # 2. Fetch from MinIO (or Local Fallback)
-        if bucket_name == "local":
-            logger.info(f"📁 Fetching from Local File: {object_name}")
+    df = None
+    source_info = "unknown"
+
+    # --- LEVEL 1: REDIS CACHE ---
+    if redis_client:
+        try:
+            cached = redis_client.get(cache_key)
+            if cached:
+                logger.info(f"⚡ Redis Cache Hit: {cache_key}")
+                data = json.loads(cached)
+                df = pd.DataFrame(data)
+                source_info = f"cache:{cache_key}"
+                # Fall through to post-processing to ensure datetime type conversion
+        except Exception as e:
+            logger.warning(f"⚠️ Redis read error: {e}")
+
+    # --- LEVEL 2: MINIO PRIMARY STORAGE ---
+    if df is None:
+        if minio_client:
             try:
-                df = pd.read_parquet(object_name)
-            except Exception as e:
-                raise Exception(f"Local Parquet load failed: {e}")
-        else:
-            if not minio_client:
-                raise Exception("MinIO client not initialized and no local fallback found.")
+                # First, resolve metadata to get the bucket and object name
+                meta_query = text("""
+                    SELECT bucket_name, object_name FROM index_metadata 
+                    WHERE instrument = :symbol AND TO_CHAR(start_date, 'YYYY-MM-DD') = :target_date
+                    LIMIT 1
+                """)
+                if not target_date:
+                    meta_query = text("""
+                        SELECT bucket_name, object_name FROM index_metadata 
+                        WHERE instrument = :symbol ORDER BY start_date DESC LIMIT 1
+                    """)
                 
-            logger.info(f"📦 Fetching from MinIO: {bucket_name}/{object_name}")
-            response = minio_client.get_object(bucket_name, object_name)
-            
-            try:
-                # Load the Parquet file from memory
-                df = pd.read_parquet(io.BytesIO(response.data))
-            finally:
-                response.close()
-                response.release_conn()
-            
-        # 3. Clean and map columns
+                with engine_sync.connect() as conn:
+                    row = conn.execute(meta_query, {"symbol": base_symbol, "target_date": date_str}).fetchone()
+                
+                if row:
+                    bucket_name, object_name = row
+                    if bucket_name == "local":
+                        if os.path.exists(object_name):
+                            df = pd.read_parquet(object_name)
+                            source_info = f"local:{object_name}"
+                    else:
+                        logger.info(f"📦 Fetching from MinIO: {bucket_name}/{object_name}")
+                        response = minio_client.get_object(bucket_name, object_name)
+                        try:
+                            df = pd.read_parquet(io.BytesIO(response.data))
+                            source_info = f"minio:{bucket_name}/{object_name}"
+                        finally:
+                            response.close()
+                            response.release_conn()
+            except Exception as e:
+                logger.warning(f"⚠️ MinIO Primary Load Failed for {base_symbol}/{date_str}: {e}")
+
+    # --- LEVEL 3: POSTGRESQL FALLBACK (The 7-day Backup) ---
+    if df is None:
+        logger.info(f"🔄 MinIO Unavailable. Attempting DB Fallback for {base_symbol} on {date_str}...")
+        try:
+            query = text("""
+                SELECT timestamp, open, high, low, close, volume 
+                FROM market_candles 
+                WHERE symbol = :s AND DATE(timestamp) = :d
+                ORDER BY timestamp ASC
+            """)
+            with engine_sync.connect() as conn:
+                result = conn.execute(query, {"s": base_symbol, "d": date_str})
+                rows = result.fetchall()
+                if rows:
+                    df = pd.DataFrame(rows, columns=['datetime', 'open', 'high', 'low', 'close', 'volume'])
+                    source_info = "db_backup"
+                    logger.info(f"✅ DB Fallback Success: {len(df)} candles found")
+        except Exception as e:
+            logger.error(f"❌ DB Fallback Error: {e}")
+
+    # --- POST-PROCESSING & CACHING ---
+    if df is not None and not df.empty:
+        # Standardize columns
         df.columns = df.columns.str.lower()
         column_map = {
             'into': 'open', 'inth': 'high', 'intl': 'low', 'intc': 'close',
-            'intv': 'volume', 'intoi': 'oi', 'v': 'volume', 'oi': 'oi'
+            'intv': 'volume', 'intoi': 'oi', 'v': 'volume', 'oi': 'oi', 'time': 'datetime'
         }
         df = df.rename(columns=column_map)
         
-        # Clean and parse timestamp
-        time_col = 'time' if 'time' in df.columns else ('datetime' if 'datetime' in df.columns else None)
-        if time_col:
-            df['time'] = df[time_col].astype(str).str.replace('Ok ', '', regex=False).str.strip()
-            # Try multiple formats
-            for fmt in ['%d-%m-%Y %H:%M:%S', '%Y-%m-%d %H:%M:%S', '%m/%d/%Y %H:%M:%S']:
-                try:
-                    df['datetime'] = pd.to_datetime(df['time'], format=fmt, errors='coerce')
-                    if not df['datetime'].isnull().all(): break
-                except: continue
-            if 'datetime' not in df.columns or df['datetime'].isnull().all():
-                df['datetime'] = pd.to_datetime(df['time'], errors='coerce')
-
-        # Clean numeric data
+        # Ensure datetime type and fix potential Month/Day swaps from parquet auto-loaders
+        if 'datetime' in df.columns:
+            # We convert to string and re-parse with dayfirst=True to ensure consistency
+            # especially if the parquet loader already 'guessed' the wrong month.
+            def aggressive_parse(ts):
+                ts_str = str(ts).replace('Ok ', '').strip()
+                # If it already looks like ISO (YYYY-MM-DD), pd.to_datetime handles it.
+                # If it's DD-MM-YYYY, dayfirst=True is critical.
+                return pd.to_datetime(ts_str, dayfirst=True, errors='coerce')
+            
+            df['datetime'] = df['datetime'].apply(aggressive_parse)
+        
+        # Cleanup numeric and missing
         for col in ['open', 'high', 'low', 'close']:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
-        
         df = df.dropna(subset=['open', 'high', 'low', 'close'])
-        if 'datetime' in df.columns:
-            df = df.sort_values('datetime')
-            
-        logger.info(f"✅ Loaded {len(df)} rows from MinIO for {symbol}.")
-        return df, object_name, symbol
+        df = df.sort_values('datetime')
 
-    except Exception as e:
-        logger.error(f"❌ MinIO Load Error for {symbol}: {e}")
-        raise e
+        # Buffer into Redis for 24h
+        if redis_client:
+            try:
+                # We store as JSON records
+                redis_client.setex(cache_key, 86400, df.to_json(orient='records', date_format='iso'))
+                logger.info(f"💾 Buffered to Redis: {cache_key}")
+            except Exception as e:
+                logger.warning(f"⚠️ Redis write failed: {e}")
+
+        return df, source_info, base_symbol
+
+    raise FileNotFoundError(f"Failed to load data for {symbol} on {date_str} from all available tiers.")
+
+# Keep the old name as an alias for backward compatibility or just replace usage
+load_parquet_for_symbol = load_market_data_tiered
 
 @app.get("/api/search")
 async def search_instruments(query: str):
@@ -541,12 +622,21 @@ async def get_historical_candles(
         if lookback_days == -1:
             target_dates = available_dates
         elif date and lookback_days > 0:
+            target_dt = pd.to_datetime(date).date()
             if date in available_dates:
                 idx = available_dates.index(date)
-                # Include target date (idx) + N preceding days (idx+1, idx+2)
-                target_dates = available_dates[idx : idx + 1 + lookback_days]
+                # Filter candidates that are within 10 days of target to avoid months-old gaps
+                candidates = available_dates[idx+1:]
+                preceding_trading_days = []
+                for cand in candidates:
+                    cand_dt = pd.to_datetime(cand).date()
+                    # Only take days within a 10-day calendar window to find the most recent 2 trading days
+                    if (target_dt - cand_dt).days <= 10:
+                        preceding_trading_days.append(cand)
+                        if len(preceding_trading_days) >= lookback_days:
+                            break
+                target_dates = [date] + preceding_trading_days
             else:
-                # If date not in list, try to at least return the date
                 target_dates = [date]
         elif date:
             target_dates = [date]
@@ -557,22 +647,22 @@ async def get_historical_candles(
         
         if not target_dates and not date:
             # Fallback to most recent data
-            df, fpath, _ = load_parquet_for_symbol(base_symbol, None, allow_fallback=True)
+            df, fpath, _ = load_market_data_tiered(base_symbol, None, allow_fallback=True)
             all_dfs.append(df)
             loaded_files.add(fpath)
         else:
             for d in reversed(target_dates): # Oldest first
                 try:
-                    df, fpath, _ = load_parquet_for_symbol(base_symbol, d, allow_fallback=False)
+                    df, fpath, _ = load_market_data_tiered(base_symbol, d, allow_fallback=True)
                     all_dfs.append(df)
                     loaded_files.add(fpath)
-                except FileNotFoundError:
+                except:
                     continue
             
             # If lookback_days was -1, also try to add the base file (the most recent data)
             if lookback_days == -1:
                 try:
-                    df_base, fpath, _ = load_parquet_for_symbol(base_symbol, None, allow_fallback=True)
+                    df_base, fpath, _ = load_market_data_tiered(base_symbol, None, allow_fallback=True)
                     # Check if this df_base has new data not in all_dfs
                     if fpath not in loaded_files:
                         all_dfs.append(df_base)
@@ -606,6 +696,9 @@ async def get_historical_candles(
             # Force naive to be treated as UTC to match the browser's view
             # This fixes the "gap" and the 5:30 hour shift between history and ticker
             ts_val = row[time_col]
+            if isinstance(ts_val, str):
+                ts_val = pd.to_datetime(ts_val.replace('Ok ', '').strip(), dayfirst=True)
+            
             if ts_val.tzinfo is None:
                 ts_val = ts_val.tz_localize('UTC')
             ts = int(ts_val.timestamp())
@@ -968,7 +1061,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         try:
                             # Extract base symbol if it has suffix (e.g. NIFTY-2026 -> NIFTY)
                             base_symbol = symbol.split('-')[0] if '-' in symbol else symbol
-                            df_sym, file_path, _ = load_parquet_for_symbol(base_symbol, target_date, allow_fallback=True)
+                            df_sym, file_path, _ = load_market_data_tiered(base_symbol, target_date, allow_fallback=True)
                             
                             # Find date column
                             date_col = next((c for c in ['datetime', 'date', 'time'] if c in df_sym.columns), None)
@@ -979,7 +1072,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             if not pd.api.types.is_datetime64_any_dtype(temp_df[date_col]):
                                 temp_df[date_col] = pd.to_datetime(
                                     temp_df[date_col].astype(str).str.replace('Ok ', '', regex=False).str.strip(), 
-                                    dayfirst=False, errors='coerce'
+                                    dayfirst=True, errors='coerce'
                                 )
                             
                             # Ensure temp_df is naive for comparison
@@ -1022,17 +1115,27 @@ async def websocket_endpoint(websocket: WebSocket):
                         backfill_dfs = []
                         if target_date in available_dates:
                             idx = available_dates.index(target_date)
-                            # Get 2 preceding days
-                            preceding_dates = available_dates[idx+1 : idx+3]
-                            for d in reversed(preceding_dates):
+                            target_dt_obj = pd.to_datetime(target_date).date()
+                            
+                            # Get nearest N preceding trading days within 10 days window
+                            preceding_trading_days = []
+                            candidates = available_dates[idx+1:]
+                            for cand in candidates:
+                                cand_dt = pd.to_datetime(cand).date()
+                                if (target_dt_obj - cand_dt).days <= 10:
+                                    preceding_trading_days.append(cand)
+                                    if len(preceding_trading_days) >= 2: # 2 days lookback
+                                        break
+                                        
+                            for d in reversed(preceding_trading_days):
                                 try:
-                                    df_p, _, _ = load_parquet_for_symbol(base_sym, d)
+                                    df_p, _, _ = load_market_data_tiered(base_sym, d)
                                     backfill_dfs.append(df_p)
                                 except: continue
                         
                         # Also include current day's data BEFORE 9:15 AM if any
                         try:
-                            df_current, _, _ = load_parquet_for_symbol(base_sym, target_date)
+                            df_current, _, _ = load_market_data_tiered(base_sym, target_date)
                             backfill_dfs.append(df_current)
                         except: pass
                         
@@ -1041,7 +1144,10 @@ async def websocket_endpoint(websocket: WebSocket):
                             backfill_ts_col = next((c for c in ['datetime', 'date', 'time'] if c in df_backfill.columns), None)
                             if backfill_ts_col:
                                 if not pd.api.types.is_datetime64_any_dtype(df_backfill[backfill_ts_col]):
-                                    df_backfill[backfill_ts_col] = pd.to_datetime(df_backfill[backfill_ts_col].astype(str).str.replace('Ok ', '', regex=False).str.strip(), errors='coerce')
+                                    df_backfill[backfill_ts_col] = pd.to_datetime(
+                                        df_backfill[backfill_ts_col].astype(str).str.replace('Ok ', '', regex=False).str.strip(), 
+                                        dayfirst=True, errors='coerce'
+                                    )
                                 
                                 # Ensure naive for comparison
                                 if df_backfill[backfill_ts_col].dt.tz is not None:
@@ -1079,14 +1185,14 @@ async def websocket_endpoint(websocket: WebSocket):
                     indices_opens = {}
                     for idx_name in ["NIFTY", "BANKNIFTY", "SENSEX"]:
                         try:
-                            idx_df, _, _ = load_parquet_for_symbol(idx_name, target_date, allow_fallback=True)
+                            idx_df, _, _ = load_market_data_tiered(idx_name, target_date, allow_fallback=True)
                             ic_date_col = next((c for c in ['datetime', 'date', 'time'] if c in idx_df.columns), None)
                             if ic_date_col:
                                 temp_idx = idx_df.copy()
                                 if not pd.api.types.is_datetime64_any_dtype(temp_idx[ic_date_col]):
                                     temp_idx[ic_date_col] = pd.to_datetime(
                                         temp_idx[ic_date_col].astype(str).str.replace('Ok ', '', regex=False).str.strip(), 
-                                        dayfirst=False, errors='coerce'
+                                        dayfirst=True, errors='coerce'
                                     )
                                 
                                 # If fallback was used, the inherent date will be wrong. 
@@ -1236,7 +1342,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     ref_row.get('time')     or
                     datetime.datetime.now()
                 )
-                base_time = pd.to_datetime(date_val) if not isinstance(date_val, datetime.datetime) else date_val
+                base_time = pd.to_datetime(date_val, dayfirst=True) if not isinstance(date_val, datetime.datetime) else date_val
                 # CRITICAL: Ensure base_time is naive for comparison with news timestamps
                 if hasattr(base_time, "tzinfo") and base_time.tzinfo is not None:
                     base_time = base_time.replace(tzinfo=None)
@@ -1351,7 +1457,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         except Exception: pass
 
                     # ─── Smooth Sub-Tick Brownian Bridge Simulation ───
-                    sub_steps = 60
+                    sub_steps = 20
                     # Standard deviation (approx 0.005% of current price as volatility per tick)
                     vol_scale = last_tick_price * 0.00005 if last_tick_price > 0 else 0.1
                     
@@ -1392,6 +1498,8 @@ async def websocket_endpoint(websocket: WebSocket):
 
                         # Interpolation factor (0.1 to 1.0)
                         factor = (step + 1) / sub_steps
+                        
+                        if not is_running: break
                         
                         # --- BROADCAST INTERPOLATED TICKS ---
                         # For Primary Symbol, we can interpolate if there's a next tick
@@ -1507,10 +1615,11 @@ async def websocket_endpoint(websocket: WebSocket):
                                 }))
                                 active_impact_observers.remove(obs)
 
-                        # ── Precise Speed Scaling (60 seconds per candle / speed) ──
-                        actual_delay = 60.0 / (speed * sub_steps) if speed > 0 else 1.0 / sub_steps
-                        await asyncio.sleep(min(actual_delay, 1.0)) # Safety cap
+                        # ── Precise Speed Scaling (1 second per tick / speed) ──
+                        actual_delay = 1.0 / (speed * sub_steps) if speed > 0 else 1.0 / sub_steps
+                        await asyncio.sleep(max(actual_delay, 0.001)) 
                     
+                    if not is_running: break
                     last_tick_sent_at = time.time()
                 
                 if not is_running:

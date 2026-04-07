@@ -816,33 +816,23 @@ export const ProChart: React.FC<ProChartProps> = ({
     // We now show them alongside the consolidated PnL line for better visibility.
     // if (isReplayActive) return; 
 
-    const activeTrades = trades.filter((t: any) => t.symbol === selectedSymbol && ['OPEN', 'PENDING', 'TRIGGERED'].includes(t.status));
+    const activeTrades = trades.filter((t: any) =>
+      t.symbol === mySymbol &&
+      !t.parentTradeId &&
+      ['OPEN', 'TRIGGERED'].includes(t.status)
+    );
     activeTrades.forEach((trade: any) => {
       const isBuy = (trade.direction || trade.type) === 'BUY';
-      const entryColor = isBuy ? '#26a69a' : '#ef5350';
+      const entryColor = '#eab308';
       if (trade.entryPrice > 0) {
         const entryLine = seriesRef.current!.createPriceLine({
           price: trade.entryPrice, color: entryColor, lineWidth: 2, lineStyle: 0,
-          axisLabelVisible: true, title: `${trade.status === 'PENDING' ? 'LMT' : 'ENTRY'}: ₹${trade.entryPrice.toFixed(2)}`,
+          axisLabelVisible: true, title: `${isBuy ? 'BUY' : 'SELL'}: ₹${trade.entryPrice.toFixed(2)}`,
         });
         positionLinesRef.current.push({ id: trade.id, type: 'ENTRY', line: entryLine });
       }
-      if (trade.stopLoss && trade.stopLoss > 0) {
-        const slLine = seriesRef.current!.createPriceLine({
-          price: trade.stopLoss, color: '#ef5350', lineWidth: 1, lineStyle: 2,
-          axisLabelVisible: true, title: `SL: ₹${trade.stopLoss.toFixed(2)}`,
-        });
-        positionLinesRef.current.push({ id: trade.id, type: 'SL', line: slLine });
-      }
-      if (trade.takeProfit && trade.takeProfit > 0) {
-        const tpLine = seriesRef.current!.createPriceLine({
-          price: trade.takeProfit, color: '#26a69a', lineWidth: 1, lineStyle: 2,
-          axisLabelVisible: true, title: `TP: ₹${trade.takeProfit.toFixed(2)}`,
-        });
-        positionLinesRef.current.push({ id: trade.id, type: 'TP', line: tpLine });
-      }
     });
-  }, [trades, selectedSymbol, data, isReplayActive]);
+  }, [trades, mySymbol, data, isReplayActive]);
 
   useEffect(() => {
     if (!chartRef.current || !seriesRef.current || !isPrimary) {
@@ -854,36 +844,35 @@ export const ProChart: React.FC<ProChartProps> = ({
       if (!seriesRef.current || !chartRef.current) return;
       const validPrice = typeof currentPrice === 'number' ? currentPrice : 0;
       
-      const activeTrades = trades.filter((t: any) => t.symbol === selectedSymbol && ['OPEN', 'TRIGGERED'].includes(t.status));
+      const activeTrades = trades.filter((t: any) =>
+        t.symbol === mySymbol &&
+        !t.parentTradeId &&
+        ['OPEN', 'TRIGGERED'].includes(t.status)
+      );
       
       if (activeTrades.length === 0) {
         setPositionsWithPnL([]);
         return;
       }
 
-      // Consolidate into a single visual line for the symbol
-      const totalQty = activeTrades.reduce((sum: number, t: any) => sum + t.quantity, 0);
-      const totalPnL = activeTrades.reduce((sum: number, trade: any) => {
-        const isBuy = (trade.direction || trade.type) === 'BUY';
-        return sum + ((validPrice - trade.entryPrice) * trade.quantity * (isBuy ? 1 : -1));
-      }, 0);
-      
-      // Weighted average entry price
-      const avgEntryPrice = activeTrades.reduce((sum: number, t: any) => sum + (t.entryPrice * t.quantity), 0) / totalQty;
-      const yCoord = seriesRef.current!.priceToCoordinate(avgEntryPrice);
+      const tradePositions = activeTrades
+        .filter((trade: any) => trade.entryPrice > 0)
+        .map((trade: any) => {
+          const isBuy = (trade.direction || trade.type) === 'BUY';
+          const pnl = (validPrice - trade.entryPrice) * trade.quantity * (isBuy ? 1 : -1);
+          const yCoord = seriesRef.current!.priceToCoordinate(trade.entryPrice);
 
-      const consolidatedPos = {
-        id: `consolidated-${selectedSymbol}`,
-        price: avgEntryPrice,
-        pnl: totalPnL,
-        y: (yCoord as number) ?? -100,
-        color: totalPnL >= 0 ? '#089981' : '#f23645',
-        direction: activeTrades[0].direction || 'TRADE', // Just use first trade's direction as label
-        isConsolidated: true,
-        tradeIds: activeTrades.map((t: any) => t.id)
-      };
+          return {
+            id: trade.id,
+            price: trade.entryPrice,
+            pnl,
+            y: (yCoord as number) ?? -100,
+            direction: isBuy ? 'BUY' : 'SELL',
+            quantity: trade.quantity,
+          };
+        });
 
-      setPositionsWithPnL([consolidatedPos]);
+      setPositionsWithPnL(tradePositions);
     };
 
     updatePnLPositions();
@@ -894,7 +883,7 @@ export const ProChart: React.FC<ProChartProps> = ({
         try { chartRef.current.timeScale().unsubscribeVisibleLogicalRangeChange(updatePnLPositions); } catch (e) {}
       }
     };
-  }, [trades, currentPrice, selectedSymbol, isPrimary]);
+  }, [trades, currentPrice, mySymbol, isPrimary]);
 
   // Alert Checking Logic
   useEffect(() => {
@@ -1091,27 +1080,36 @@ export const ProChart: React.FC<ProChartProps> = ({
       <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
         {positionsWithPnL.map((pos) => (
           pos.y > 0 && (
-            <div key={pos.id} className="absolute left-[80px] flex items-center gap-2 transform -translate-y-1/2 transition-all duration-100 ease-linear pointer-events-none" style={{ top: `${pos.y}px` }}>
-              <div 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (pos.isConsolidated) {
-                    // Logic to exit all trades for this symbol
-                    if (window.confirm(`Exit all ${selectedSymbol} positions?`)) {
-                      closeAllPositions(); // This closes all, but effectively symbol-focused in this view
-                    }
-                  } else {
-                    onEntryLineClick?.(pos.id);
-                  }
-                }}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md shadow-lg border backdrop-blur-md cursor-pointer pointer-events-auto hover:brightness-125 hover:scale-105 active:scale-95 transition-all group ${pos.pnl >= 0 ? 'bg-[#089981]/20 border-[#089981]/40 text-[#089981]' : 'bg-[#f23645]/20 border-[#f23645]/40 text-[#f23645]'}`}
-                title="Click to Exit Position"
-              >
-                <span className="text-[10px] font-black tracking-tighter uppercase opacity-60">{pos.direction}</span>
-                <span className="text-xs font-mono font-black">{pos.pnl >= 0 ? '+' : '-'}₹{Math.abs(pos.pnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${pos.pnl >= 0 ? 'bg-[#089981]' : 'bg-[#f23645]'}`} />
+            <div
+              key={pos.id}
+              className="absolute left-0 w-full transition-all duration-100 ease-linear pointer-events-none"
+              style={{ top: `${pos.y}px`, transform: 'translateY(-50%)' }}
+            >
+              <div className="relative w-full">
+                <div className="absolute inset-x-0 top-1/2 h-[2px] -translate-y-1/2 bg-[#eab308] opacity-80 shadow-[0_0_8px_rgba(234,179,8,0.45)]" />
+
+                <div className="relative ml-3 inline-flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEntryLineClick?.(pos.id);
+                    }}
+                    className="pointer-events-auto flex items-center gap-2 rounded-md border border-white/10 bg-[#161b2e]/95 px-3 py-1.5 shadow-[0_8px_20px_rgba(0,0,0,0.35)] backdrop-blur-md transition-all hover:border-[#eab308]/60 hover:bg-[#1a2140] active:scale-[0.98]"
+                    title="Exit position"
+                  >
+                    <span className="text-[10px] font-black uppercase tracking-widest text-white/60">P&amp;L</span>
+                    <span className={`text-[13px] font-mono font-black ${pos.pnl >= 0 ? 'text-[#34d399]' : 'text-[#f87171]'}`}>
+                      {pos.pnl >= 0 ? '+' : '-'}₹{Math.abs(pos.pnl).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                    </span>
+                    <span className="text-base leading-none text-white/35">×</span>
+                  </button>
+
+                  <div className="absolute left-3 top-full mt-1 text-[10px] font-bold text-white/55">
+                    {pos.quantity} {pos.quantity > 1 ? 'Lots' : 'Lot'}
+                  </div>
+                </div>
               </div>
-              <div className="h-[1px] w-[2000px] opacity-40 border-t border-dashed border-[#eab308]" />
             </div>
           )
         ))}

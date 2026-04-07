@@ -18,7 +18,7 @@ const ChartArea = ({ onPriceClick, onEntryLineClick, previewPrice, positions: pr
     currentPrice, currentCandle, isPlaying, historicalCandles,
     selectedSymbol, togglePlay, isReplayActive, toggleReplay,
     selectedDate, availableDates, setDate, speed, setSpeed,
-    trades, modifyOrder
+    trades, modifyOrder, closePosition
   } = useGame();
   const { isDark } = useTheme();
   const [isDateDropdownOpen, setIsDateDropdownOpen] = useState(false);
@@ -220,8 +220,7 @@ const ChartArea = ({ onPriceClick, onEntryLineClick, previewPrice, positions: pr
     );
 
     activeTrades.forEach(trade => {
-      const isBuy = (trade.direction || trade.type) === 'BUY';
-      const entryColor = isBuy ? '#26a69a' : '#ef5350';
+      const entryColor = '#f59e0b'; // Unified Yellow for all entry lines
 
       // 1. Entry Line
       if (trade.entryPrice > 0) {
@@ -483,27 +482,41 @@ const ChartArea = ({ onPriceClick, onEntryLineClick, previewPrice, positions: pr
           pos.y > 0 && (
             <div
               key={pos.id}
-              className="absolute left-[80px] flex items-center gap-2 transform -translate-y-1/2 transition-all duration-100 ease-linear"
+              className="absolute left-0 flex items-center group pointer-events-auto transform -translate-y-1/2 transition-all duration-100 ease-linear cursor-help"
               style={{ top: `${pos.y}px` }}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (window.confirm(`Exit ${pos.direction} position at ₹${currentPrice.toFixed(2)}?`)) {
+                  closePosition(pos.id);
+                }
+              }}
             >
-              <div
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md shadow-lg border backdrop-blur-md
-                  ${pos.pnl >= 0
-                    ? 'bg-[#089981]/20 border-[#089981]/40 text-[#089981]'
-                    : 'bg-[#f23645]/20 border-[#f23645]/40 text-[#f23645]'}`}
-              >
-                <span className="text-[10px] font-black tracking-tighter uppercase opacity-60">
-                  {pos.direction}
-                </span>
-                <span className="text-xs font-mono font-black">
-                  {pos.pnl >= 0 ? '+' : ''}₹{Math.abs(pos.pnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-                <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${pos.pnl >= 0 ? 'bg-[#089981]' : 'bg-[#f23645]'}`} />
+              {/* Premium Label Box */}
+              <div className="flex items-center shadow-2xl border border-[#f59e0b]/30 bg-[#1e222d]/90 backdrop-blur-md rounded overflow-hidden">
+                <div className="bg-[#f59e0b] px-1.5 py-2.5 flex items-center justify-center">
+                   <div className="[writing-mode:vertical-lr] rotate-180 text-[9px] font-black tracking-tighter text-black uppercase">
+                     {pos.direction}
+                   </div>
+                </div>
+                
+                <div className="flex flex-col px-3 py-1 min-w-[80px]">
+                  <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest leading-none mb-0.5">CURRENT PNL</span>
+                  <div className="flex items-baseline gap-1">
+                    <span className={`text-sm font-mono font-black ${pos.pnl >= 0 ? 'text-[#089981]' : 'text-[#f23645]'}`}>
+                      {pos.pnl >= 0 ? '+' : ''}₹{Math.abs(pos.pnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="px-2 py-1 bg-black/20 border-l border-white/5 hover:bg-[#f23645]/20 transition-colors group-hover:border-[#f23645]/40 flex flex-col items-center">
+                   <span className="text-[8px] font-bold text-gray-400">EXIT</span>
+                   <X size={12} className="text-gray-400 group-hover:text-[#f23645]" />
+                </div>
               </div>
 
-              {/* Connector line to the price scale */}
+              {/* Connector line to the price scale - Yellow to match the entry line */}
               <div
-                className={`h-[1px] w-[2000px] opacity-20 border-t border-dashed ${pos.pnl >= 0 ? 'border-[#089981]' : 'border-[#f23645]'}`}
+                className="h-[1px] w-[5000px] opacity-40 border-t border-[#f59e0b] -z-10"
               />
             </div>
           )

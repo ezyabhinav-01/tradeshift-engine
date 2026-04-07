@@ -24,7 +24,7 @@ class FundamentalService:
         financials = result_fin.scalars().all()
 
         if not fundamental:
-            logger.info(f"🔍 No DB data for {symbol}. Serving high-quality mock candidates.")
+            logger.warning(f"⚠️ No real DB data for {symbol}. Serving mock fallback. Run admin sync to update!")
             return FundamentalService._get_mock_data(symbol)
 
         logger.info(f"✅ Serving live DB profile for {symbol}")

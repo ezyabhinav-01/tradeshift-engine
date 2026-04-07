@@ -33,12 +33,14 @@ def seed_metadata():
                     # We store the relative path for the fallback logic
                     conn.execute(
                         text("""
-                            INSERT INTO index_metadata (instrument, start_date, bucket_name, object_name)
-                            VALUES (:instrument, :start_date, :bucket, :object)
+                            INSERT INTO index_metadata (instrument, interval, start_date, end_date, rows_count, bucket_name, object_name, parquet_path)
+                            VALUES (:instrument, :interval, :start_date, :start_date, :rows_count, :bucket, :object, :object)
                         """),
                         {
                             "instrument": symbol,
+                            "interval": "1min",
                             "start_date": start_date,
+                            "rows_count": 375,
                             "bucket": "local",
                             "object": file_path
                         }

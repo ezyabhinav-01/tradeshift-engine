@@ -14,6 +14,7 @@ export interface Trade {
     symbol: string;
     direction?: 'BUY' | 'SELL'; // backend uses direction
     type?: 'BUY' | 'SELL';      // legacy frontend uses type
+    parentTradeId?: number | null;
     entryPrice: number;
     quantity: number;
     pnl?: number;
@@ -22,5 +23,7 @@ export interface Trade {
     status: 'OPEN' | 'CLOSED' | 'PENDING' | 'TRIGGERED' | 'FILLED' | 'CANCELLED';
     stopLoss?: number;
     takeProfit?: number;
+    limitPrice?: number;
+    stopPrice?: number;
     sessionType?: 'LIVE' | 'REPLAY';
 }

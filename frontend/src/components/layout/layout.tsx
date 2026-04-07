@@ -1,11 +1,16 @@
 import { Outlet, useLocation } from 'react-router-dom';
-import React, { useRef } from 'react';
+import { useRef } from 'react';
 import Topbar from './Header';
 import { GlobalTicker } from '../market/GlobalTicker';
+import { useAuth } from '../../context/AuthContext';
+import ReplayToolbar from '../features/ReplayToolbar';
 
 const Layout = () => {
+    const { user } = useAuth();
+    const isGuest = !user;
     const location = useLocation();
-    const isChartRoute = location.pathname === '/' || location.pathname === '/terminal';
+    const isTradePage = location.pathname === '/trade';
+    const isChartRoute = isTradePage || location.pathname === '/terminal';
     const isLearnSubRoute = location.pathname.startsWith('/learn/');
 
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -44,6 +49,7 @@ const Layout = () => {
                     >
                         <Outlet context={{ scrollRef }} />
                     </div>
+                    {!isGuest && isTradePage && <ReplayToolbar />}
                 </div>
             </div>
         </main>

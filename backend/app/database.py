@@ -8,7 +8,7 @@ import time
 import asyncio
 import ssl
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 import logging
 
@@ -186,3 +186,58 @@ async def get_session():
     if not _db_cache["session_maker"]:
         await connect_to_database()
     return _db_cache["session_maker"]()
+
+
+def sync_schema_hotpatch(engine):
+    """
+    Checks the database for missing columns in the 'users' table and adds them if found.
+    This ensures remote Supabase DB stays in sync with SQLAlchemy models without manual migrations.
+    """
+    inspector = inspect(engine)
+    columns_info = inspector.get_columns("users")
+    existing_columns = [col["name"] for col in columns_info]
+    
+    # List of columns that might be missing in older schemas
+    required_columns = [
+        ("full_name", "VARCHAR"),
+        ("dob", "VARCHAR"),
+        ("experience_level", "VARCHAR"),
+        ("investment_goals", "VARCHAR"),
+        ("preferred_instruments", "VARCHAR"),
+        ("risk_tolerance", "VARCHAR"),
+        ("occupation", "VARCHAR"),
+        ("city", "VARCHAR"),
+        ("how_heard_about", "VARCHAR"),
+        ("security_pin", "VARCHAR(4)"),
+        ("phone_number", "VARCHAR"),
+        ("otp_code", "VARCHAR(6)"),
+        ("otp_expiry", "TIMESTAMP"),
+        ("demat_id", "VARCHAR(50)"),
+        ("refresh_token", "VARCHAR"),
+        ("is_verified", "BOOLEAN DEFAULT FALSE"),
+        ("balance", "FLOAT DEFAULT 100000.0"),
+        ("last_active_at", "TIMESTAMP"),
+        ("created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+    ]
+    
+    with engine.connect() as conn:
+        for col_name, col_type in required_columns:
+            if col_name not in existing_columns:
+                logger.info(f"🛠️  Hot-patching DB: Adding missing column '{col_name}' to 'users' table...")
+                try:
+                    conn.execute(text(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}"))
+                    conn.commit()
+                    logger.info(f"✅ Column '{col_name}' added successfully.")
+                except Exception as e:
+                    logger.error(f"❌ Failed to add column '{col_name}': {e}")
+        
+        # Verify index for demat_id if column was added or exists
+        try:
+            indexes = inspector.get_indexes("users")
+            index_names = [idx["name"] for idx in indexes]
+            if "ix_users_demat_id" not in index_names:
+                 logger.info("🛠️  Hot-patching DB: Adding unique index for 'demat_id'...")
+                 conn.execute(text("CREATE UNIQUE INDEX ix_users_demat_id ON users (demat_id) WHERE demat_id IS NOT NULL"))
+                 conn.commit()
+        except Exception as e:
+             logger.error(f"❌ Failed to create demat_id index: {e}")

@@ -35,11 +35,13 @@ load_dotenv()
 API_ENDPOINT = "https://api.shoonya.com/NorenWClient/"
 
 INSTRUMENTS = {
-    'NIFTY':     {'token': '26000', 'exchange': 'NSE', 'ticker': '^NSEI'},
-    'BANKNIFTY': {'token': '26009', 'exchange': 'NSE', 'ticker': '^NSEBANK'},
-    'SENSEX':    {'token': '1',     'exchange': 'BSE', 'ticker': '^BSESN'},
-    'HDFCBANK':  {'token': '1333',  'exchange': 'NSE', 'ticker': 'HDFCBANK.NS'},
-    'RELIANCE':  {'token': '2885',  'exchange': 'NSE', 'ticker': 'RELIANCE.NS'},
+    'NIFTY':      {'token': '26000', 'exchange': 'NSE', 'ticker': '^NSEI'},
+    'BANKNIFTY':  {'token': '26009', 'exchange': 'NSE', 'ticker': '^NSEBANK'},
+    'FINNIFTY':   {'token': '26037', 'exchange': 'NSE', 'ticker': '^CNXFIN'},
+    'MIDCPNIFTY': {'token': '26074', 'exchange': 'NSE', 'ticker': '^NSEMDCP50'},
+    'SENSEX':     {'token': '1',     'exchange': 'BSE', 'ticker': '^BSESN'},
+    'HDFCBANK':   {'token': '1333',  'exchange': 'NSE', 'ticker': 'HDFCBANK.NS'},
+    'RELIANCE':   {'token': '2885',  'exchange': 'NSE', 'ticker': 'RELIANCE.NS'},
 }
 
 class ShoonyaAPI(NorenApi):
@@ -208,7 +210,7 @@ def fetch_rolling_7days(days=1):
                                 df_yf.columns = df_yf.columns.get_level_values(0)
                             
                             df = df_yf.rename(columns={'Open': 'into', 'High': 'inth', 'Low': 'intl', 'Close': 'intc', 'Volume': 'intv'})
-                            df['time'] = "Ok " + df.index.strftime('%d-%m-%Y %H:%M:%S')
+                            df['time'] = "Ok " + df.index.strftime('%Y-%m-%d %H:%M:%S')
                             success = True
                             logger.info(f"✅ Success from yfinance for {sym}")
                         else:

@@ -162,9 +162,9 @@ export default function PortfolioPage() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-4">
         <div className="space-y-1">
           <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-3">
-            Portfolio <span className="text-sidebar-primary text-sm bg-sidebar-primary/10 px-2 py-0.5 rounded uppercase tracking-widest">{sessionType}</span>
+            Trading Portfolio
           </h2>
-          <p className="text-muted-foreground text-sm">Real-time asset tracking and behavioral analytics.</p>
+          <p className="text-muted-foreground text-sm">Professional asset tracking and execution analytics.</p>
         </div>
         <button
           onClick={() => {

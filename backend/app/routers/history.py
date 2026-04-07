@@ -22,6 +22,23 @@ from app.dependencies import get_current_user
 
 async def get_optional_user(request: Request, db: AsyncSession = Depends(get_db)):
     """Try to get current user from cookie/header, return None if unauthenticated."""
+    # 1. Check Session Token First
+    session_token = request.cookies.get("session_id")
+    if session_token:
+        from app.models import UserSession
+        result = await db.execute(
+            select(UserSession)
+            .filter(UserSession.session_token == session_token)
+            .filter(UserSession.expires_at > datetime.utcnow())
+        )
+        session = result.scalars().first()
+        if session:
+            result = await db.execute(select(User).filter(User.id == session.user_id))
+            user = result.scalars().first()
+            if user:
+                return user
+
+    # 2. Fallback to access_token
     token = request.cookies.get("access_token")
     if not token:
         auth_header = request.headers.get("Authorization")

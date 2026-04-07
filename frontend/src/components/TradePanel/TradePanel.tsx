@@ -42,11 +42,12 @@ const TradePanel = ({ price, onExecute, onClose }: TradePanelProps) => {
 
   const [direction, setDirection] = useState<'BUY' | 'SELL'>('BUY');
   const [qty, setQty] = useState(50);
-  const [orderType, setOrderType] = useState<'MARKET' | 'LIMIT' | 'STOP' | 'GTT'>('LIMIT');
+  const [orderType, setOrderType] = useState<'MARKET' | 'LIMIT' | 'STOP' | 'GTT'>('MARKET');
   const [limitPrice, setLimitPrice] = useState(price);
   const [stopPrice, setStopPrice] = useState(price);
   const [stopLoss, setStopLoss] = useState<string>('');
   const [takeProfit, setTakeProfit] = useState<string>('');
+  const [showRiskControls, setShowRiskControls] = useState(false);
   const [alertEnabled, setAlertEnabled] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
@@ -117,8 +118,8 @@ const TradePanel = ({ price, onExecute, onClose }: TradePanelProps) => {
       order_type: orderType,
       limit_price: (orderType === 'LIMIT' || orderType === 'GTT') ? limitPrice : undefined,
       stop_price: orderType === 'STOP' ? stopPrice : undefined,
-      stop_loss: stopLoss ? parseFloat(stopLoss) : undefined,
-      take_profit: takeProfit ? parseFloat(takeProfit) : undefined,
+      stop_loss: showRiskControls && stopLoss ? parseFloat(stopLoss) : undefined,
+      take_profit: showRiskControls && takeProfit ? parseFloat(takeProfit) : undefined,
       alert: alertEnabled,
     };
 
@@ -260,36 +261,64 @@ const TradePanel = ({ price, onExecute, onClose }: TradePanelProps) => {
               {/* Right Column: Advanced Options */}
               <div className="space-y-6">
                 
-                {/* SL / TP Row */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-[#f23645]/60 uppercase tracking-[0.2em] px-1">Stop Loss</label>
-                    <div className="relative">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 font-mono">₹</span>
-                      <input 
-                        type="number"
-                        step="0.05"
-                        placeholder="Optional"
-                        value={stopLoss}
-                        onChange={(e) => setStopLoss(e.target.value)}
-                        className="w-full h-14 bg-[#f23645]/5 border border-[#f23645]/20 rounded-xl pl-8 pr-4 text-white font-mono font-bold text-sm focus:outline-none focus:border-[#f23645]/40 transition-colors placeholder:text-white/10"
-                      />
+                <div className="rounded-md border border-white/10 bg-white/[0.03] overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowRiskControls(prev => {
+                        const next = !prev;
+                        if (!next) {
+                          setStopLoss('');
+                          setTakeProfit('');
+                        }
+                        return next;
+                      });
+                    }}
+                    className="w-full flex items-center justify-between px-4 py-4 text-left hover:bg-white/[0.03] transition-colors"
+                  >
+                    <div>
+                      <div className="text-sm font-bold text-white">Optional Risk Controls</div>
+                      <div className="text-[10px] uppercase tracking-[0.2em] text-white/35 font-black">
+                        Stop Loss / Take Profit
+                      </div>
                     </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-[#089981]/60 uppercase tracking-[0.2em] px-1">Take Profit</label>
-                    <div className="relative">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 font-mono">₹</span>
-                      <input 
-                        type="number"
-                        step="0.05"
-                        placeholder="Optional"
-                        value={takeProfit}
-                        onChange={(e) => setTakeProfit(e.target.value)}
-                        className="w-full h-14 bg-[#089981]/5 border border-[#089981]/20 rounded-xl pl-8 pr-4 text-white font-mono font-bold text-sm focus:outline-none focus:border-[#089981]/40 transition-colors placeholder:text-white/10"
-                      />
+                    <div className={`text-xs font-black uppercase tracking-widest ${showRiskControls ? 'text-tv-primary' : 'text-white/30'}`}>
+                      {showRiskControls ? 'On' : 'Off'}
                     </div>
-                  </div>
+                  </button>
+
+                  {showRiskControls && (
+                    <div className="grid grid-cols-2 gap-4 p-4 pt-0 border-t border-white/5">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-[#f23645]/60 uppercase tracking-[0.2em] px-1">Stop Loss</label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 font-mono">₹</span>
+                          <input 
+                            type="number"
+                            step="0.05"
+                            placeholder="Optional"
+                            value={stopLoss}
+                            onChange={(e) => setStopLoss(e.target.value)}
+                            className="w-full h-14 bg-[#f23645]/5 border border-[#f23645]/20 rounded-xl pl-8 pr-4 text-white font-mono font-bold text-sm focus:outline-none focus:border-[#f23645]/40 transition-colors placeholder:text-white/10"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-[#089981]/60 uppercase tracking-[0.2em] px-1">Take Profit</label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 font-mono">₹</span>
+                          <input 
+                            type="number"
+                            step="0.05"
+                            placeholder="Optional"
+                            value={takeProfit}
+                            onChange={(e) => setTakeProfit(e.target.value)}
+                            className="w-full h-14 bg-[#089981]/5 border border-[#089981]/20 rounded-xl pl-8 pr-4 text-white font-mono font-bold text-sm focus:outline-none focus:border-[#089981]/40 transition-colors placeholder:text-white/10"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Additional Info / Alert */}

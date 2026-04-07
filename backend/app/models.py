@@ -26,10 +26,7 @@ class TradeLog(Base):
 
     # 🔥 NEW BEHAVIOR FIELDS (INSIDE CLASS)
 
-    session_id = Column(String, index=True)
-
     holding_time = Column(Float)
-    trade_number = Column(Integer)
 
     stop_loss = Column(Float, nullable=True)
     take_profit = Column(Float, nullable=True)
@@ -46,8 +43,8 @@ class TradeLog(Base):
     stop_price = Column(Float, nullable=True)
     triggered = Column(Boolean, default=False)
     status = Column(String, default="OPEN")  # OPEN, CLOSED, PENDING, CANCELLED, TRIGGERED, FILLED
-    parent_trade_id = Column(Integer, nullable=True, index=True) # For SL/TP linked to a parent trade
     session_type = Column(String, default="LIVE", index=True) # LIVE or REPLAY
+    parent_trade_id = Column(Integer, ForeignKey("trade_logs.id"), nullable=True)
 
 class PortfolioHolding(Base):
     """
@@ -397,11 +394,6 @@ class Lesson(Base):
     id = Column(Integer, primary_key=True, index=True)
     module_id = Column(Integer, ForeignKey("modules.id", ondelete="CASCADE"))
     title = Column(String(255), nullable=False)
-    opening_hook = Column(Text)
-    core_explanation = Column(Text)
-    socratic_questions = Column(JSON, default=list)
-    real_life_application = Column(Text)
-    key_takeaways = Column(JSON, default=list)
     quiz_questions = Column(JSON, default=list)
     practice_scene_id = Column(String(255))
     xp_reward = Column(Integer, default=0)
@@ -535,6 +527,22 @@ class MarketCandle(Base):
     low = Column(Float)
     close = Column(Float)
     volume = Column(Float)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ReplayScene(Base):
+    """
+    Stored Market Replay scenarios for practice/academy.
+    """
+    __tablename__ = "replay_scenes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    symbol = Column(String(50), nullable=False, index=True)
+    target_date = Column(String(20), nullable=False) # e.g. '2023-07-15'
+    start_time = Column(String(20), nullable=True)   # e.g. '09:15'
+    initial_balance = Column(Float, default=100000.0)
+    description = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class PortfolioSnapshot(Base):

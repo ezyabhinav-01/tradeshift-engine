@@ -257,12 +257,12 @@ class TradeExecuteRequest(BaseModel):
 class TradeResponse(BaseModel):
     """Response from trade execution"""
     trade_id: int
-    status: str
+    status: str = "OPEN"
     symbol: str
     direction: str
     quantity: int
     entry_price: Optional[float] = None
-    order_type: str
+    order_type: str = "MARKET"
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
     limit_price: Optional[float] = None
@@ -289,6 +289,7 @@ class TradeExitRequest(BaseModel):
     exit_type: Literal["MARKET", "LIMIT"] = "MARKET"
     limit_price: Optional[float] = None
     exit_price: Optional[float] = None # NEW: for simulation market exits
+    session_type: Literal["LIVE", "REPLAY"] = "LIVE"
     simulated_time: Optional[datetime] = None # NEW: for simulation consistency
 
 
@@ -456,3 +457,47 @@ class ChapterCommentResponse(ChapterCommentBase):
 
     class Config:
         from_attributes = True
+
+
+# ─── Admin / Internal Management Schemas ────────────────────────
+
+class ReplaySceneBase(BaseModel):
+    name: str
+    symbol: str
+    target_date: str
+    start_time: Optional[str] = "09:15"
+    initial_balance: float = 100000.0
+    description: Optional[str] = None
+
+class ReplaySceneCreate(ReplaySceneBase):
+    pass
+
+class ReplaySceneResponse(ReplaySceneBase):
+    id: int
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class StockFundamentalUpdate(BaseModel):
+    pe_ratio: Optional[float] = None
+    pb_ratio: Optional[float] = None
+    dividend_yield: Optional[float] = None
+    roe: Optional[float] = None
+    roce: Optional[float] = None
+    market_cap: Optional[float] = None
+    revenue_growth_5y: Optional[float] = None
+    profit_growth_5y: Optional[float] = None
+    debt_to_equity: Optional[float] = None
+    current_ratio: Optional[float] = None
+    ebitda_margin: Optional[float] = None
+    free_cash_flow: Optional[float] = None
+    promoter_holding: Optional[float] = None
+
+class StockFinancialCreate(BaseModel):
+    symbol: str
+    year: int
+    revenue: Optional[float] = None
+    net_profit: Optional[float] = None
+    operating_profit: Optional[float] = None
+    eps: Optional[float] = None

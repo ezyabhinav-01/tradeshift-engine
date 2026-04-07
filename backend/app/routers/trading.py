@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, distinct, insert, text
 from app.database import get_db
-from app.models import User, TradeLog, Notification, UserEvent
+from app.models import User, TradeLog, Notification, UserEvent, SystemAlertLog
 from app.schemas import TradeExecuteRequest, TradeResponse, OrderModifyRequest, TradeExitRequest, AlertTriggerRequest
 from app.trade_engine import TradeEngine
 from app.services.order_management import oms_service
@@ -23,6 +23,24 @@ from app.dependencies import get_current_user
 
 async def get_optional_user(request: Request, db: AsyncSession = Depends(get_db)):
     """Try to get current user from cookie/header, return None if unauthenticated."""
+    # 1. Check Session Token First
+    session_token = request.cookies.get("session_id")
+    if session_token:
+        from app.models import UserSession
+        from datetime import datetime
+        result = await db.execute(
+            select(UserSession)
+            .filter(UserSession.session_token == session_token)
+            .filter(UserSession.expires_at > datetime.utcnow())
+        )
+        session = result.scalars().first()
+        if session:
+            result = await db.execute(select(User).filter(User.id == session.user_id))
+            user = result.scalars().first()
+            if user:
+                return user
+
+    # 2. Fallback to access_token
     token = request.cookies.get("access_token")
     if not token:
         auth_header = request.headers.get("Authorization")
@@ -243,7 +261,14 @@ async def close_trade(
     current_market_price = live_market_service.get_last_price()
     exit_price = exit_request.exit_price or (exit_request.limit_price if exit_request.exit_type == "LIMIT" else current_market_price)
 
-    trade = await oms_service.close_trade(db, trade_id, user_id, exit_price, exit_request.exit_type)
+    trade = await oms_service.close_trade(
+        db,
+        trade_id,
+        user_id,
+        exit_price,
+        exit_request.exit_type,
+        exit_request.simulated_time,
+    )
     if not trade:
         raise HTTPException(status_code=404, detail="Open trade not found or not owned by user")
     
@@ -318,12 +343,20 @@ async def close_all_trades(
         body = {}
     
     exit_price_req = body.get("exit_price")
-    user_id = await _get_user_id(request, db, body.get("session_type"))
+    session_type_val = body.get("session_type", "LIVE")
+    simulated_time = body.get("simulated_time")
+    user_id = await _get_user_id(request, db, session_type_val)
+    if simulated_time:
+        try:
+            simulated_time = datetime.fromisoformat(str(simulated_time).replace("Z", "+00:00"))
+        except Exception:
+            simulated_time = None
     
     result = await db.execute(
         select(distinct(TradeLog.symbol)).filter(
             TradeLog.user_id == user_id,
-            TradeLog.status.in_(["OPEN", "TRIGGERED"])
+            TradeLog.status.in_(["OPEN", "TRIGGERED"]),
+            TradeLog.session_type == session_type_val
         )
     )
     symbols = [s[0] for s in result.all()]
@@ -336,7 +369,13 @@ async def close_all_trades(
         # Priority for simulation consistency: exit_price from request body
         price_mapping[sym] = exit_price_req or live_market_service.get_last_price(sym)
 
-    closed_trades = await oms_service.close_all_trades(db, user_id, price_mapping)
+    closed_trades = await oms_service.close_all_trades(
+        db,
+        user_id,
+        price_mapping,
+        session_type=session_type_val,
+        simulated_time=simulated_time,
+    )
     
     user_result = await db.execute(select(User).filter(User.id == user_id))
     user = user_result.scalars().first()
@@ -396,7 +435,6 @@ async def close_all_trades(
     await db.commit()
 
     # 🔥 Snapshot: Update equity curve after closing all trades
-    session_type_val = body.get("session_type", "LIVE")
     background_tasks.add_task(portfolio_service.save_portfolio_snapshot, user_id, session_type_val)
     
     return {
@@ -446,6 +484,18 @@ async def trigger_price_alert(
         type="alert"
     )
     db.add(notification)
+
+    # Log to SystemAlertLog for historical audit
+    alert_log = SystemAlertLog(
+        user_id=user_id,
+        symbol=alert_request.symbol,
+        alert_type=alert_request.condition,
+        message=alert_request.message,
+        trigger_price=alert_request.current_price,
+        timestamp=datetime.utcnow()
+    )
+    db.add(alert_log)
+    
     await db.commit()
     
     return {"message": "Alert email triggered successfully."}

@@ -15,7 +15,7 @@ async def sync_portfolio_holding(
     quantity_delta: int, 
     price: float, 
     direction: str, 
-    session_type: str = "LIVE"
+    session_type: str = "REPLAY"
 ):
     """
     Synchronizes the PortfolioHolding table based on a trade execution.

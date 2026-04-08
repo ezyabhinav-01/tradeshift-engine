@@ -52,8 +52,11 @@ async def get_optional_user(request: Request, db: AsyncSession = Depends(get_db)
         return None
 
 
-async def _get_user_id(request: Request, db: AsyncSession, session_type: str = 'LIVE') -> int:
+async def _get_user_id(request: Request, db: AsyncSession, session_type: str = 'REPLAY') -> int:
     """Helper to extract user_id. Allows fallback to user 1 for REPLAY mode."""
+    session_type = (session_type or "REPLAY").upper()
+    if session_type == "LIVE":
+        session_type = "REPLAY"
     user = await get_optional_user(request, db)
     if not user:
         if session_type == 'REPLAY':
@@ -63,7 +66,7 @@ async def _get_user_id(request: Request, db: AsyncSession, session_type: str = '
 
 
 @router.get("/summary")
-async def get_portfolio_summary(request: Request, session_type: str = 'LIVE', db: AsyncSession = Depends(get_db)):
+async def get_portfolio_summary(request: Request, session_type: str = 'REPLAY', db: AsyncSession = Depends(get_db)):
     """Portfolio summary: XIRR, total invested, P&L, equity curve."""
     try:
         user_id = await _get_user_id(request, db, session_type)
@@ -78,7 +81,7 @@ async def get_portfolio_summary(request: Request, session_type: str = 'LIVE', db
 
 
 @router.get("/holdings")
-async def get_portfolio_holdings(request: Request, session_type: str = 'LIVE', db: AsyncSession = Depends(get_db)):
+async def get_portfolio_holdings(request: Request, session_type: str = 'REPLAY', db: AsyncSession = Depends(get_db)):
     """All held equity positions with LTP and P&L."""
     try:
         user_id = await _get_user_id(request, db, session_type)
@@ -90,7 +93,7 @@ async def get_portfolio_holdings(request: Request, session_type: str = 'LIVE', d
 
 
 @router.get("/positions")
-async def get_portfolio_positions(request: Request, session_type: str = 'LIVE', db: AsyncSession = Depends(get_db)):
+async def get_portfolio_positions(request: Request, session_type: str = 'REPLAY', db: AsyncSession = Depends(get_db)):
     """Open trade positions from TradeLog."""
     try:
         user_id = await _get_user_id(request, db, session_type)
@@ -102,7 +105,7 @@ async def get_portfolio_positions(request: Request, session_type: str = 'LIVE', 
 
 
 @router.get("/sectors")
-async def get_sector_analysis(request: Request, session_type: str = 'LIVE', db: AsyncSession = Depends(get_db)):
+async def get_sector_analysis(request: Request, session_type: str = 'REPLAY', db: AsyncSession = Depends(get_db)):
     """Sector allocation breakdown with concentration risk alerts."""
     try:
         user_id = await _get_user_id(request, db, session_type)
@@ -113,7 +116,7 @@ async def get_sector_analysis(request: Request, session_type: str = 'LIVE', db: 
 
 
 @router.get("/research")
-async def get_trade_research(request: Request, session_type: str = 'LIVE', db: AsyncSession = Depends(get_db)):
+async def get_trade_research(request: Request, session_type: str = 'REPLAY', db: AsyncSession = Depends(get_db)):
     """Trade behavior analytics and insights."""
     try:
         user_id = await _get_user_id(request, db, session_type)

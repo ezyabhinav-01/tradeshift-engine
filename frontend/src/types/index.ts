@@ -25,5 +25,5 @@ export interface Trade {
     takeProfit?: number;
     limitPrice?: number;
     stopPrice?: number;
-    sessionType?: 'LIVE' | 'REPLAY';
+    sessionType?: 'REPLAY';
 }

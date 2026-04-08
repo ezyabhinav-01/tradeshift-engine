@@ -38,10 +38,11 @@ export default function PortfolioPage() {
   const [sectors, setSectors] = useState<any>(null);
   const [research, setResearch] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const { sessionType, closeAllPositions, currentPrice, balance: liveBalance, selectedSymbol, trades, replayTicks } = useGame();
+  const { closeAllPositions, currentPrice, balance: liveBalance, selectedSymbol, trades, replayTicks } = useGame();
   const { user } = useAuth();
   const { checkAccess } = useAccessControl();
-  const isGuest = !user && sessionType !== 'REPLAY';
+  const viewSessionType: 'REPLAY' = 'REPLAY';
+  const isGuest = !user && viewSessionType !== 'REPLAY';
 
   const fallback = {
     current_value: 0, total_invested: 0, total_pnl: 0,
@@ -60,7 +61,7 @@ export default function PortfolioPage() {
     }
     setLoading(true);
     try {
-      const params = { session_type: sessionType };
+      const params = { session_type: 'REPLAY' };
       const [sumR, holdR, posR, secR, resR, histR, monthR] = await Promise.all([
         api.get('/api/portfolio/summary', { params }),
         api.get('/api/portfolio/holdings', { params }),
@@ -86,7 +87,7 @@ export default function PortfolioPage() {
 
   useEffect(() => {
     fetchAll();
-  }, [sessionType, trades.length]); // Refresh on trades changes
+  }, [viewSessionType, trades.length]); // Refresh on trades/session changes
 
   // ─── Live Data Augmentation ──────────────────────────────────
   const liveSummary = useMemo(() => {
@@ -176,6 +177,7 @@ export default function PortfolioPage() {
         >
           <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
         </button>
+        <div className="text-[11px] font-black tracking-wider text-sidebar-primary">REPLAY MODE</div>
       </div>
 
       {/* Hero Stats */}
@@ -286,7 +288,7 @@ export default function PortfolioPage() {
           <PositionsTab positions={livePositions} onCloseAll={closeAllPositions} refresh={fetchAll} />
         </TabsContent>
         <TabsContent value="history">
-          <HistoryTab history={history} sessionType={sessionType} />
+          <HistoryTab history={history} sessionType={viewSessionType} />
         </TabsContent>
         <TabsContent value="sectors">
           <SectorsTab sectors={sectors} />
@@ -450,12 +452,21 @@ function PositionsTab({ positions, onCloseAll, refresh }: { positions: any[], on
 // TAB 3: TRADE HISTORY (Historical Logs)
 // ═══════════════════════════════════════════════════════════════
 function HistoryTab({ history, sessionType }: { history: any[], sessionType: string }) {
+  const statusStyles: Record<string, string> = {
+    OPEN: 'bg-blue-500/10 text-blue-500',
+    PENDING: 'bg-yellow-500/10 text-yellow-500',
+    TRIGGERED: 'bg-indigo-500/10 text-indigo-500',
+    CLOSED: 'bg-emerald-500/10 text-emerald-500',
+    FILLED: 'bg-emerald-500/10 text-emerald-500',
+    CANCELLED: 'bg-slate-500/10 text-slate-500',
+  };
+
   return (
     <div className="space-y-4 animate-in fade-in duration-300">
       <div className="flex justify-between items-center px-1">
-        <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider">Completed Trades ({sessionType})</h3>
+        <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider">All Trades ({sessionType})</h3>
         <a
-          href={`/api/history/trades/export?session_type=${sessionType}`}
+          href={`/api/history/trades/export?session_type=${sessionType}&include_children=true`}
           className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 bg-sidebar-accent/50 hover:bg-sidebar-accent rounded-lg border border-sidebar-border/30 transition-all text-sidebar-primary"
         >
           Download CSV
@@ -468,6 +479,8 @@ function HistoryTab({ history, sessionType }: { history: any[], sessionType: str
               <tr>
                 <th className="px-6 py-4">Symbol</th>
                 <th className="px-6 py-4">Type</th>
+                <th className="px-6 py-4">Order</th>
+                <th className="px-6 py-4">Status</th>
                 <th className="px-6 py-4">Entry / Exit</th>
                 <th className="px-6 py-4">Qty</th>
                 <th className="px-6 py-4">P&L</th>
@@ -477,7 +490,7 @@ function HistoryTab({ history, sessionType }: { history: any[], sessionType: str
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-white/5">
               {history.length === 0 ? (
-                <tr><td colSpan={7} className="px-6 py-12 text-center text-sm text-gray-400">No historical trades found for this session.</td></tr>
+                <tr><td colSpan={9} className="px-6 py-12 text-center text-sm text-gray-400">No trades found for this session.</td></tr>
               ) : history.map((t) => (
                 <tr key={t.id} className="hover:bg-sidebar-accent/10 transition-colors">
                   <td className="px-6 py-4">
@@ -489,20 +502,29 @@ function HistoryTab({ history, sessionType }: { history: any[], sessionType: str
                   <td className="px-6 py-4">
                     <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${t.direction === 'BUY' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>{t.direction}</span>
                   </td>
+                  <td className="px-6 py-4 text-xs text-gray-500 dark:text-muted-foreground">
+                    <div className="font-semibold">{t.order_type || 'MARKET'}</div>
+                    <div className="text-[10px]">{t.parent_trade_id ? `Child of #${t.parent_trade_id}` : `Primary #${t.id}`}</div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${statusStyles[t.status] || 'bg-slate-500/10 text-slate-500'}`}>
+                      {t.status || 'UNKNOWN'}
+                    </span>
+                  </td>
                   <td className="px-6 py-4 font-mono text-xs text-gray-500 dark:text-muted-foreground whitespace-nowrap">
-                    <div>Entry: ₹{t.entry_price}</div>
-                    <div>Exit: ₹{t.exit_price}</div>
+                    <div>Entry: {t.entry_price ? `₹${t.entry_price}` : '—'}</div>
+                    <div>Exit: {t.exit_price ? `₹${t.exit_price}` : '—'}</div>
                   </td>
                   <td className="px-6 py-4 font-mono text-sm text-gray-500 dark:text-muted-foreground">{t.quantity}</td>
                   <td className="px-6 py-4">
-                    <div className={`font-mono font-bold text-sm ${t.is_win ? 'text-green-500' : 'text-red-500'}`}>
-                      {t.is_win ? '+' : ''}₹{t.pnl.toLocaleString('en-IN')}
+                    <div className={`font-mono font-bold text-sm ${(t.pnl || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                      {(t.pnl || 0) >= 0 ? '+' : ''}₹{(t.pnl || 0).toLocaleString('en-IN')}
                     </div>
                   </td>
                   <td className="px-6 py-4 text-xs text-gray-500 dark:text-muted-foreground">
                     {t.holding_time > 60 ? `${(t.holding_time / 60).toFixed(1)}h` : `${t.holding_time}m`}
                   </td>
-                  <td className="px-6 py-4 text-xs text-gray-500 dark:text-muted-foreground italic max-w-[150px] truncate">{t.exit_reason || "Market Exit"}</td>
+                  <td className="px-6 py-4 text-xs text-gray-500 dark:text-muted-foreground italic max-w-[150px] truncate">{t.exit_reason || (t.status === 'PENDING' ? 'Waiting for trigger' : 'Open/Manual')}</td>
                 </tr>
               ))}
             </tbody>

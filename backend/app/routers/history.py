@@ -58,8 +58,11 @@ async def get_optional_user(request: Request, db: AsyncSession = Depends(get_db)
         return None
 
 
-async def _get_user_id(request: Request, db: AsyncSession, session_type: str = 'LIVE') -> int:
+async def _get_user_id(request: Request, db: AsyncSession, session_type: str = 'REPLAY') -> int:
     """Helper to extract user_id. Allows fallback to user 1 for REPLAY mode."""
+    session_type = (session_type or "REPLAY").upper()
+    if session_type == "LIVE":
+        session_type = "REPLAY"
     user = await get_optional_user(request, db)
     if not user:
         if session_type == 'REPLAY':
@@ -71,7 +74,8 @@ async def _get_user_id(request: Request, db: AsyncSession, session_type: str = '
 def _apply_filters(stmt, date_from, date_to, symbol, direction, search, session_type):
     """Apply common filters to a TradeLog statement."""
     if session_type:
-        stmt = stmt.filter(TradeLog.session_type == session_type)
+        # Replay-only product. Keep compatibility for callers still sending LIVE.
+        stmt = stmt.filter(TradeLog.session_type == "REPLAY")
     if date_from:
         try:
             dt = datetime.strptime(date_from, "%Y-%m-%d")
@@ -112,17 +116,16 @@ async def get_trade_history(
     sort_order: str = Query("desc"),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
-    session_type: str = Query('LIVE'),
+    session_type: str = Query('REPLAY'),
+    include_children: bool = Query(True),
 ):
-    """Paginated, filterable trade history."""
+    """Paginated, filterable order/trade ledger across statuses."""
     try:
         user_id = await _get_user_id(request, db, session_type)
         
-        stmt = select(TradeLog).filter(
-            TradeLog.user_id == user_id,
-            TradeLog.exit_price.isnot(None),
-            TradeLog.exit_price != 0,
-        )
+        stmt = select(TradeLog).filter(TradeLog.user_id == user_id)
+        if not include_children:
+            stmt = stmt.filter(TradeLog.parent_trade_id.is_(None))
         stmt = _apply_filters(stmt, date_from, date_to, symbol, direction, search, session_type)
 
         # Count
@@ -155,6 +158,9 @@ async def get_trade_history(
                 "id": t.id,
                 "symbol": t.symbol,
                 "direction": t.direction,
+                "status": t.status or "OPEN",
+                "order_type": t.order_type,
+                "parent_trade_id": t.parent_trade_id,
                 "quantity": t.quantity,
                 "entry_price": round(t.entry_price or 0, 2),
                 "exit_price": round(t.exit_price or 0, 2),
@@ -192,16 +198,15 @@ async def export_trades_csv(
     symbol: str = Query(None),
     direction: str = Query(None),
     search: str = Query(None),
-    session_type: str = Query('LIVE'),
+    session_type: str = Query('REPLAY'),
+    include_children: bool = Query(True),
 ):
-    """Export filtered trades as CSV download."""
+    """Export filtered order/trade ledger as CSV download."""
     try:
         user_id = await _get_user_id(request, db, session_type)
-        stmt = select(TradeLog).filter(
-            TradeLog.user_id == user_id,
-            TradeLog.exit_price.isnot(None),
-            TradeLog.exit_price != 0,
-        )
+        stmt = select(TradeLog).filter(TradeLog.user_id == user_id)
+        if not include_children:
+            stmt = stmt.filter(TradeLog.parent_trade_id.is_(None))
         stmt = _apply_filters(stmt, date_from, date_to, symbol, direction, search, session_type)
         stmt = stmt.order_by(desc(TradeLog.entry_time))
         
@@ -211,13 +216,14 @@ async def export_trades_csv(
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow([
-            "Date", "Symbol", "Direction", "Qty", "Entry Price", "Exit Price",
-            "P&L", "Holding Time (min)", "Exit Reason", "Sector",
+            "Date", "Symbol", "Direction", "Order Type", "Status", "Parent Trade ID",
+            "Qty", "Entry Price", "Exit Price", "P&L", "Holding Time (min)", "Exit Reason", "Sector",
         ])
         for t in trades:
             writer.writerow([
                 t.entry_time.strftime("%Y-%m-%d %H:%M") if t.entry_time else "",
-                t.symbol, t.direction, t.quantity,
+                t.symbol, t.direction, t.order_type or "", t.status or "", t.parent_trade_id or "",
+                t.quantity,
                 round(t.entry_price or 0, 2), round(t.exit_price or 0, 2),
                 round(t.pnl or 0, 2), round(t.holding_time or 0, 1),
                 t.exit_reason or "", get_sector(t.symbol) if t.symbol else "Other",
@@ -240,7 +246,7 @@ async def export_trades_csv(
 @router.get("/monthly-summary")
 async def get_monthly_summary(
     request: Request,
-    session_type: str = Query('LIVE'),
+    session_type: str = Query('REPLAY'),
     db: AsyncSession = Depends(get_db),
 ):
     """Monthly aggregated trade stats."""
@@ -248,7 +254,7 @@ async def get_monthly_summary(
         user_id = await _get_user_id(request, db, session_type)
         stmt = select(TradeLog).filter(
             TradeLog.user_id == user_id,
-            TradeLog.session_type == session_type,
+            TradeLog.session_type == "REPLAY",
             TradeLog.exit_price.isnot(None),
             TradeLog.exit_price != 0,
         ).order_by(TradeLog.entry_time)
@@ -296,10 +302,10 @@ async def get_monthly_summary(
 
 
 @router.get("/symbols")
-async def get_traded_symbols(session_type: str = Query('LIVE'), db: AsyncSession = Depends(get_db)):
+async def get_traded_symbols(session_type: str = Query('REPLAY'), db: AsyncSession = Depends(get_db)):
     """Get distinct symbols from trade history for filter dropdown."""
     try:
-        stmt = select(distinct(TradeLog.symbol)).filter(TradeLog.session_type == session_type).order_by(TradeLog.symbol)
+        stmt = select(distinct(TradeLog.symbol)).filter(TradeLog.session_type == "REPLAY").order_by(TradeLog.symbol)
         result = await db.execute(stmt)
         symbols = result.scalars().all()
         return {"symbols": [s for s in symbols if s]}

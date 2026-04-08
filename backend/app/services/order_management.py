@@ -33,7 +33,7 @@ class OrderManagementSystem:
             return ts.replace(tzinfo=None)
         return ts
 
-    async def on_price_update(self, symbol: str, current_price: float, simulated_time: Optional[datetime] = None, session_type: str = "LIVE"):
+    async def on_price_update(self, symbol: str, current_price: float, simulated_time: Optional[datetime] = None, session_type: str = "REPLAY"):
         """
         Main entry point for price updates (Async).
         Scans for pending orders that should be triggered by the new price.
@@ -285,7 +285,7 @@ class OrderManagementSystem:
             quantity_delta=trade.quantity,
             price=exit_price,
             direction=close_direction,
-            session_type=trade.session_type or "LIVE"
+            session_type=trade.session_type or "REPLAY"
         )
 
         await db.commit()
@@ -293,11 +293,11 @@ class OrderManagementSystem:
         trade = result.scalars().first()
         
         # 🔥 Snapshot: Update equity curve after closing a trade
-        asyncio.create_task(portfolio_service.save_portfolio_snapshot(user_id, trade.session_type or "LIVE"))
+        asyncio.create_task(portfolio_service.save_portfolio_snapshot(user_id, trade.session_type or "REPLAY"))
         
         return trade
 
-    async def close_all_trades(self, db: AsyncSession, user_id: int, exit_price_mapping: dict[str, float], session_type: str = "LIVE", simulated_time: Optional[datetime] = None) -> list[TradeLog]:
+    async def close_all_trades(self, db: AsyncSession, user_id: int, exit_price_mapping: dict[str, float], session_type: str = "REPLAY", simulated_time: Optional[datetime] = None) -> list[TradeLog]:
         """Close all open/triggered trades (Async)."""
         normalized_time = self._normalize_db_timestamp(simulated_time)
         close_time = normalized_time or datetime.utcnow()

@@ -238,7 +238,7 @@ class TradeExecuteRequest(BaseModel):
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
     alert: bool = False
-    session_type: Literal["LIVE", "REPLAY"] = "LIVE"
+    session_type: Literal["LIVE", "REPLAY"] = "REPLAY"
     simulated_time: Optional[datetime] = None
 
     @field_validator("quantity")
@@ -252,6 +252,11 @@ class TradeExecuteRequest(BaseModel):
         if v <= 0:
             raise ValueError("Price must be greater than 0")
         return v
+
+    @field_validator("session_type", mode="before")
+    def normalize_session_type(cls, v):
+        # Replay-only product: keep backward compatibility for legacy LIVE payloads.
+        return "REPLAY"
 
 
 class TradeResponse(BaseModel):
@@ -289,8 +294,13 @@ class TradeExitRequest(BaseModel):
     exit_type: Literal["MARKET", "LIMIT"] = "MARKET"
     limit_price: Optional[float] = None
     exit_price: Optional[float] = None # NEW: for simulation market exits
-    session_type: Literal["LIVE", "REPLAY"] = "LIVE"
+    session_type: Literal["LIVE", "REPLAY"] = "REPLAY"
     simulated_time: Optional[datetime] = None # NEW: for simulation consistency
+
+    @field_validator("session_type", mode="before")
+    def normalize_session_type(cls, v):
+        # Replay-only product: keep backward compatibility for legacy LIVE payloads.
+        return "REPLAY"
 
 
 # ─── User Settings Schemas ──────────────────────────────────────

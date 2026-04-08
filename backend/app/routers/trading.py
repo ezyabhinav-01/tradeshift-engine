@@ -63,7 +63,9 @@ async def get_optional_user(request: Request, db: AsyncSession = Depends(get_db)
 async def _get_user_id(request: Request, db: AsyncSession, session_type_arg: str = None) -> int:
     """Helper to extract user_id. Allows fallback to user 1 for REPLAY mode."""
     # Check session_type from query, headers, or passed argument
-    session_type = session_type_arg or request.query_params.get("session_type") or request.headers.get("X-Session-Type")
+    session_type = (session_type_arg or request.query_params.get("session_type") or request.headers.get("X-Session-Type") or "REPLAY").upper()
+    if session_type == "LIVE":
+        session_type = "REPLAY"
     
     user = await get_optional_user(request, db)
     if not user:
@@ -343,7 +345,9 @@ async def close_all_trades(
         body = {}
     
     exit_price_req = body.get("exit_price")
-    session_type_val = body.get("session_type", "LIVE")
+    session_type_val = (body.get("session_type", "REPLAY") or "REPLAY").upper()
+    if session_type_val == "LIVE":
+        session_type_val = "REPLAY"
     simulated_time = body.get("simulated_time")
     user_id = await _get_user_id(request, db, session_type_val)
     if simulated_time:

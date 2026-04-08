@@ -43,7 +43,7 @@ class TradeLog(Base):
     stop_price = Column(Float, nullable=True)
     triggered = Column(Boolean, default=False)
     status = Column(String, default="OPEN")  # OPEN, CLOSED, PENDING, CANCELLED, TRIGGERED, FILLED
-    session_type = Column(String, default="LIVE", index=True) # LIVE or REPLAY
+    session_type = Column(String, default="REPLAY", index=True) # replay session
     parent_trade_id = Column(Integer, ForeignKey("trade_logs.id"), nullable=True)
 
 class PortfolioHolding(Base):
@@ -58,7 +58,7 @@ class PortfolioHolding(Base):
     quantity = Column(Integer)
     average_cost = Column(Float)
     first_purchase_date = Column(DateTime, default=datetime.utcnow)
-    session_type = Column(String, default="LIVE", index=True) # LIVE or REPLAY
+    session_type = Column(String, default="REPLAY", index=True) # replay session
 
 class User(Base):
     __tablename__ = "users"
@@ -557,7 +557,7 @@ class PortfolioSnapshot(Base):
     total_balance = Column(Float)
     equity_value = Column(Float)
     cash_balance = Column(Float)
-    session_type = Column(String, default="LIVE")
+    session_type = Column(String, default="REPLAY")
 
 class SystemAlertLog(Base):
     """

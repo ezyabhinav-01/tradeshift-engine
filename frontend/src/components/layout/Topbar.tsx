@@ -41,7 +41,7 @@ const Topbar = () => {
             ? 'bg-green-500/10 text-green-500 border-green-500/20'
             : 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'
           }`}>
-          {isPlaying ? 'LIVE' : 'PAUSED'}
+          {isPlaying ? 'REPLAYING' : 'PAUSED'}
         </span>
       </div>
 

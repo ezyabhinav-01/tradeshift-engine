@@ -57,7 +57,7 @@ interface GameState {
   availableDates: string[];
   isLoadingHistory: boolean;
   isReplayActive: boolean;
-  sessionType: 'LIVE' | 'REPLAY';
+  sessionType: 'REPLAY';
   userSettings: {
     max_daily_loss: number;
     max_order_quantity: number;
@@ -126,7 +126,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
   const [selectedSymbol, setSelectedSymbol] = useState(DEFAULT_SYMBOL);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isReplayActive, setIsReplayActive] = useState(() => sessionStorage.getItem('isReplayActive') === 'true');
-  const [sessionType, setSessionType] = useState<'LIVE' | 'REPLAY'>(() => (sessionStorage.getItem('sessionType') as any) || 'LIVE');
+  const [sessionType, setSessionType] = useState<'REPLAY'>(() => 'REPLAY');
   const [userSettings, setUserSettings] = useState<any>(null);
 
   // NEW: Track all active symbols from the multi-chart store (joined as string for stable dependency)
@@ -181,7 +181,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
             setCurrentTime(new Date(candles[0].time * 1000));
           }
         } else {
-          // LIVE or INITIAL Load: Show most recent data
+          // Initial load: show most recent replay datapoint
           setCurrentTime(new Date(candles[candles.length - 1].time * 1000));
         }
 
@@ -598,7 +598,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
 
         // Turning OFF replay: stop playback and reset session
         setIsPlaying(false);
-        setSessionType('LIVE');
+        setSessionType('REPLAY');
         setNewsItems([]);
         setSimulatedIndices([]);
         // Sync time to the end of history when turning off replay
@@ -681,8 +681,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
           stop_loss: stopLoss,
           take_profit: takeProfit,
           alert,
-          session_type: sessionType,
-          simulated_time: simulatedTime || (sessionType === 'REPLAY' ? currentTime : undefined)
+          session_type: 'REPLAY',
+          simulated_time: simulatedTime || currentTime
         }),
         credentials: 'include'
       });
@@ -708,8 +708,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...updates,
-          session_type: sessionType,
-          simulated_time: sessionType === 'REPLAY' ? currentTime : undefined
+          session_type: 'REPLAY',
+          simulated_time: currentTime
         }),
         credentials: 'include'
       });
@@ -736,8 +736,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
           exit_type: exitType,
           limit_price: limitPrice,
           exit_price: currentPrice, // Pass the current simulated price for accuracy
-          session_type: sessionType,
-          simulated_time: simulatedTime || (sessionType === 'REPLAY' ? currentTime : undefined)
+          session_type: 'REPLAY',
+          simulated_time: simulatedTime || currentTime
         }),
         credentials: 'include'
       });
@@ -762,9 +762,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          session_type: sessionType,
+          session_type: 'REPLAY',
           exit_price: currentPrice, // Pass current price for bulk exit consistency
-          simulated_time: sessionType === 'REPLAY' ? currentTime : undefined
+          simulated_time: currentTime
         }),
         credentials: 'include'
       });

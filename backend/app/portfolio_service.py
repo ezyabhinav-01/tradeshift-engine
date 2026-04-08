@@ -46,7 +46,7 @@ def xirr(cash_flows: List[tuple]) -> float:
 
 class PortfolioService:
     
-    async def get_holdings(self, db: AsyncSession, user_id: int, session_type: str = 'LIVE') -> List[Dict[str, Any]]:
+    async def get_holdings(self, db: AsyncSession, user_id: int, session_type: str = 'REPLAY') -> List[Dict[str, Any]]:
         result = await db.execute(select(PortfolioHolding).filter(
             PortfolioHolding.user_id == user_id,
             PortfolioHolding.session_type == session_type
@@ -87,7 +87,7 @@ class PortfolioService:
             
         return sorted(results, key=lambda x: x["invested_value"], reverse=True)
 
-    async def get_summary(self, db: AsyncSession, user_id: int, session_type: str = 'LIVE') -> Dict[str, Any]:
+    async def get_summary(self, db: AsyncSession, user_id: int, session_type: str = 'REPLAY') -> Dict[str, Any]:
         # Consolidated balance: Replay trades directly affect main user balance
         res = await db.execute(select(User.balance).filter(User.id == user_id))
         balance = res.scalars().first() or 100000.0
@@ -159,7 +159,7 @@ class PortfolioService:
             "total_value": round(total_value, 2)
         }
 
-    async def get_positions(self, db: AsyncSession, user_id: int, session_type: str = 'LIVE') -> List[Dict[str, Any]]:
+    async def get_positions(self, db: AsyncSession, user_id: int, session_type: str = 'REPLAY') -> List[Dict[str, Any]]:
         result = await db.execute(select(TradeLog).filter(
             TradeLog.user_id == user_id,
             TradeLog.session_type == session_type,
@@ -210,7 +210,7 @@ class PortfolioService:
             })
         return results
 
-    async def get_sector_analysis(self, db: AsyncSession, user_id: int, session_type: str = 'LIVE') -> Dict[str, Any]:
+    async def get_sector_analysis(self, db: AsyncSession, user_id: int, session_type: str = 'REPLAY') -> Dict[str, Any]:
         holdings = await self.get_holdings(db, user_id, session_type)
         positions = await self.get_positions(db, user_id, session_type)
 
@@ -245,7 +245,7 @@ class PortfolioService:
             "risk_level": "Low" if diversity_score > 70 else ("Medium" if diversity_score > 40 else "High"),
         }
     
-    async def save_portfolio_snapshot(self, user_id: int, session_type: str = 'LIVE'):
+    async def save_portfolio_snapshot(self, user_id: int, session_type: str = 'REPLAY'):
         """Capture a snapshot of the user's total equity."""
         from app.database import get_session
         db = await get_session()
@@ -268,7 +268,7 @@ class PortfolioService:
         finally:
             await db.close()
 
-    async def get_trade_research(self, db: AsyncSession, user_id: int, session_type: str = 'LIVE') -> Dict[str, Any]:
+    async def get_trade_research(self, db: AsyncSession, user_id: int, session_type: str = 'REPLAY') -> Dict[str, Any]:
         result = await db.execute(select(TradeLog).filter(
             TradeLog.user_id == user_id,
             TradeLog.session_type == session_type,

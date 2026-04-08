@@ -15,6 +15,37 @@ from .utils.gemini_pool import gemini_pool
 
 # Models
 MODEL_ID = "HuggingFaceH4/zephyr-7b-beta" 
+LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "14"))
+HF_TIMEOUT_SECONDS = float(os.getenv("HF_TIMEOUT_SECONDS", "12"))
+
+
+def _extract_response_text(response) -> str:
+    text = getattr(response, "text", None)
+    if text:
+        return text.strip()
+    try:
+        candidates = getattr(response, "candidates", None) or []
+        parts_text = []
+        for candidate in candidates:
+            content = getattr(candidate, "content", None)
+            if not content:
+                continue
+            parts = getattr(content, "parts", None) or []
+            for part in parts:
+                value = getattr(part, "text", None)
+                if value:
+                    parts_text.append(value)
+        return "\n".join(parts_text).strip()
+    except Exception:
+        return ""
+
+
+async def _generate_with_timeout(prompt: str, model_name: str = None, timeout: float = LLM_TIMEOUT_SECONDS) -> str:
+    kwargs = {"is_async": True}
+    if model_name:
+        kwargs["model_name"] = model_name
+    response = await asyncio.wait_for(gemini_pool.generate_content(prompt, **kwargs), timeout=timeout)
+    return _extract_response_text(response)
 
 def _heuristic_stock_analysis(symbol: str, fund_data: dict) -> str:
     roce = float(fund_data.get("roce", 0) or 0)
@@ -54,6 +85,46 @@ Stocks often react based on whether this outcome was expected. If the market alr
 ### THE TAKEAWAY
 Use this kind of news to watch sentiment, not just the headline. The most important follow-up is how bond yields, the index, and sector leaders react after the announcement."""
 
+
+def _heuristic_stock_chat(symbol: str, fund_data: dict, question: str) -> str:
+    q = (question or "").lower()
+    roce = float(fund_data.get("roce", 0) or 0)
+    roe = float(fund_data.get("roe", 0) or 0)
+    pe = float(fund_data.get("pe_ratio", 0) or 0)
+    debt = float(fund_data.get("debt_to_equity", 0) or 0)
+    growth = float(fund_data.get("revenue_growth_5y", 0) or 0)
+
+    if "roce" in q:
+        return (
+            f"ROCE for {symbol} is around {roce:.1f}%. ROCE tells you how efficiently the business turns capital into profit. "
+            f"As a quick rule, higher and stable ROCE usually indicates better business quality."
+        )
+    if "roe" in q:
+        return (
+            f"ROE for {symbol} is around {roe:.1f}%. ROE measures how efficiently shareholder money is used to generate earnings. "
+            f"A stronger ROE often means better profitability, but it should be checked with debt levels too."
+        )
+    if "pe" in q or "p/e" in q or "valuation" in q:
+        return (
+            f"{symbol} is trading near {pe:.1f}x P/E. P/E is what investors pay for each unit of earnings. "
+            f"Higher P/E implies stronger growth expectations, while lower P/E can mean either undervaluation or weaker outlook."
+        )
+    if "debt" in q:
+        return (
+            f"Debt-to-equity for {symbol} is about {debt:.2f}. Lower debt usually gives a company more resilience in difficult cycles. "
+            f"Always compare this with sector averages before drawing conclusions."
+        )
+    if "growth" in q:
+        return (
+            f"5-year revenue growth for {symbol} is around {growth:.1f}%. Consistent growth with healthy margins is more reliable than one-off spikes. "
+            f"Track whether growth quality is improving quarter by quarter."
+        )
+
+    return (
+        f"For {symbol}, a quick framework is: quality (ROCE {roce:.1f}%, ROE {roe:.1f}%), valuation (P/E {pe:.1f}x), "
+        f"risk (debt-to-equity {debt:.2f}), and growth ({growth:.1f}% 5Y revenue growth). Ask me one of these and I’ll break it down simply."
+    )
+
 async def _call_hf_inference(messages: list) -> str:
     """
     Calls the HuggingFace Router via OpenAI-compatible Chat Completion API.
@@ -68,7 +139,8 @@ async def _call_hf_inference(messages: list) -> str:
         "temperature": 0.3
     }
     
-    async with aiohttp.ClientSession() as session:
+    timeout = aiohttp.ClientTimeout(total=HF_TIMEOUT_SECONDS, connect=4, sock_read=8)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
         async with session.post(url, json=payload, headers=headers) as resp:
             if resp.status == 200:
                 data = await resp.json()
@@ -132,8 +204,7 @@ async def analyze_news_impact(news_title: str, news_desc: str, symbol: str) -> d
 
     try:
         if gemini_pool.keys:
-            response = await gemini_pool.generate_content(analysis_prompt, is_async=True)
-            output = response.text.strip()
+            output = await _generate_with_timeout(analysis_prompt)
         else:
             # Fallback to HF if Gemini is not configured
             messages = [
@@ -204,8 +275,7 @@ async def ask_news_question(news_title: str, news_desc: str, question: str, symb
 
     try:
         if gemini_pool.keys:
-            response = await gemini_pool.generate_content(qa_prompt, is_async=True)
-            return response.text.strip()
+            return await _generate_with_timeout(qa_prompt)
         else:
             messages = [
                 {"role": "system", "content": "You are an expert financial consultant."},
@@ -246,12 +316,11 @@ async def analyze_stock_fundamentals(symbol: str, fund_data: dict) -> str:
     try:
         if gemini_pool.keys:
             try:
-                response = await gemini_pool.generate_content(
+                result = await _generate_with_timeout(
                     prompt,
                     model_name="models/gemini-2.0-flash-lite-001",
-                    is_async=True
                 )
-                return response.text.strip()
+                return result
             except Exception as e:
                 print(f"Gemini unavailable: {e}. Falling back to HuggingFace...")
                 pass # Fall through to HF
@@ -286,8 +355,10 @@ async def explain_in_layman(symbol: str, complex_info: str) -> str:
 
     try:
         if gemini_pool.keys:
-            response = await gemini_pool.generate_content(prompt, is_async=True)
-            return response.text.strip()
+            output = await _generate_with_timeout(prompt)
+            if output:
+                return output
+            raise Exception("Empty response")
         else:
             messages = [
                 {"role": "system", "content": "You are a world-class financial educator who simplifies complex ideas."},
@@ -296,7 +367,12 @@ async def explain_in_layman(symbol: str, complex_info: str) -> str:
             return await _call_hf_inference(messages)
     except Exception as e:
         print(f"❌ Layman Explanation Error: {e}")
-        return f"Error generating layman explanation: {str(e)}"
+        return (
+            f"{symbol} looks like a business where the key question is whether it can keep profits growing "
+            f"without taking too much debt. In simple terms, think of it like a shop that must grow sales while "
+            f"keeping costs and borrowing under control. Golden rule: great companies are those that compound "
+            f"earnings with discipline, not just hype."
+        )
 
 async def chat_about_stock(symbol: str, fund_data: dict, question: str, chat_history: list) -> str:
     """
@@ -328,8 +404,10 @@ async def chat_about_stock(symbol: str, fund_data: dict, question: str, chat_his
     try:
         if gemini_pool.keys:
             try:
-                response = await gemini_pool.generate_content(prompt, is_async=True)
-                return response.text.strip()
+                result = await _generate_with_timeout(prompt)
+                if result:
+                    return result
+                raise Exception("Empty response")
             except Exception as e:
                 print(f"Gemini unavailable: {e}. Falling back to HuggingFace...")
                 pass
@@ -341,7 +419,7 @@ async def chat_about_stock(symbol: str, fund_data: dict, question: str, chat_his
         return await _call_hf_inference(messages)
     except Exception as e:
         print(f"❌ Equity Chat Error: {e}")
-        return f"Sorry, I couldn't generate an answer right now. Error: {str(e)}"
+        return _heuristic_stock_chat(symbol, fund_data, question)
 async def generate_news_explainer(news_title: str, news_desc: str, symbol: str) -> dict:
     """
     Generates a beginner-friendly, educational breakdown of a news event.
@@ -368,8 +446,7 @@ async def generate_news_explainer(news_title: str, news_desc: str, symbol: str) 
 
     try:
         if gemini_pool.keys:
-            response = await gemini_pool.generate_content(explainer_prompt, is_async=True)
-            output = response.text.strip()
+            output = await _generate_with_timeout(explainer_prompt)
             
             # Basic JSON extraction if Gemini adds markdown markers
             if "```json" in output:
@@ -427,8 +504,10 @@ async def generate_news_explanation(news_title: str, news_desc: str, user_level:
 
     try:
         if gemini_pool.keys:
-            response = await gemini_pool.generate_content(prompt, is_async=True)
-            return response.text.strip()
+            output = await _generate_with_timeout(prompt)
+            if output:
+                return output
+            raise Exception("Empty response")
         else:
             # Fallback to HF
             messages = [

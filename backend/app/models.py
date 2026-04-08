@@ -22,11 +22,13 @@ class TradeLog(Base):
     quantity = Column(Integer)
     pnl = Column(Float)
 
-    exit_time = Column(DateTime, default=datetime.utcnow)
+    # Must stay NULL until trade is actually closed.
+    exit_time = Column(DateTime, nullable=True)
 
     # 🔥 NEW BEHAVIOR FIELDS (INSIDE CLASS)
 
-    holding_time = Column(Float)
+    # Stored in seconds for precision.
+    holding_time = Column(Float, nullable=True)
 
     stop_loss = Column(Float, nullable=True)
     take_profit = Column(Float, nullable=True)

@@ -1,5 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
-import axios from 'axios';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, BarChart, Bar
@@ -13,9 +12,8 @@ import {
 import { useGame } from '../context/GameContext';
 import { useAuth } from '../context/AuthContext';
 import { useAccessControl } from '../hooks/useAccessControl';
+import { usePortfolioStore } from '../store/usePortfolioStore';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-
-const api = axios.create({ baseURL: '', withCredentials: true });
 
 const TABS = [
   { id: 'holdings', label: 'Holdings', icon: Briefcase },
@@ -30,17 +28,22 @@ type TabId = typeof TABS[number]['id'];
 // ─── Main Component ────────────────────────────────────────────
 export default function PortfolioPage() {
   const [activeTab, setActiveTab] = useState<TabId>('holdings');
-  const [summary, setSummary] = useState<any>(null);
-  const [holdings, setHoldings] = useState<any[]>([]);
-  const [positions, setPositions] = useState<any[]>([]);
-  const [history, setHistory] = useState<any[]>([]);
-  const [monthlySummary, setMonthlySummary] = useState<any[]>([]);
-  const [sectors, setSectors] = useState<any>(null);
-  const [research, setResearch] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
   const { closeAllPositions, currentPrice, balance: liveBalance, selectedSymbol, trades, replayTicks } = useGame();
   const { user } = useAuth();
   const { checkAccess } = useAccessControl();
+  const {
+    summary,
+    holdings,
+    positions,
+    history,
+    monthlySummary,
+    sectors,
+    research,
+    isLoading,
+    isRefreshing,
+    refreshPortfolio,
+    setGuestFallback,
+  } = usePortfolioStore();
   const viewSessionType: 'REPLAY' = 'REPLAY';
   const isGuest = !user && viewSessionType !== 'REPLAY';
 
@@ -50,44 +53,17 @@ export default function PortfolioPage() {
     cash_balance: 100000.0, total_value: 100000.0
   };
 
-  const fetchAll = async () => {
+  const fetchAll = useCallback(async (force = false) => {
     if (isGuest) {
-      setLoading(false);
-      setSummary(fallback); // Reset to zeroes
-      setHoldings([]);
-      setPositions([]);
-      setHistory([]);
+      setGuestFallback();
       return;
     }
-    setLoading(true);
-    try {
-      const params = { session_type: 'REPLAY' };
-      const [sumR, holdR, posR, secR, resR, histR, monthR] = await Promise.all([
-        api.get('/api/portfolio/summary', { params }),
-        api.get('/api/portfolio/holdings', { params }),
-        api.get('/api/portfolio/positions', { params }),
-        api.get('/api/portfolio/sectors', { params }),
-        api.get('/api/portfolio/research', { params }),
-        api.get('/api/history/trades', { params: { ...params, limit: 100 } }),
-        api.get('/api/history/monthly-summary', { params }),
-      ]);
-      setSummary(sumR.data);
-      setHoldings(holdR.data.holdings || []);
-      setPositions(posR.data.positions || []);
-      setSectors(secR.data);
-      setResearch(resR.data);
-      setHistory(histR.data.trades || []);
-      setMonthlySummary(monthR.data.months || []);
-    } catch (err) {
-      console.error('Portfolio fetch failed:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+    await refreshPortfolio({ sessionType: 'REPLAY', force });
+  }, [isGuest, refreshPortfolio, setGuestFallback]);
 
   useEffect(() => {
-    fetchAll();
-  }, [viewSessionType, trades.length]); // Refresh on trades/session changes
+    void fetchAll(false);
+  }, [fetchAll, viewSessionType, trades.length]); // Refresh on trades/session changes
 
   // ─── Live Data Augmentation ──────────────────────────────────
   const liveSummary = useMemo(() => {
@@ -169,13 +145,13 @@ export default function PortfolioPage() {
         </div>
         <button
           onClick={() => {
-            if (checkAccess()) fetchAll();
+            if (checkAccess()) void fetchAll(true);
           }}
-          disabled={loading}
+          disabled={isLoading || isRefreshing}
           className="p-2.5 rounded-full bg-sidebar-accent/50 hover:bg-sidebar-accent text-sidebar-primary transition-colors disabled:opacity-50"
           title={isGuest ? "Sign in to refresh live data" : "Refresh Portfolio"}
         >
-          <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`w-5 h-5 ${(isLoading || isRefreshing) ? 'animate-spin' : ''}`} />
         </button>
         <div className="text-[11px] font-black tracking-wider text-sidebar-primary">REPLAY MODE</div>
       </div>
@@ -285,7 +261,7 @@ export default function PortfolioPage() {
           />
         </TabsContent>
         <TabsContent value="positions">
-          <PositionsTab positions={livePositions} onCloseAll={closeAllPositions} refresh={fetchAll} />
+          <PositionsTab positions={livePositions} onCloseAll={closeAllPositions} refresh={() => void fetchAll(true)} />
         </TabsContent>
         <TabsContent value="history">
           <HistoryTab history={history} sessionType={viewSessionType} />
@@ -434,6 +410,7 @@ function PositionsTab({ positions, onCloseAll, refresh }: { positions: any[], on
                       <div className="flex items-center gap-1">
                         <Clock size={12} />{p.holding_minutes > 60 ? `${(p.holding_minutes / 60).toFixed(1)}h` : `${p.holding_minutes}m`}
                       </div>
+                      <div className="mt-1 text-[10px] opacity-70">Opened: {p.entry_time || '—'}</div>
                     </td>
                     <td className="px-4 py-2.5"><span className="text-[10px] uppercase font-black tracking-widest bg-sidebar-accent/20 text-gray-500 dark:text-muted-foreground px-2 py-1 rounded">{p.sector}</span></td>
                   </tr>
@@ -481,6 +458,7 @@ function HistoryTab({ history, sessionType }: { history: any[], sessionType: str
                 <th className="px-6 py-4">Type</th>
                 <th className="px-6 py-4">Order</th>
                 <th className="px-6 py-4">Status</th>
+                <th className="px-6 py-4">Buy / Exit Time</th>
                 <th className="px-6 py-4">Entry / Exit</th>
                 <th className="px-6 py-4">Qty</th>
                 <th className="px-6 py-4">P&L</th>
@@ -490,7 +468,7 @@ function HistoryTab({ history, sessionType }: { history: any[], sessionType: str
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-white/5">
               {history.length === 0 ? (
-                <tr><td colSpan={9} className="px-6 py-12 text-center text-sm text-gray-400">No trades found for this session.</td></tr>
+                <tr><td colSpan={10} className="px-6 py-12 text-center text-sm text-gray-400">No trades found for this session.</td></tr>
               ) : history.map((t) => (
                 <tr key={t.id} className="hover:bg-sidebar-accent/10 transition-colors">
                   <td className="px-6 py-4">
@@ -511,6 +489,10 @@ function HistoryTab({ history, sessionType }: { history: any[], sessionType: str
                       {t.status || 'UNKNOWN'}
                     </span>
                   </td>
+                  <td className="px-6 py-4 font-mono text-[11px] text-gray-500 dark:text-muted-foreground whitespace-nowrap">
+                    <div>Buy: {t.entry_time || '—'}</div>
+                    <div>Exit: {t.exit_time || '—'}</div>
+                  </td>
                   <td className="px-6 py-4 font-mono text-xs text-gray-500 dark:text-muted-foreground whitespace-nowrap">
                     <div>Entry: {t.entry_price ? `₹${t.entry_price}` : '—'}</div>
                     <div>Exit: {t.exit_price ? `₹${t.exit_price}` : '—'}</div>
@@ -522,7 +504,9 @@ function HistoryTab({ history, sessionType }: { history: any[], sessionType: str
                     </div>
                   </td>
                   <td className="px-6 py-4 text-xs text-gray-500 dark:text-muted-foreground">
-                    {t.holding_time > 60 ? `${(t.holding_time / 60).toFixed(1)}h` : `${t.holding_time}m`}
+                    {(t.holding_time_mins ?? t.holding_time ?? 0) > 60
+                      ? `${((t.holding_time_mins ?? t.holding_time ?? 0) / 60).toFixed(1)}h`
+                      : `${(t.holding_time_mins ?? t.holding_time ?? 0)}m`}
                   </td>
                   <td className="px-6 py-4 text-xs text-gray-500 dark:text-muted-foreground italic max-w-[150px] truncate">{t.exit_reason || (t.status === 'PENDING' ? 'Waiting for trigger' : 'Open/Manual')}</td>
                 </tr>

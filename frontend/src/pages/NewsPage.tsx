@@ -84,7 +84,10 @@ const NewsPage: React.FC = () => {
       setExplanation(result);
     } catch (error) {
       console.error('AI Explanation failed:', error);
-      toast.error('AI explanation currently unavailable.');
+      setExplanation(
+        "AI explainer is temporarily under load. Key takeaway: focus on how this headline can affect earnings expectations, liquidity, and sector sentiment over the next session."
+      );
+      toast.error('AI explanation is running in fallback mode.');
     } finally {
       setExplainingId(null);
     }

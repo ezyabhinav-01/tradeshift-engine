@@ -20,6 +20,8 @@ export interface ExplainResponse {
   explanation: string;
 }
 
+const explainCache: Record<string, { ts: number; explanation: string }> = {};
+
 export const fetchNews = async (category: string = 'all', limit: number = 50): Promise<NewsItem[]> => {
   try {
     const response = await axios.get(`${API_BASE}/`, {
@@ -39,14 +41,25 @@ export const explainNews = async (
   title?: string,
   description?: string
 ): Promise<string> => {
+  const key = `${newsId}:${userLevel}`;
+  const cached = explainCache[key];
+  const now = Date.now();
+  if (cached && now - cached.ts < 10 * 60 * 1000) {
+    return cached.explanation;
+  }
+
   try {
     const response = await axios.post(`${API_BASE}/explain`, {
       news_id: newsId,
       user_level: userLevel,
       title,
       description
+    }, {
+      timeout: 10000,
     });
-    return response.data.explanation;
+    const explanation = response.data.explanation || 'Explanation is currently unavailable. Please retry.';
+    explainCache[key] = { ts: now, explanation };
+    return explanation;
   } catch (error) {
     console.error(`Error explaining news for ID ${newsId}:`, error);
     throw error;

@@ -22,7 +22,8 @@ const axiosInstance = axios.create({
     baseURL: API_URL,
     headers: {
         'x-api-key': 'tradeshift-local-key'
-    }
+    },
+    timeout: 12000,
 });
 
 /**
@@ -30,13 +31,15 @@ const axiosInstance = axios.create({
  * Handles automatic session ID passthrough.
  */
 export const sendChatQuery = async (message: string, sessionId?: string): Promise<ChatResponse> => {
+    const payload = sessionId ? { message, session_id: sessionId } : { message };
     try {
-        const payload = sessionId ? { message, session_id: sessionId } : { message };
         const response = await axiosInstance.post(`/chat`, payload);
         return response.data;
     } catch (error) {
         console.error("Error communicating with TradeGuideBot Pipeline:", error);
-        throw error;
+        // One quick retry for transient network hiccups.
+        const retry = await axiosInstance.post(`/chat`, payload);
+        return retry.data;
     }
 };
 

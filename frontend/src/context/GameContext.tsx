@@ -1,10 +1,11 @@
 // @refresh reset
-import React, { useState, useEffect, useCallback, createContext, useContext } from 'react';
+import React, { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react';
 import axios from 'axios';
 import type { CandleData, Trade } from '../types';
 import { marketDataService, fetchHistoricalCandles, fetchAvailableDates } from '../services/MarketDataService';
 import { toast } from 'sonner';
 import { useMultiChartStore } from '../store/useMultiChartStore';
+import { usePortfolioStore } from '../store/usePortfolioStore';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
 
@@ -136,6 +137,18 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
 
   const [selectedDate, setSelectedDate] = useState('');
   const [availableDates, setAvailableDates] = useState<string[]>([]);
+  const lastPortfolioSyncAtRef = useRef(0);
+
+  const syncPortfolioNow = useCallback(async (force: boolean = false) => {
+    const now = Date.now();
+    if (!force && now - lastPortfolioSyncAtRef.current < 800) return;
+    lastPortfolioSyncAtRef.current = now;
+    try {
+      await usePortfolioStore.getState().refreshPortfolio({ sessionType: 'REPLAY', force: true });
+    } catch (err) {
+      console.warn('Portfolio sync skipped:', err);
+    }
+  }, []);
   
   // Persist session type and replay status
   useEffect(() => {
@@ -260,11 +273,12 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
           timestamp: new Date(),
         }));
         setTrades(formattedTrades);
+        void syncPortfolioNow();
       }
     } catch (err) {
       console.error('Failed to fetch active trades:', err);
     }
-  }, []);
+  }, [syncPortfolioNow]);
 
   // Load on mount
   useEffect(() => {
@@ -515,6 +529,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
             return [updatedTrade, ...prev];
           }
         });
+        if (['OPEN', 'FILLED', 'CLOSED', 'PENDING', 'TRIGGERED', 'CANCELLED'].includes(order.status)) {
+          void syncPortfolioNow();
+        }
       }
 
       if (payload.type === 'TICK') {
@@ -687,6 +704,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
 
       const result = await response.json();
       await fetchActiveTrades();
+      await syncPortfolioNow(true);
       toast.success(result.message);
     } catch (err: any) {
       console.error('Trading Error:', err);
@@ -714,6 +732,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
 
       const result = await response.json();
       toast.success(result.message || 'Order modified');
+      await syncPortfolioNow(true);
     } catch (err: any) {
       console.error('Modify Order Error:', err);
       toast.error(err.message);
@@ -742,6 +761,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
 
       const result = await response.json();
       await fetchActiveTrades();
+      await syncPortfolioNow(true);
       toast.success(result.message || 'Position closing initiated');
     } catch (err: any) {
       console.error('Close Position Error:', err);
@@ -769,6 +789,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
 
       const result = await response.json();
       await fetchActiveTrades();
+      await syncPortfolioNow(true);
       toast.success(result.message || 'All positions closed successfully');
     } catch (err: any) {
       console.error('Close All Positions Error:', err);

@@ -113,6 +113,8 @@ class OrderManagementSystem:
             
         order.entry_price = fill_price
         order.entry_time = normalized_time or datetime.utcnow()
+        order.exit_time = None
+        order.holding_time = None
         order.triggered = True
         
         # --- UPDATE CASH BALANCE (for triggered primary entries) ---

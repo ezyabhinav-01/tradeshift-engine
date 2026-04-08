@@ -202,7 +202,8 @@ class PortfolioService:
                 "unrealized_pnl": round(unrealized_pnl, 2),
                 "pnl_percent": round(pnl_pct, 2),
                 "is_positive": unrealized_pnl >= 0,
-                "entry_time": t.entry_time.strftime("%Y-%m-%d %H:%M") if t.entry_time else None,
+                "entry_time": t.entry_time.strftime("%Y-%m-%d %H:%M:%S") if t.entry_time else None,
+                "entry_time_iso": t.entry_time.isoformat() if t.entry_time else None,
                 "holding_minutes": round(holding_mins, 1),
                 "stop_loss": t.stop_loss,
                 "take_profit": t.take_profit,
@@ -275,7 +276,16 @@ class PortfolioService:
             TradeLog.exit_price.isnot(None),
             TradeLog.exit_price != 0
         ))
-        all_trades = result.scalars().all()
+        raw_trades = result.scalars().all()
+        all_trades = []
+        for t in raw_trades:
+            if (t.status or "").upper() != "CLOSED":
+                continue
+            if not t.entry_time or not t.exit_time:
+                continue
+            if t.exit_time < t.entry_time:
+                continue
+            all_trades.append(t)
 
         if not all_trades:
             return {
@@ -294,7 +304,8 @@ class PortfolioService:
         losses = [t for t in all_trades if (t.pnl or 0) <= 0]
         win_rate = (len(wins) / len(all_trades) * 100) if all_trades else 0
 
-        avg_holding = sum((t.holding_time or 0) for t in all_trades) / len(all_trades) if all_trades else 0
+        avg_holding_seconds = sum((t.holding_time or 0) for t in all_trades) / len(all_trades) if all_trades else 0
+        avg_holding_minutes = avg_holding_seconds / 60.0
         avg_pnl = sum((t.pnl or 0) for t in all_trades) / len(all_trades) if all_trades else 0
         total_pnl = sum((t.pnl or 0) for t in all_trades)
 
@@ -311,7 +322,10 @@ class PortfolioService:
                 "entry_price": round(t.entry_price or 0, 2),
                 "exit_price": round(t.exit_price or 0, 2),
                 "quantity": t.quantity,
-                "holding_time": round(t.holding_time or 0, 1),
+                "entry_time": t.entry_time.strftime("%Y-%m-%d %H:%M:%S") if t.entry_time else None,
+                "exit_time": t.exit_time.strftime("%Y-%m-%d %H:%M:%S") if t.exit_time else None,
+                "holding_time_seconds": round(t.holding_time or 0, 1),
+                "holding_time": round((t.holding_time or 0) / 60.0, 2),
                 "exit_reason": t.exit_reason,
             }
 
@@ -332,8 +346,8 @@ class PortfolioService:
         elif win_rate >= 40: insights.append(f"⚡ Your win rate is {win_rate:.1f}%.")
         else: insights.append(f"⚠️ Win rate is {win_rate:.1f}%.")
 
-        if avg_holding > 60: insights.append(f"📊 Avg holding time is {avg_holding:.0f} mins.")
-        else: insights.append(f"⚡ Avg holding time is {avg_holding:.0f} mins.")
+        if avg_holding_minutes > 60: insights.append(f"📊 Avg holding time is {avg_holding_minutes:.1f} mins.")
+        else: insights.append(f"⚡ Avg holding time is {avg_holding_minutes:.1f} mins.")
 
         avg_win = sum((t.pnl or 0) for t in wins) / len(wins) if wins else 0
         avg_loss = abs(sum((t.pnl or 0) for t in losses) / len(losses)) if losses else 0
@@ -347,7 +361,7 @@ class PortfolioService:
             "loss_rate": round(100 - win_rate, 1),
             "wins": len(wins),
             "losses": len(losses),
-            "avg_holding_time_mins": round(avg_holding, 1),
+            "avg_holding_time_mins": round(avg_holding_minutes, 2),
             "avg_pnl": round(avg_pnl, 2),
             "total_pnl": round(total_pnl, 2),
             "best_trade": trade_summary(best),

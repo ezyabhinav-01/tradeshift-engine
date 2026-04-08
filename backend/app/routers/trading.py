@@ -99,7 +99,8 @@ async def execute_trade(
         user_result = await db.execute(select(User).filter(User.id == user_id))
         user = user_result.scalars().first()
         if user and user.email:
-            executed_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+            executed_at_dt = trade.entry_time or datetime.utcnow()
+            executed_at = executed_at_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
             background_tasks.add_task(
                 send_trade_confirmation_email,
                 user.email,
@@ -286,7 +287,8 @@ async def close_trade(
         if trade.entry_price and exit_price:
             multiplier = 1 if trade.direction.upper() == "BUY" else -1
             pnl = round((exit_price - trade.entry_price) * (trade.quantity or 1) * multiplier, 2)
-        closed_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+        closed_at_dt = trade.exit_time or datetime.utcnow()
+        closed_at = closed_at_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
         background_tasks.add_task(
             send_trade_closed_email,
             user.email,
@@ -397,7 +399,8 @@ async def close_all_trades(
             if trade.entry_price and exit_price:
                 multiplier = 1 if trade.direction.upper() == "BUY" else -1
                 pnl = round((exit_price - trade.entry_price) * (trade.quantity or 1) * multiplier, 2)
-            closed_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+            closed_at_dt = trade.exit_time or datetime.utcnow()
+            closed_at = closed_at_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
             background_tasks.add_task(
                 send_trade_closed_email,
                 user.email,

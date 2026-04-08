@@ -492,6 +492,11 @@ async def get_news(category: str = "all", limit: int = 50) -> list[dict]:
 
 async def explain_news(news_id: str, user_level: str = "Beginner", title: str = None, description: str = None) -> str:
     """Calls FinGPT logic for news explanation."""
+    cache_key = f"news_explain_{news_id}_{user_level}".lower()
+    cached_explanation = _get_cache(cache_key)
+    if cached_explanation:
+        return cached_explanation
+
     # 1. Try to find the news item from cache or fetch list
     news_item = None
     if news_id:
@@ -515,10 +520,21 @@ async def explain_news(news_id: str, user_level: str = "Beginner", title: str = 
 
     # 3. DIRECTLY CALL NLP ENGINE - NO EXTERNAL HTTP CALLS TO FAILING SERVICES
     try:
-        return await generate_news_explanation(final_title, final_desc or "", user_level)
+        explanation = await generate_news_explanation(final_title, final_desc or "", user_level)
+        if explanation:
+            _set_cache(cache_key, explanation, expire=600)
+            return explanation
+        fallback = "Explanation is temporarily unavailable. Please retry in a few seconds."
+        _set_cache(cache_key, fallback, expire=60)
+        return fallback
     except Exception as e:
         print(f"⚠️ explain_news Error: {e}")
-        return f"AI Explanation engine failed: {str(e)}"
+        fallback = (
+            "The AI explanation service is under load right now. "
+            "Use the headline and source context for now, and retry shortly for a full breakdown."
+        )
+        _set_cache(cache_key, fallback, expire=60)
+        return fallback
 
 # Enhanced simulation helper with Timestamp Shifting
 async def fetch_news_for_date(symbol: str, target_date: str) -> list[dict]:

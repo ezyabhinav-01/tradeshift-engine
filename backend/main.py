@@ -18,6 +18,8 @@ import time
 import glob
 import random
 import re
+import uuid
+import aiohttp
 from redis import Redis
 from prometheus_fastapi_instrumentator import Instrumentator
 from app.oms import OrderManager
@@ -929,6 +931,75 @@ class StockChatRequest(BaseModel):
     question: str
     history: list = []
 
+
+class TradeGuideRequest(BaseModel):
+    message: str
+    session_id: str | None = None
+
+
+class TradeGuideFeedbackRequest(BaseModel):
+    session_id: str
+    rating: str
+    feedback: str | None = None
+
+
+CHATBOT_SERVICE_URL = os.getenv("CHATBOT_SERVICE_URL", "http://chatbot:8001")
+CHATBOT_API_KEY = os.getenv("CHATBOT_API_KEY", "tradeshift-local-key")
+
+
+def _local_trading_guide_fallback(query: str) -> str:
+    q = (query or "").lower()
+    if "macd" in q:
+        return (
+            "MACD compares a fast and slow moving average to show momentum shifts. "
+            "When MACD crosses above the signal line, momentum is improving; below it, momentum is weakening."
+        )
+    if "rsi" in q:
+        return (
+            "RSI measures how stretched price is on a 0-100 scale. "
+            "Above 70 can indicate overbought conditions, below 30 can indicate oversold conditions."
+        )
+    if "replay" in q:
+        return (
+            "Replay mode lets you simulate trades candle-by-candle on historical sessions. "
+            "Choose a symbol/date, start replay, and practice entries, exits, and risk control."
+        )
+    if "screener" in q or "multibagger" in q:
+        return (
+            "Use Screener to shortlist quality stocks by ROCE, growth, and valuation. "
+            "Then open Research Hub to get AI thesis, layman explanation, and Q&A."
+        )
+    return (
+        "TradeGuide is running in fallback mode right now. I can still help with platform navigation, "
+        "replay workflow, indicators, and research interpretation."
+    )
+
+
+async def _chatbot_proxy(
+    method: str,
+    path: str,
+    payload: dict | None = None,
+    timeout_seconds: float = 10.0,
+) -> dict | None:
+    base = CHATBOT_SERVICE_URL.rstrip("/")
+    url = f"{base}{path}"
+    timeout = aiohttp.ClientTimeout(total=timeout_seconds, connect=3, sock_read=7)
+    headers = {"x-api-key": CHATBOT_API_KEY}
+
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            if method.upper() == "GET":
+                async with session.get(url, headers=headers) as resp:
+                    if resp.status == 200:
+                        return await resp.json()
+                    return None
+            async with session.post(url, json=payload or {}, headers=headers) as resp:
+                if resp.status == 200:
+                    return await resp.json()
+                return None
+    except Exception:
+        return None
+
 @app.get("/api/screener/multibagger")
 async def get_multibagger_screener(db: AsyncSession = Depends(get_optional_db)):
     """
@@ -996,6 +1067,64 @@ async def chat_about_stock_endpoint(symbol: str, request: StockChatRequest, db: 
     except Exception as e:
         logger.error(f"Error chatting about stock {symbol}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/chat")
+async def chat_endpoint_proxy(req: TradeGuideRequest):
+    """
+    Deployment-safe TradeGuide endpoint.
+    Proxies to chatbot service when reachable; otherwise serves deterministic fallback.
+    """
+    proxied = await _chatbot_proxy("POST", "/api/chat", payload=req.model_dump(), timeout_seconds=12.0)
+    if proxied:
+        return proxied
+
+    session_id = req.session_id or str(uuid.uuid4())
+    text = _local_trading_guide_fallback(req.message)
+    suggestions = ["Explain MACD", "How to use Replay mode?", "How to read ROCE and PE together?"]
+    topic = (req.message or "").lower()
+    if "indicator" in topic or "macd" in topic or "rsi" in topic:
+        suggestions = ["How is RSI different from MACD?", "When does MACD fail?", "How to avoid false signals?"]
+    elif "screener" in topic:
+        suggestions = ["What defines a multibagger?", "How to analyze debt-to-equity quickly?", "How to validate growth quality?"]
+
+    return {
+        "session_id": session_id,
+        "response": text,
+        "actions": [],
+        "sources": [],
+        "suggested_questions": suggestions,
+        "model": "fallback-local",
+    }
+
+
+@app.get("/api/chat/health")
+async def chat_health_proxy():
+    proxied = await _chatbot_proxy("GET", "/api/chat/health", timeout_seconds=5.0)
+    if proxied:
+        return proxied
+    return {"status": "ok", "service": "chatbot-fallback", "model": "fallback-local"}
+
+
+@app.get("/api/chat/suggestions/{topic}")
+async def chat_suggestions_proxy(topic: str):
+    proxied = await _chatbot_proxy("GET", f"/api/chat/suggestions/{topic}", timeout_seconds=5.0)
+    if proxied:
+        return proxied
+    topic_l = topic.lower()
+    if topic_l == "indicators":
+        return {"suggestions": ["Explain MACD", "What is RSI?", "How to draw Fibonacci retracements?"]}
+    if topic_l == "screener":
+        return {"suggestions": ["What defines a Multibagger stock?", "How do you calculate ROCE?"]}
+    return {"suggestions": ["How do I use replay mode?", "How to read risk/reward before entry?"]}
+
+
+@app.post("/api/chat/feedback")
+async def chat_feedback_proxy(req: TradeGuideFeedbackRequest):
+    proxied = await _chatbot_proxy("POST", "/api/chat/feedback", payload=req.model_dump(), timeout_seconds=6.0)
+    if proxied:
+        return proxied
+    return {"status": "accepted"}
 
 # --- Market Data Endpoints ---
 from app.market_service import market_service
@@ -1593,6 +1722,10 @@ async def websocket_endpoint(websocket: WebSocket):
                     # 2. Push Ticks for ALL MAIN symbols
                     for sym, ticks in all_symbol_ticks.items():
                         if i < len(ticks):
+                            # Primary symbol is streamed via high-frequency interpolated ticks below.
+                            # Skip duplicate base ticks except for the final second where interpolation is unavailable.
+                            if sym == primary_symbol and i + 1 < len(all_symbol_ticks.get(primary_symbol, [])):
+                                continue
                             try:
                                 await websocket.send_json({
                                     "type": "TICK",
@@ -1659,7 +1792,14 @@ async def websocket_endpoint(websocket: WebSocket):
                         except Exception: pass
 
                     # ─── Smooth Sub-Tick Brownian Bridge Simulation ───
-                    sub_steps = 20
+                    # Keep animation smooth at low speeds, but reduce message pressure at high speeds.
+                    # Replay timing target: at 20x, one 1-minute candle should complete in ~3 seconds.
+                    if speed >= 20:
+                        sub_steps = 8
+                    elif speed >= 10:
+                        sub_steps = 12
+                    else:
+                        sub_steps = 20
                     # Standard deviation (approx 0.005% of current price as volatility per tick)
                     vol_scale = last_tick_price * 0.00005 if last_tick_price > 0 else 0.1
                     
@@ -1675,25 +1815,32 @@ async def websocket_endpoint(websocket: WebSocket):
                     # Convert to Bridge (so it ends exactly at 0 to match historical data)
                     bridge_noise = [bm[s] - ((s + 1) / sub_steps) * bm_final for s in range(sub_steps)]
 
+                    target_candle_seconds = 60.0 / max(speed, 0.1)  # 20x => 3s per candle
+                    target_substep_delay = target_candle_seconds / (60.0 * sub_steps)
+                    subloop_start = time.perf_counter()
                     for step in range(sub_steps):
                         # Command Check (Inner - run in each sub-step)
                         trigger_next = False
-                        try:
-                            inner_data = await asyncio.wait_for(websocket.receive_text(), timeout=0.0001)
-                            inner_msg = json.loads(inner_data)
-                            inner_cmd = inner_msg.get("command")
-                            if inner_cmd == "SPEED":
-                                speed = float(inner_msg.get("speed", 1.0))
-                            elif inner_cmd == "STOP":
+                        command_poll_stride = 1 if speed <= 5 else (2 if speed <= 10 else 4)
+                        if step % command_poll_stride == 0:
+                            try:
+                                inner_data = await asyncio.wait_for(websocket.receive_text(), timeout=0.0001)
+                                inner_msg = json.loads(inner_data)
+                                inner_cmd = inner_msg.get("command")
+                                if inner_cmd == "SPEED":
+                                    speed = float(inner_msg.get("speed", 1.0))
+                                elif inner_cmd == "STOP":
+                                    is_running = False
+                                    break
+                                elif inner_cmd == "STEP":
+                                    trigger_next = True
+                            except asyncio.TimeoutError:
+                                pass
+                            except WebSocketDisconnect:
                                 is_running = False
                                 break
-                            elif inner_cmd == "STEP":
-                                trigger_next = True
-                        except asyncio.TimeoutError: pass
-                        except WebSocketDisconnect:
-                            is_running = False
-                            break
-                        except Exception: pass
+                            except Exception:
+                                pass
 
                         if not is_running: break
                         if trigger_next: break 
@@ -1713,6 +1860,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             linear_price = curr_val + (next_val - curr_val) * factor
                             # Add Brownian noise
                             interp_price = linear_price + bridge_noise[step]
+                            sub_tick_time = tick_time + datetime.timedelta(seconds=((step + 1) / sub_steps))
 
                             
                             try:
@@ -1722,7 +1870,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                     "data": {
                                         "symbol": primary_symbol,
                                         "price": round(interp_price, 2),
-                                        "timestamp": tick_time.isoformat() + "Z", # Force UTC suffix
+                                        "timestamp": sub_tick_time.isoformat() + "Z", # Force UTC suffix
                                         "volume": int(main_current_rows[primary_symbol].get('volume', 0)),
 
                                     }
@@ -1730,7 +1878,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                 
                                 # --- SYNC WITH PORTFOLIO/OMS ENGINE ---
                                 # This ensures /api/portfolio/positions sees the simulated price as the LTP
-                                shoonya_live.update_symbol_price(primary_symbol, interp_price, tick_time)
+                                shoonya_live.update_symbol_price(primary_symbol, interp_price, sub_tick_time)
                                 
                                 # Update Global Ticker (simulatedIndices)
                                 interp_indices = {**indices_payload}
@@ -1748,7 +1896,8 @@ async def websocket_endpoint(websocket: WebSocket):
                             except Exception: break
 
                         # --- NEW: Synchronized News Injection (Second-Precision) ---
-                        sub_tick_time = tick_time + datetime.timedelta(seconds=step)
+                        if not (primary_symbol and primary_symbol in all_symbol_ticks and i + 1 < len(all_symbol_ticks[primary_symbol])):
+                            sub_tick_time = tick_time + datetime.timedelta(seconds=((step + 1) / sub_steps))
                         for idx, n_item in enumerate(list(active_news)):
                             if not isinstance(n_item, dict): continue
                             n_timestamp = n_item.get("timestamp")
@@ -1826,8 +1975,10 @@ async def websocket_endpoint(websocket: WebSocket):
                                 active_impact_observers.remove(obs)
 
                         # ── Precise Speed Scaling (1 second per tick / speed) ──
-                        actual_delay = 1.0 / (speed * sub_steps) if speed > 0 else 1.0 / sub_steps
-                        await asyncio.sleep(max(actual_delay, 0.001)) 
+                        expected_next = subloop_start + ((step + 1) * target_substep_delay)
+                        sleep_for = expected_next - time.perf_counter()
+                        if sleep_for > 0:
+                            await asyncio.sleep(sleep_for)
                     
                     if not is_running: break
                     last_tick_sent_at = time.time()

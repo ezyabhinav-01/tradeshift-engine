@@ -22,6 +22,7 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [laymanExplanation, setLaymanExplanation] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSimplifying, setIsSimplifying] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [analysisUpdatedAt, setAnalysisUpdatedAt] = useState<string | null>(null);
@@ -29,6 +30,7 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
   const [chatHistory, setChatHistory] = useState<{role: 'user' | 'assistant', content: string}[]>([]);
   const [isSending, setIsSending] = useState(false);
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
+  const cacheKey = `ts-ai-thesis:${symbol.toUpperCase()}`;
 
   const postWithTimeout = (url: string, body?: any, timeoutMs = 45000) => {
     return Promise.race([
@@ -37,14 +39,36 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
     ]) as Promise<any>;
   };
 
-  const performAnalysis = async () => {
+  const performAnalysis = async (force = false) => {
     if (!symbol) {
       setIsAnalyzing(false);
       setAnalysisError("Symbol not available for analysis.");
       return;
     }
-    setIsAnalyzing(true);
-    setAnalysis(null);
+
+    if (!force) {
+      try {
+        const cachedRaw = sessionStorage.getItem(cacheKey);
+        if (cachedRaw) {
+          const cached = JSON.parse(cachedRaw) as { analysis: string; updatedAt: string; };
+          if (cached.analysis) {
+            setAnalysis(cached.analysis);
+            setAnalysisUpdatedAt(cached.updatedAt);
+            setIsAnalyzing(false);
+          }
+        }
+      } catch {
+        // ignore bad cache shape
+      }
+    }
+
+    const hasExistingAnalysis = !!analysis || !!sessionStorage.getItem(cacheKey);
+    if (hasExistingAnalysis) {
+      setIsRefreshing(true);
+    } else {
+      setIsAnalyzing(true);
+    }
+
     setAnalysisError(null);
     try {
       let response: any = null;
@@ -68,6 +92,10 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
 
       setAnalysis(response.data.analysis);
       setAnalysisUpdatedAt(new Date().toISOString());
+      sessionStorage.setItem(cacheKey, JSON.stringify({
+        analysis: response.data.analysis,
+        updatedAt: new Date().toISOString(),
+      }));
       setLaymanExplanation(null); // Reset explanation when new analysis comes
       setChatHistory([]); // Reset chat when new analysis is generated
     } catch (error) {
@@ -76,6 +104,7 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
       setAnalysisError(errMsg);
     } finally {
       setIsAnalyzing(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -130,7 +159,7 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
 
   // Auto-generate analysis on mount or symbol change
   React.useEffect(() => {
-    performAnalysis();
+    void performAnalysis(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbol]);
 
@@ -138,7 +167,7 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
   React.useEffect(() => {
     const interval = setInterval(() => {
       if (!isAnalyzing && !isSending) {
-        performAnalysis();
+        void performAnalysis(false);
       }
     }, 180000);
     return () => clearInterval(interval);
@@ -163,7 +192,7 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
           )}
         </div>
         <button 
-          onClick={performAnalysis}
+          onClick={() => void performAnalysis(true)}
           className="flex items-center gap-2 px-6 py-2.5 bg-primary text-black rounded-xl font-bold hover:scale-105 transition-transform"
         >
           Generate AI Thesis
@@ -190,13 +219,16 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
           </span>
         </div>
         <div className="flex items-center gap-2">
+          {isRefreshing && (
+            <span className="text-[10px] uppercase tracking-wider text-primary font-semibold">Refreshing...</span>
+          )}
           {analysisUpdatedAt && (
             <span className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">
               Updated {new Date(analysisUpdatedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
             </span>
           )}
           <button 
-            onClick={performAnalysis}
+            onClick={() => void performAnalysis(true)}
             className="p-2 hover:bg-gray-200 dark:hover:bg-white/5 rounded-lg text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors"
             title="Regenerate Analysis"
           >

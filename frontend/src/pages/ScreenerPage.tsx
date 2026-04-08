@@ -142,8 +142,13 @@ const ScreenerPage: React.FC = () => {
       setIsLoading(true);
       try {
         const response = await axios.get(`/api/screener/multibagger`);
-        setCandidates(response.data.candidates);
-        setFilteredCandidates(response.data.candidates);
+        const responseCandidates = Array.isArray(response?.data?.candidates)
+          ? response.data.candidates
+          : Array.isArray(response?.data)
+            ? response.data
+            : [];
+        setCandidates(responseCandidates);
+        setFilteredCandidates(responseCandidates);
       } catch (error) {
         console.error("Failed to fetch screener candidates:", error);
       } finally {
@@ -296,47 +301,57 @@ const ScreenerPage: React.FC = () => {
           </div>
 
           {/* Grid of Potential Multi-baggers */}
-          <div ref={containerRef} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 m-3 screener-grid-group">
-            {filteredCandidates.map((stock) => (
-              <div
-                key={stock.symbol}
-                onMouseEnter={(e) => triggerParticleBurst(e, stock.conviction_score)}
-                onMouseMove={handleMouseMove}
-                onMouseLeave={handleMouseLeave}
-                className={`screener-card group relative bg-white dark:bg-[#0a0a0a] border border-slate-200 dark:border-white/5 rounded-2xl p-6 screener-card-hover ${stock.conviction_score > 85 ? 'high-conviction-aura ring-1 ring-primary/20' : ''} flex flex-col justify-between shadow-sm`}
-                style={{
-                  '--mouse-x': '50%',
-                  '--mouse-y': '50%',
-                  '--rotate-x': '0deg',
-                  '--rotate-y': '0deg',
-                } as React.CSSProperties}
-              >
-                <div className="liquid-bg"></div>
-                <div className="liquid-ripple"></div>
+          {filteredCandidates.length === 0 ? (
+            <div className="m-3 rounded-2xl border border-slate-200 dark:border-white/10 bg-white/70 dark:bg-white/[0.02] p-10 text-center">
+              <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                No screener cards available right now.
+              </p>
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                Try changing filters or search, or refresh after backend data sync.
+              </p>
+            </div>
+          ) : (
+            <div ref={containerRef} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 m-3 screener-grid-group">
+              {filteredCandidates.map((stock) => (
+                <div
+                  key={stock.symbol}
+                  onMouseEnter={(e) => triggerParticleBurst(e, stock.conviction_score)}
+                  onMouseMove={handleMouseMove}
+                  onMouseLeave={handleMouseLeave}
+                  className={`screener-card group relative bg-white dark:bg-[#0a0a0a] border border-slate-200 dark:border-white/5 rounded-2xl p-6 screener-card-hover ${stock.conviction_score > 85 ? 'high-conviction-aura ring-1 ring-primary/20' : ''} flex flex-col justify-between shadow-sm`}
+                  style={{
+                    '--mouse-x': '50%',
+                    '--mouse-y': '50%',
+                    '--rotate-x': '0deg',
+                    '--rotate-y': '0deg',
+                  } as React.CSSProperties}
+                >
+                  <div className="liquid-bg"></div>
+                  <div className="liquid-ripple"></div>
 
-                {/* Border Beam for high conviction stocks */}
-                {stock.conviction_score > 90 && (
-                  <div className="border-beam-container">
-                    <div className="border-beam"></div>
-                  </div>
-                )}
-                <div className="space-y-4">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">{stock.symbol}</h3>
-                        <TrendingUp className="w-4 h-4 text-green-500" />
-                      </div>
-                      <p className="text-xs text-slate-400 dark:text-gray-500 font-medium truncate max-w-[150px]">{stock.name}</p>
+                  {/* Border Beam for high conviction stocks */}
+                  {stock.conviction_score > 90 && (
+                    <div className="border-beam-container">
+                      <div className="border-beam"></div>
                     </div>
-                    <div className="flex flex-col items-end">
-                      <div className="px-2 py-1 bg-primary/10 border border-primary/20 rounded-lg flex items-center gap-1.5 mr-2">
-                        <BrainCircuit className="w-3.5 h-3.5 text-primary" />
-                        <span className="text-xs font-black text-primary p-1">{stock.conviction_score}%</span>
+                  )}
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">{stock.symbol}</h3>
+                          <TrendingUp className="w-4 h-4 text-green-500" />
+                        </div>
+                        <p className="text-xs text-slate-400 dark:text-gray-500 font-medium truncate max-w-[150px]">{stock.name}</p>
                       </div>
-                      <span className="text-[10px] text-slate-400 dark:text-gray-600 mt-1 uppercase font-bold tracking-tighter">Conviction Score</span>
+                      <div className="flex flex-col items-end">
+                        <div className="px-2 py-1 bg-primary/10 border border-primary/20 rounded-lg flex items-center gap-1.5 mr-2">
+                          <BrainCircuit className="w-3.5 h-3.5 text-primary" />
+                          <span className="text-xs font-black text-primary p-1">{stock.conviction_score}%</span>
+                        </div>
+                        <span className="text-[10px] text-slate-400 dark:text-gray-600 mt-1 uppercase font-bold tracking-tighter">Conviction Score</span>
+                      </div>
                     </div>
-                  </div>
 
                   {/* Fundamental Badges */}
                   <div className="flex flex-wrap gap-2">
@@ -398,22 +413,23 @@ const ScreenerPage: React.FC = () => {
                   </div>
                 </div>
 
-                <Button
-                  onClick={() => {
-                    if (checkAccess()) navigate(`/research/${stock.symbol}`);
-                  }}
-                  className="w-full mt-4 bg-slate-100 dark:bg-white/5 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-white/10 hover:bg-blue-600 hover:text-white hover:border-transparent transition-all duration-300 rounded-xl group-hover:translate-y-[-2px]"
-                >
-                  Start Deep Learning
-                  <ChevronRight className="w-4 h-4 ml-2" />
-                </Button>
+                  <Button
+                    onClick={() => {
+                      if (checkAccess()) navigate(`/research/${stock.symbol}`);
+                    }}
+                    className="w-full mt-4 bg-slate-100 dark:bg-white/5 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-white/10 hover:bg-blue-600 hover:text-white hover:border-transparent transition-all duration-300 rounded-xl group-hover:translate-y-[-2px]"
+                  >
+                    Start Deep Learning
+                    <ChevronRight className="w-4 h-4 ml-2" />
+                  </Button>
 
 
-                {/* Mirror reflection element */}
-                <div className="absolute inset-0 bg-gradient-to-tr from-primary/0 via-primary/0 to-primary/5 opacity-0 group-hover:opacity-100 transition-opacity rounded-md pointer-events-none"></div>
-              </div>
-            ))}
-          </div>
+                  {/* Mirror reflection element */}
+                  <div className="absolute inset-0 bg-gradient-to-tr from-primary/0 via-primary/0 to-primary/5 opacity-0 group-hover:opacity-100 transition-opacity rounded-md pointer-events-none"></div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Methodology Section */}
           <div className="p-6 bg-slate-50 dark:bg-white/[0.01] border border-slate-200 dark:border-white/5 rounded-md flex flex-col md:flex-row items-center gap-6">

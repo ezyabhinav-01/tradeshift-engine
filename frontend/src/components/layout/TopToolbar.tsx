@@ -43,7 +43,7 @@ const TopToolbar = ({
     isGuest
 }: TopToolbarProps) => {
     const { selectedSymbol, isReplayActive, toggleReplay } = useGame();
-    const { activeChartId, updateChart, activeTimeframe, setActiveTimeframe } = useMultiChartStore();
+    const { activeChartId, charts, updateChart, activeTimeframe, setActiveTimeframe } = useMultiChartStore();
     const { checkAccess } = useAccessControl();
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const [isTimeframeOpen, setIsTimeframeOpen] = useState(false);
@@ -64,6 +64,8 @@ const TopToolbar = ({
     }, [isTimeframeOpen]);
 
     const currentTf = TIMEFRAMES.find(t => t.id === activeTimeframe);
+    const activeChart = charts.find((chart) => chart.id === activeChartId);
+    const activeChartSymbol = activeChart?.symbol || selectedSymbol || 'RELIANCE';
 
     return (
         <div className="h-12 bg-transparent flex items-center px-4 justify-between text-tv-text-secondary select-none">
@@ -83,7 +85,7 @@ const TopToolbar = ({
                     className="h-8 gap-2 px-2 text-tv-text-primary hover:bg-tv-bg-pane/50 font-bold text-lg"
                     onClick={() => setIsSearchOpen(true)}
                 >
-                    {selectedSymbol || 'USDJPY'}
+                    {activeChartSymbol}
                 </Button>
 
                 <Separator orientation="vertical" className="h-6 bg-tv-border dark:bg-white/10" />
@@ -198,7 +200,7 @@ const TopToolbar = ({
                     className="h-8 w-8 hover:bg-tv-bg-pane/50 hover:text-primary"
                     title="Stock Research Hub (FinGPT)"
                     onClick={() => {
-                        if (checkAccess()) navigate(`/research/${selectedSymbol || 'RELIANCE'}`);
+                        if (checkAccess()) navigate(`/research/${activeChartSymbol}`);
                     }}
                 >
                     <SearchCode size={18} />

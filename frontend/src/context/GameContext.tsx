@@ -561,7 +561,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
     // Note: `speed` is intentionally excluded from deps.
     // Speed changes are handled by the dedicated effect below via marketDataService.setSpeed()
     // to avoid full WebSocket reconnection (which destroys replay state, indicators, and drawings).
-  }, [isPlaying, selectedSymbol, selectedDate]);
+  }, [isPlaying, selectedSymbol, selectedDate, allChartSymbolsStr]);
 
   // Dynamic speed changes
   useEffect(() => {
@@ -613,13 +613,6 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
 
   const setSymbol = (symbol: string, _token: string) => {
     setSelectedSymbol(symbol);
-
-    // SYNC: Update all charts in multi-chart layout when primary instrument changes
-    const store = useMultiChartStore.getState();
-    store.charts.forEach(chart => {
-      store.updateChart(chart.id, { symbol });
-    });
-
     loadAvailableDatesAndHistory(symbol, selectedDate);
   };
 

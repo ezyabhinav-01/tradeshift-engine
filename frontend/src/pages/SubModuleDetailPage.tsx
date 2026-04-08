@@ -181,9 +181,11 @@ export default function SubModuleDetailPage() {
   useEffect(() => {
     if (!scrollRef || !scrollRef.current) return;
 
+    const wrapper = scrollRef.current;
+    const contentEl = wrapper.firstElementChild as HTMLElement | null;
     const lenis = new Lenis({
-      wrapper: scrollRef.current, // Target the scrollable div from Layout
-      content: scrollRef.current.querySelector('.relative.z-10') as HTMLElement || scrollRef.current,
+      wrapper, // Target the scrollable div from Layout
+      content: contentEl || wrapper,
       duration: 1.2,
       easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
       orientation: 'vertical',
@@ -191,12 +193,13 @@ export default function SubModuleDetailPage() {
       smoothWheel: true,
     });
 
+    let rafId = 0;
     function raf(time: number) {
       lenis.raf(time);
-      requestAnimationFrame(raf);
+      rafId = requestAnimationFrame(raf);
     }
 
-    requestAnimationFrame(raf);
+    rafId = requestAnimationFrame(raf);
 
     // Global Lenis interaction fixes
     const handleScroll = () => {
@@ -205,6 +208,8 @@ export default function SubModuleDetailPage() {
     lenis.on('scroll', handleScroll);
 
     return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      lenis.off('scroll', handleScroll);
       lenis.destroy();
     };
   }, [scrollRef]);
@@ -233,7 +238,9 @@ export default function SubModuleDetailPage() {
     }
     fetchSubModule();
     fetchComments();
-    window.scrollTo(0, 0);
+    if (scrollRef?.current) {
+      scrollRef.current.scrollTo({ top: 0, behavior: 'auto' });
+    }
   }, [subModuleId]);
 
   async function fetchComments() {
@@ -772,7 +779,11 @@ export default function SubModuleDetailPage() {
                       </button>
                     )}
                     <button
-                      onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                      onClick={() => {
+                        if (scrollRef?.current) {
+                          scrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+                        }
+                      }}
                       className="w-full sm:w-auto px-10 py-6 bg-slate-100 dark:bg-white/5 text-slate-900 dark:text-white font-black rounded-[2.5rem] hover:bg-slate-200 dark:hover:bg-white/10 transition-all border border-slate-200 dark:border-white/10"
                     >
                       Review Core Concepts

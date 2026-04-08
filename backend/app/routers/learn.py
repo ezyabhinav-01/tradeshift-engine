@@ -15,7 +15,7 @@ from redis import Redis
 from sqlalchemy.orm import joinedload
 from app.database import get_db
 from app.models import LearningProgress, UserStreak, UserBadge, Track, Module, SubModule, Lesson, MarketSecret, UserSecretReveal, User, ChapterComment
-from app.dependencies import get_current_user, admin_required
+from app.dependencies import get_current_user, admin_or_internal
 from app.schemas import ChapterCommentCreate, ChapterCommentResponse
 
 router = APIRouter(prefix="/api/learn", tags=["learn"])
@@ -24,7 +24,7 @@ router = APIRouter(prefix="/api/learn", tags=["learn"])
 async def manual_rolling_market_sync(
     request: Request,
     background_tasks: BackgroundTasks,
-    admin_user: User = Depends(admin_required)
+    _: None = Depends(admin_or_internal)
 ):
     """
     Manually trigger the 7-day rolling market data sync.
@@ -254,17 +254,6 @@ async def get_tracks(db: AsyncSession = Depends(get_db)):
     (Tracks -> Modules -> SubModules -> Lessons)
     Includes Redis caching to handle high-latency database connections.
     """
-    cache_key = "academy_tracks_cache"
-    
-    # 1. Try to fetch from Redis Cache
-    try:
-        cached_data = redis_client.get(cache_key)
-        if cached_data:
-            return json.loads(cached_data)
-    except Exception as e:
-        # Non-blocking: fail gracefully and proceed to DB
-        print(f"⚠️ Redis Cache Error: {e}")
-
     try:
         # Fetch tracks with sub-resources eagerly loaded
         result = await db.execute(
@@ -362,12 +351,6 @@ async def get_tracks(db: AsyncSession = Depends(get_db)):
                 
             tracks_data.append(t_data)
             
-        # 3. Store in Redis before returning
-        try:
-            redis_client.setex(cache_key, CACHE_EXPIRATION, json.dumps(tracks_data))
-        except Exception:
-            pass
-
         return tracks_data
             
     except Exception as e:
@@ -1220,4 +1203,3 @@ async def submit_secret_quiz(
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to submit quiz: {str(e)}")
-

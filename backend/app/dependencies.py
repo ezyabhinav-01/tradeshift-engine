@@ -5,7 +5,9 @@ from .database import get_db
 from .models import User, UserSession
 from .config import SECRET_KEY, ALGORITHM
 import jwt
-from datetime import datetime, timedelta
+from datetime import datetime
+import hmac
+import os
 
 async def get_current_user(request: Request, db: AsyncSession = Depends(get_db)):
     session_token = request.cookies.get("session_id")
@@ -51,6 +53,16 @@ async def get_current_user(request: Request, db: AsyncSession = Depends(get_db))
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials")
 
 
+def has_internal_admin_key(request: Request) -> bool:
+    """
+    Allow trusted internal services like the admin backend to hit protected
+    engine endpoints without requiring a browser session.
+    """
+    expected = os.getenv("ADMIN_SERVICE_KEY", "tradeshift-local-admin")
+    provided = request.headers.get("X-Admin-Service-Key", "")
+    return bool(provided) and hmac.compare_digest(provided, expected)
+
+
 async def admin_required(current_user: User = Depends(get_current_user)):
     """
     Dependency to restrict access to specialized admin-only functions.
@@ -62,3 +74,11 @@ async def admin_required(current_user: User = Depends(get_current_user)):
             detail="Forbidden: Admin access required."
         )
     return current_user
+
+
+async def admin_or_internal(request: Request, db: AsyncSession = Depends(get_db)):
+    if has_internal_admin_key(request):
+        return None
+
+    current_user = await get_current_user(request, db)
+    return await admin_required(current_user)

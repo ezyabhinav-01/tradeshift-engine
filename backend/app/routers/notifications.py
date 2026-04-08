@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from app.database import get_db
 from app.models import Notification, User, BroadcastRead
 from app.schemas import NotificationResponse
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, admin_or_internal
 
 router = APIRouter(
     prefix="/api/notifications",
@@ -202,6 +202,7 @@ async def mark_all_notifications_read(
 async def send_broadcast(
     request: BroadcastRequest,
     db: AsyncSession = Depends(get_db),
+    _: None = Depends(admin_or_internal),
 ):
     """
     Send a broadcast notification to all users.

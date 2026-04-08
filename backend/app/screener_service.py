@@ -17,6 +17,8 @@ class ScreenerService:
         """
         # Initialize results
         final_results = {}
+        min_results = 6
+        featured_symbols = {"RELIANCE", "HDFCBANK", "TCS", "ICICIBANK", "INFY", "TITAN", "TATAMOTORS"}
         
         try:
             if db is None:
@@ -35,34 +37,73 @@ class ScreenerService:
                 pe = c.pe_ratio if c.pe_ratio is not None else 100
                 debt = getattr(c, 'debt_to_equity', 1) 
                 debt = debt if debt is not None else 1
+                normalized_symbol = ScreenerService._normalize_symbol(getattr(c, "symbol", ""))
                 
-                # Criteria for inclusion: 
+                # Criteria for inclusion:
                 # 1. It matches our strict multibagger filters
-                # 2. OR it's one of our "Featured" high-quality large caps (like Reliance/HDFC)
-                is_featured = c.symbol in final_results
+                # 2. OR it's one of our "Featured" high-quality large caps
+                is_featured = normalized_symbol in featured_symbols
                 is_potential = (roce > 20 and pe < 30 and debt < 0.5)
                 
                 if is_potential or is_featured:
-                    persona = ScreenerService._assign_company_persona(c)
-                    # Use DB data to override or add new candidates
-                    final_results[c.symbol] = {
-                        "symbol": c.symbol,
-                        "name": getattr(c, 'name', c.symbol),
-                        "market_cap": getattr(c, 'market_cap', 0),
-                        "pe_ratio": pe,
-                        "roce": roce,
-                        "roe": getattr(c, 'roe', min(roce, 15)),
-                        "revenue_growth": getattr(c, 'revenue_growth_5y', 0),
-                        "conviction_score": ScreenerService._calculate_conviction(c),
-                        "sector": getattr(c, 'sector', 'General'),
-                        "persona": persona["name"],
-                        "varsity_tip": persona["tip"]
-                    }
+                    final_results[normalized_symbol] = ScreenerService._candidate_from_stock(c, normalized_symbol)
+
+            # If strict+featured filter is too tight, backfill with strongest DB names.
+            if len(final_results) < min_results:
+                ranked_db = sorted(
+                    db_candidates,
+                    key=lambda s: ScreenerService._calculate_conviction(s),
+                    reverse=True
+                )
+                for c in ranked_db:
+                    normalized_symbol = ScreenerService._normalize_symbol(getattr(c, "symbol", ""))
+                    if not normalized_symbol or normalized_symbol in final_results:
+                        continue
+                    final_results[normalized_symbol] = ScreenerService._candidate_from_stock(c, normalized_symbol)
+                    if len(final_results) >= min_results:
+                        break
             
+            # Final backfill from curated mocks to keep UX stable.
+            if len(final_results) < min_results:
+                for mock in ScreenerService._get_mock_candidates():
+                    sym = ScreenerService._normalize_symbol(mock.get("symbol", ""))
+                    if not sym or sym in final_results:
+                        continue
+                    mock["symbol"] = sym
+                    final_results[sym] = mock
+                    if len(final_results) >= min_results:
+                        break
+
             return list(final_results.values())
         except Exception as e:
             logger.error(f"Error in screener service: {e}")
-            return list(final_results.values())
+            return list(final_results.values()) if final_results else ScreenerService._get_mock_candidates()
+
+    @staticmethod
+    def _normalize_symbol(symbol: str) -> str:
+        base = (symbol or "").strip().upper()
+        if "." in base:
+            base = base.split(".", 1)[0]
+        return base
+
+    @staticmethod
+    def _candidate_from_stock(stock, symbol: str):
+        persona = ScreenerService._assign_company_persona(stock)
+        roce = stock.roce if getattr(stock, 'roce', None) is not None else 0
+        pe = stock.pe_ratio if getattr(stock, 'pe_ratio', None) is not None else 100
+        return {
+            "symbol": symbol,
+            "name": getattr(stock, 'name', symbol),
+            "market_cap": getattr(stock, 'market_cap', 0),
+            "pe_ratio": pe,
+            "roce": roce,
+            "roe": getattr(stock, 'roe', min(roce, 15)),
+            "revenue_growth": getattr(stock, 'revenue_growth_5y', 0),
+            "conviction_score": ScreenerService._calculate_conviction(stock),
+            "sector": getattr(stock, 'sector', 'General'),
+            "persona": persona["name"],
+            "varsity_tip": persona["tip"]
+        }
 
     @staticmethod
     def _assign_company_persona(stock):

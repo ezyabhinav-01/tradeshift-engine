@@ -14,7 +14,6 @@ import { useGame } from '../hooks/useGame';
 import type { DrawingToolId } from '../hooks/useDrawingTools';
 import { useAccessControl } from '../hooks/useAccessControl';
 import { useAuth } from '../context/AuthContext';
-import { toast } from 'sonner';
 
 import type { IndicatorTemplate } from '../store/useChartObjects';
 
@@ -81,16 +80,16 @@ const Home = () => {
   useEffect(() => {
     const activeChart = charts.find(c => c.id === activeChartId);
     if (activeChart && activeChart.symbol !== selectedSymbol) {
-      if (isPlaying && prevActiveChartIdRef.current !== activeChartId) {
-        toast.info(`Replay switching to ${activeChart.symbol}`, {
-          description: 'Replay will restart for the new symbol.',
-          duration: 3000,
-        });
+      // Keep replay locked to its current primary symbol while playing.
+      // Users can still switch chart instruments, but replay must not restart.
+      if (isReplayActive) {
+        prevActiveChartIdRef.current = activeChartId;
+        return;
       }
       setSymbol(activeChart.symbol, '');
     }
     prevActiveChartIdRef.current = activeChartId;
-  }, [activeChartId, charts, selectedSymbol, setSymbol, isPlaying]);
+  }, [activeChartId, charts, selectedSymbol, setSymbol, isReplayActive]);
 
   // 2. Multi-Chart Data Fetcher: Fetch data for each chart slot independently
   const lastFetchedRef = useRef<Record<string, string>>({});

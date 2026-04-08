@@ -54,6 +54,20 @@ class GeminiPool:
             print(f"❌ [GeminiPool] Error creating model for key index {key_index}: {e}")
             return None
 
+    def _is_retryable_generation_error(self, error_msg: str) -> bool:
+        return (
+            "429" in error_msg
+            or "resource_exhausted" in error_msg
+            or "quota" in error_msg
+            or "503" in error_msg
+            or "unavailable" in error_msg
+            or "overloaded" in error_msg
+            or "deadline exceeded" in error_msg
+            or "timed out" in error_msg
+            or "timeout" in error_msg
+            or "connection reset" in error_msg
+        )
+
     async def generate_content(self, prompt: str, model_name: str = "models/gemini-2.0-flash-lite-001", is_async: bool = False):
         """
         Generates content using one of the available keys.
@@ -62,40 +76,58 @@ class GeminiPool:
         if not self.keys:
             raise Exception("No Gemini API keys configured.")
 
-        # Try up to N times (once for each key)
+        # Try up to N times (once for each key), and allow model fallbacks to reduce outages.
         num_keys = len(self.keys)
         start_index = self.current_index
+        model_candidates = [
+            model_name,
+            "models/gemini-2.0-flash-001",
+            "models/gemini-1.5-flash",
+            "gemini-1.5-flash",
+        ]
         
         for attempt in range(num_keys):
             idx = (start_index + attempt) % num_keys
-            model = self._get_model_for_key(idx, model_name)
-            
-            if not model:
-                continue
-                
-            try:
-                if is_async:
-                    response = await model.generate_content_async(prompt)
-                else:
-                    # For sync calls, we still wrap in executor if needed by caller,
-                    # but here we just call the method.
-                    response = model.generate_content(prompt)
-                
-                # If we succeeded, update the pool index to the next one for next time (Round Robin)
-                self.current_index = (idx + 1) % num_keys
-                return response
-            except Exception as e:
-                error_msg = str(e).lower()
-                if "429" in error_msg or "resource_exhausted" in error_msg or "quota" in error_msg:
-                    print(f"⚠️ [GeminiPool] Key {idx+1} rate limited. Rotating to next key...")
+            last_error = None
+
+            for candidate_model in model_candidates:
+                model = self._get_model_for_key(idx, candidate_model)
+                if not model:
                     continue
-                elif "api_key_invalid" in error_msg or "403" in error_msg:
-                     print(f"❌ [GeminiPool] Key {idx+1} is invalid or unauthorized. Rotating...")
-                     continue
-                else:
-                    # Other errors (like network or prompt issues) should probably be raised
-                    print(f"❌ [GeminiPool] Error with key {idx+1}: {e}")
+
+                try:
+                    if is_async:
+                        response = await model.generate_content_async(prompt)
+                    else:
+                        # For sync calls, we still wrap in executor if needed by caller,
+                        # but here we just call the method.
+                        response = model.generate_content(prompt)
+
+                    # If we succeeded, update the pool index to the next one for next time (Round Robin)
+                    self.current_index = (idx + 1) % num_keys
+                    return response
+                except Exception as e:
+                    last_error = e
+                    error_msg = str(e).lower()
+
+                    if "api_key_invalid" in error_msg or "403" in error_msg:
+                        print(f"❌ [GeminiPool] Key {idx+1} is invalid or unauthorized. Rotating...")
+                        break
+
+                    if "not found" in error_msg or "unsupported" in error_msg:
+                        print(f"⚠️ [GeminiPool] Model {candidate_model} unavailable for key {idx+1}. Trying fallback model...")
+                        continue
+
+                    if self._is_retryable_generation_error(error_msg):
+                        print(f"⚠️ [GeminiPool] Temporary failure on key {idx+1}, model {candidate_model}. Trying next model/key...")
+                        continue
+
+                    # Non-retryable error
+                    print(f"❌ [GeminiPool] Error with key {idx+1}, model {candidate_model}: {e}")
                     raise e
+
+            if last_error:
+                print(f"⚠️ [GeminiPool] Rotating key after failures on key {idx+1}: {last_error}")
         
         raise Exception("All Gemini API keys in the pool are currently exhausted or invalid.")
 

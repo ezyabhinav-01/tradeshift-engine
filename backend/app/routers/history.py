@@ -10,7 +10,7 @@ from app.database import get_db
 from app.models import TradeLog, User
 from app.config import SECRET_KEY, ALGORITHM
 from app.sector_mapping import get_sector
-from datetime import datetime
+from datetime import datetime, timezone
 import jwt, io, csv, logging
 
 logger = logging.getLogger(__name__)
@@ -107,6 +107,24 @@ def _seconds_to_minutes(seconds: float | None) -> float:
     return round((seconds or 0.0) / 60.0, 2)
 
 
+def _resolve_replay_now(symbol: str) -> datetime:
+    """
+    Use replay clock timestamp for symbol when available, so open-position
+    holding time remains accurate during simulation.
+    """
+    try:
+        from app.live_market import shoonya_live
+        raw = (shoonya_live.latest_data.get(symbol) or {}).get("timestamp")
+        if isinstance(raw, datetime):
+            return raw.astimezone(timezone.utc).replace(tzinfo=None) if raw.tzinfo else raw
+        if raw:
+            parsed = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+            return parsed.astimezone(timezone.utc).replace(tzinfo=None) if parsed.tzinfo else parsed
+    except Exception:
+        pass
+    return datetime.utcnow()
+
+
 @router.get("/trades")
 async def get_trade_history(
     request: Request,
@@ -116,7 +134,7 @@ async def get_trade_history(
     symbol: str = Query(None),
     direction: str = Query(None),
     search: str = Query(None),
-    sort_by: str = Query("entry_time"),
+    sort_by: str = Query("id"),
     sort_order: str = Query("desc"),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
@@ -139,6 +157,7 @@ async def get_trade_history(
 
         # Sort
         allowed_sorts = {
+            "id": TradeLog.id,
             "entry_time": TradeLog.entry_time,
             "symbol": TradeLog.symbol,
             "pnl": TradeLog.pnl,
@@ -146,7 +165,7 @@ async def get_trade_history(
             "holding_time": TradeLog.holding_time,
             "direction": TradeLog.direction,
         }
-        sort_col = allowed_sorts.get(sort_by, TradeLog.entry_time)
+        sort_col = allowed_sorts.get(sort_by, TradeLog.id)
         stmt = stmt.order_by(desc(sort_col) if sort_order == "desc" else asc(sort_col))
 
         # Paginate
@@ -161,10 +180,15 @@ async def get_trade_history(
             status = (t.status or "OPEN").upper()
             is_open_like = status in {"OPEN", "PENDING", "TRIGGERED"}
             if is_open_like and t.entry_time:
-                holding_seconds = max(0.0, round((datetime.utcnow() - t.entry_time).total_seconds(), 1))
+                now_ref = _resolve_replay_now(t.symbol or "")
+                holding_seconds = max(0.0, round((now_ref - t.entry_time).total_seconds(), 1))
             else:
-                holding_seconds = round(t.holding_time or 0, 1)
-            holding_minutes = _seconds_to_minutes(t.holding_time)
+                # Closed trades: derive strictly from entry/exit timestamps.
+                if t.entry_time and t.exit_time:
+                    holding_seconds = round(abs((t.exit_time - t.entry_time).total_seconds()), 1)
+                else:
+                    holding_seconds = round(t.holding_time or 0, 1)
+            holding_minutes = _seconds_to_minutes(holding_seconds)
             if is_open_like:
                 holding_minutes = round(holding_seconds / 60.0, 2)
             rows.append({

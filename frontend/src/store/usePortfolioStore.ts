@@ -83,7 +83,7 @@ export const usePortfolioStore = create<PortfolioState>()(
             api.get('/api/portfolio/positions', { params }),
             api.get('/api/portfolio/sectors', { params }),
             api.get('/api/portfolio/research', { params }),
-            api.get('/api/history/trades', { params: { ...params, limit: 100 } }),
+            api.get('/api/history/trades', { params: { ...params, limit: 100, sort_by: 'id', sort_order: 'desc' } }),
             api.get('/api/history/monthly-summary', { params }),
           ]);
 

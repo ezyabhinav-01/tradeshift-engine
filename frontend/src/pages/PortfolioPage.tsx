@@ -438,6 +438,8 @@ function HistoryTab({ history, sessionType }: { history: any[], sessionType: str
     CANCELLED: 'bg-slate-500/10 text-slate-500',
   };
 
+  const sortedHistory = [...history].sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+
   return (
     <div className="space-y-4 animate-in fade-in duration-300">
       <div className="flex justify-between items-center px-1">
@@ -467,9 +469,9 @@ function HistoryTab({ history, sessionType }: { history: any[], sessionType: str
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-white/5">
-              {history.length === 0 ? (
+              {sortedHistory.length === 0 ? (
                 <tr><td colSpan={10} className="px-6 py-12 text-center text-sm text-gray-400">No trades found for this session.</td></tr>
-              ) : history.map((t) => (
+              ) : sortedHistory.map((t) => (
                 <tr key={t.id} className="hover:bg-sidebar-accent/10 transition-colors">
                   <td className="px-6 py-4">
                     <div className="flex flex-col">

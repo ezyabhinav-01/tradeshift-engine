@@ -5,7 +5,8 @@ import asyncio
 import aiohttp
 import hashlib
 import urllib.parse
-from datetime import datetime
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from redis import Redis
 import html
 import feedparser
@@ -184,16 +185,35 @@ def _parse_datetime(value: str | None) -> datetime:
         return datetime.min
     raw = value.strip()
     try:
-        # Handles ISO with trailing Z.
-        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return dt
+    except Exception:
+        pass
+    try:
+        dt = parsedate_to_datetime(raw)
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return dt
     except Exception:
         pass
     for fmt in ("%Y%m%dT%H%M%S", "%a, %d %b %Y %H:%M:%S %z", "%Y-%m-%d %H:%M:%S"):
         try:
-            return datetime.strptime(raw, fmt)
+            dt = datetime.strptime(raw, fmt)
+            if dt.tzinfo is not None:
+                dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+            return dt
         except Exception:
             continue
     return datetime.min
+
+
+def _normalize_published_at(value: str | None) -> str | None:
+    dt = _parse_datetime(value)
+    if dt == datetime.min:
+        return None
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _safe_text(item: dict) -> str:
@@ -447,6 +467,8 @@ async def get_news(category: str = "all", limit: int = 50) -> list[dict]:
     if USE_NEWSAPI_FALLBACK and NEWSAPI_KEY:
         if category == "global":
             tasks.append(fetch_newsapi("global", fetch_limit))
+        elif category == "indian":
+            tasks.append(fetch_newsapi("indian", fetch_limit))
         else:
             tasks.append(fetch_newsapi("all", fetch_limit))
     
@@ -481,8 +503,27 @@ async def get_news(category: str = "all", limit: int = 50) -> list[dict]:
         if not item.get("imageUrl"):
             item["imageUrl"] = _default_image_for(item)
         item["sourceTrust"] = _source_trust_level(item)
+        normalized_published_at = _normalize_published_at(item.get("publishedAt"))
+        if normalized_published_at:
+            item["publishedAt"] = normalized_published_at
 
         filtered.append(item)
+
+    # Graceful fallback: if strict filters return nothing, still surface relevant feed
+    # instead of hard empty state.
+    if not filtered and merged:
+        for item in merged:
+            if not item.get("title") or not item.get("url"):
+                continue
+            if not _is_source_reliable(item):
+                continue
+            if not item.get("imageUrl"):
+                item["imageUrl"] = _default_image_for(item)
+            item["sourceTrust"] = _source_trust_level(item)
+            normalized_published_at = _normalize_published_at(item.get("publishedAt"))
+            if normalized_published_at:
+                item["publishedAt"] = normalized_published_at
+            filtered.append(item)
 
     filtered.sort(key=lambda x: _parse_datetime(x.get("publishedAt")), reverse=True)
     final_news = filtered[:limit]

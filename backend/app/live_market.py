@@ -49,7 +49,7 @@ class ShoonyaLiveService:
         # 🔥 Trigger OMS Price Monitoring
         from app.services.order_management import oms_service
         if "price" in data and "name" in data:
-            asyncio.create_task(oms_service.on_price_update(data["name"], data["price"]))
+            oms_service.queue_price_update(data["name"], data["price"], session_type="REPLAY")
 
         for cb in self.callbacks:
             try:

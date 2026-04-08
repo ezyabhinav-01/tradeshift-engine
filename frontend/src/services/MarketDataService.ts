@@ -116,10 +116,20 @@ export class MarketDataService {
     }
 
     setSpeed(speed: number) {
+        // Keep reconnect state aligned with the latest user-selected speed.
+        if (this.lastConnectArgs) {
+            this.lastConnectArgs = { ...this.lastConnectArgs, speed };
+        }
         this.sendMessage({
             command: 'SPEED',
             speed
         });
+
+        // Guard rail: some servers may miss SPEED under heavy load right after START.
+        // Re-send once shortly after for deterministic sync.
+        setTimeout(() => {
+            this.sendMessage({ command: 'SPEED', speed });
+        }, 120);
     }
 }
 

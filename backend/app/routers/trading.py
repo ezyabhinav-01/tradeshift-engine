@@ -257,12 +257,21 @@ async def close_trade(
     Close an open trade (Async).
     """
     user_id = await _get_user_id(request, db, exit_request.session_type)
-    
-    # Priority for simulation consistency: exit_price from request
+    trade_result = await db.execute(
+        select(TradeLog).filter(
+            TradeLog.id == trade_id,
+            TradeLog.user_id == user_id,
+            TradeLog.status.in_(["OPEN", "TRIGGERED"])
+        )
+    )
+    trade_row = trade_result.scalars().first()
+    if not trade_row:
+        raise HTTPException(status_code=404, detail="Open trade not found or not owned by user")
 
-    # Priority for simulation consistency: exit_price from request
-    current_market_price = live_market_service.get_last_price()
-    exit_price = exit_request.exit_price or (exit_request.limit_price if exit_request.exit_type == "LIMIT" else current_market_price)
+    # Prefer caller-provided simulation exit price.
+    # Otherwise resolve from symbol-specific live/replay price cache.
+    resolved_market_price = live_market_service.get_last_price(trade_row.symbol)
+    exit_price = exit_request.exit_price or (exit_request.limit_price if exit_request.exit_type == "LIMIT" else resolved_market_price)
 
     trade = await oms_service.close_trade(
         db,
@@ -347,6 +356,7 @@ async def close_all_trades(
         body = {}
     
     exit_price_req = body.get("exit_price")
+    exit_price_mapping_req = body.get("exit_price_mapping") or {}
     session_type_val = (body.get("session_type", "REPLAY") or "REPLAY").upper()
     if session_type_val == "LIVE":
         session_type_val = "REPLAY"
@@ -372,8 +382,11 @@ async def close_all_trades(
 
     price_mapping = {}
     for sym in symbols:
-        # Priority for simulation consistency: exit_price from request body
-        price_mapping[sym] = exit_price_req or live_market_service.get_last_price(sym)
+        explicit_price = None
+        if isinstance(exit_price_mapping_req, dict):
+            explicit_price = exit_price_mapping_req.get(sym)
+        # Priority: per-symbol map > single explicit exit_price > symbol-specific market/replay price
+        price_mapping[sym] = explicit_price if explicit_price is not None else (exit_price_req or live_market_service.get_last_price(sym))
 
     closed_trades = await oms_service.close_all_trades(
         db,

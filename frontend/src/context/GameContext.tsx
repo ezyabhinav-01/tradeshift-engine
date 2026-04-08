@@ -129,6 +129,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
   const [isReplayActive, setIsReplayActive] = useState(() => sessionStorage.getItem('isReplayActive') === 'true');
   const [sessionType, setSessionType] = useState<'REPLAY'>(() => 'REPLAY');
   const [userSettings, setUserSettings] = useState<any>(null);
+  const isSameNewsId = (a: string | number, b: string | number) => String(a) === String(b);
 
   // NEW: Track all active symbols from the multi-chart store (joined as string for stable dependency)
   const allChartSymbolsStr = useMultiChartStore(state => state.charts.map(c => c.symbol).join(','));
@@ -137,6 +138,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
 
   const [selectedDate, setSelectedDate] = useState('');
   const [availableDates, setAvailableDates] = useState<string[]>([]);
+  const [sessionLockedDate, setSessionLockedDate] = useState(() => sessionStorage.getItem('replaySessionLockedDate') || '');
   const lastPortfolioSyncAtRef = useRef(0);
 
   const syncPortfolioNow = useCallback(async (force: boolean = false) => {
@@ -158,6 +160,14 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
   }, [sessionType, isReplayActive, isPlaying]);
 
   useEffect(() => {
+    if (sessionLockedDate) {
+      sessionStorage.setItem('replaySessionLockedDate', sessionLockedDate);
+    } else {
+      sessionStorage.removeItem('replaySessionLockedDate');
+    }
+  }, [sessionLockedDate]);
+
+  useEffect(() => {
     if (currentTime) {
       sessionStorage.setItem('currentTime', currentTime.toISOString());
     } else {
@@ -167,7 +177,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
 
   // ── Load Available Dates & History ──────────────────────
   // ── Load Historical Candles ──────────────────────
-  const loadHistory = useCallback(async (symbol: string, date: string, lookbackDays: number = 2) => {
+  const loadHistory = useCallback(async (symbol: string, date: string, lookbackDays: number = 2): Promise<number> => {
     setIsLoadingHistory(true);
     // Don't clear immediately to avoid "1-second vanish" flicker. 
     // The previous historicalCandles will stay on chart until replaced.
@@ -176,54 +186,62 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
       setHistoricalCandles(candles);
       if (candles.length > 0) {
         setCurrentPrice(candles[candles.length - 1].close);
-        // ── NEW LOGIC: Correct Start Time for Replay ──────────────────
-        // If we are in Replay mode, find the FIRST candle belonging to the selected date.
-        // This ensures the 2-day lookback is shown as FIXED history, and the 
-        // tick-by-tick simulation starts exactly on the chosen day.
-        if (isReplayActive && date) {
+        if (!isReplayActive) {
+          // Initial load: show most recent replay datapoint
+          setCurrentTime(new Date(candles[candles.length - 1].time * 1000));
+        } else if (!currentTime && date) {
+          // In replay, anchor only if clock not initialized yet.
           const firstCandleOfSelectedDay = candles.find(c => {
             const cDate = new Date(c.time * 1000).toISOString().split('T')[0];
             return cDate === date;
           });
-
           if (firstCandleOfSelectedDay) {
             setCurrentTime(new Date(firstCandleOfSelectedDay.time * 1000));
-            console.log(`🚀 Replay starting at ${new Date(firstCandleOfSelectedDay.time * 1000).toLocaleString()} (Start of ${date})`);
           } else {
-            // Fallback to start of history if selected date not found in the fetched window
             setCurrentTime(new Date(candles[0].time * 1000));
           }
-        } else {
-          // Initial load: show most recent replay datapoint
-          setCurrentTime(new Date(candles[candles.length - 1].time * 1000));
         }
 
         console.log(`📊 Loaded ${candles.length} historical candles for ${symbol} on ${date}`);
+        return candles.length;
       } else {
         toast.error(`No data available for ${symbol} on ${date}`);
+        return 0;
       }
     } catch (err) {
       console.error('Failed to load historical candles:', err);
       toast.error(`Data is not available for ${symbol} on ${date}`);
       setHistoricalCandles([]);
+      return 0;
     } finally {
       setIsLoadingHistory(false);
     }
-  }, [isReplayActive]);
+  }, [isReplayActive, currentTime]);
 
   // ── Load Available Dates & History ──────────────────────
-  const loadAvailableDatesAndHistory = useCallback(async (symbol: string, presetDate?: string) => {
+  const loadAvailableDatesAndHistory = useCallback(async (symbol: string, presetDate?: string, strictPreset: boolean = false) => {
     try {
       const dates = await fetchAvailableDates(symbol);
       // Limit to only 5 latest available dates as per requirement
       const latest5Dates = dates.slice(0, 5);
-      setAvailableDates(latest5Dates);
 
       let nextDate = '';
       if (presetDate && latest5Dates.includes(presetDate)) {
         nextDate = presetDate;
+      } else if (presetDate && strictPreset) {
+        setAvailableDates([presetDate]);
+        setSelectedDate(presetDate);
+        setHistoricalCandles([]);
+        toast.error(`${symbol} has no data on locked session date ${presetDate}. Choose another symbol from that session date.`);
+        return;
       } else if (latest5Dates.length > 0) {
         nextDate = latest5Dates[0];
+      }
+
+      if (strictPreset && nextDate) {
+        setAvailableDates([nextDate]);
+      } else {
+        setAvailableDates(latest5Dates);
       }
 
       setSelectedDate(nextDate);
@@ -262,8 +280,14 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
           type: o.direction,
           parentTradeId: o.parent_trade_id,
           entryPrice: o.entry_price,
+          exitPrice: o.exit_price,
           quantity: o.quantity,
           pnl: o.pnl,
+          exitReason: o.exit_reason,
+          entryTime: o.entry_time,
+          exitTime: o.exit_time,
+          holdingTimeSeconds: o.holding_time_seconds,
+          holdingTimeMins: o.holding_time_mins,
           status: o.status,
           stopLoss: o.stop_loss,
           takeProfit: o.take_profit,
@@ -273,6 +297,21 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
           timestamp: new Date(),
         }));
         setTrades(formattedTrades);
+        const replayAnchorOrder = orders.find((o: any) =>
+          (o.session_type || '').toUpperCase() === 'REPLAY' &&
+          o.entry_time &&
+          o.parent_trade_id == null &&
+          ['OPEN', 'TRIGGERED'].includes((o.status || '').toUpperCase())
+        );
+        if (replayAnchorOrder?.entry_time) {
+          const tradeDay = String(replayAnchorOrder.entry_time).split('T')[0];
+          if (tradeDay) {
+            setSessionLockedDate(tradeDay);
+          }
+        } else {
+          // No active replay parent positions => unlock date automatically.
+          setSessionLockedDate('');
+        }
         void syncPortfolioNow();
       }
     } catch (err) {
@@ -364,6 +403,13 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
         return;
       }
 
+      if (payload.type === 'SPEED_ACK') {
+        const ackSpeed = Number(payload?.data?.speed || 1);
+        if (Number.isFinite(ackSpeed)) {
+          console.log(`⏩ Server replay speed acknowledged: ${ackSpeed}x`);
+        }
+      }
+
       if (payload.type === 'END') {
         toast.success('Replay complete — end of trading day');
         setIsPlaying(false);
@@ -420,7 +466,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
       if (payload.type === 'NEWS_ANALYSIS') {
         const { id, analysis, sentiment, predicted_impact } = payload.data;
         setNewsItems(prev => prev.map(item =>
-          item.id === id ? { ...item, analysis, sentiment, predicted_impact, qa_history: [] } : item
+          isSameNewsId(item.id, id) ? { ...item, analysis, sentiment, predicted_impact, qa_history: [] } : item
         ));
         toast.success(`FinGPT Analysis: ${sentiment}`, { description: "News context updated." });
       }
@@ -428,7 +474,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
       if (payload.type === 'NEWS_IMPACT_RESULT') {
         const { id, actual_impact } = payload.data;
         setNewsItems(prev => prev.map(item =>
-          item.id === id ? { ...item, actual_impact } : item
+          isSameNewsId(item.id, id) ? { ...item, actual_impact } : item
         ));
         toast.info(`News Impact Recorded: ${actual_impact}`);
       }
@@ -436,7 +482,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
       if (payload.type === 'NEWS_ANSWER') {
         const { id, question, answer } = payload.data;
         setNewsItems(prev => prev.map(item => {
-          if (item.id === id) {
+          if (isSameNewsId(item.id, id)) {
             return {
               ...item,
               qa_history: [...(item.qa_history || []), { question, answer }]
@@ -449,7 +495,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
       if (payload.type === 'NEWS_EXPLAINER') {
         const { id, explainer } = payload.data;
         setNewsItems(prev => prev.map(item =>
-          item.id === id ? { ...item, explainer } : item
+          isSameNewsId(item.id, id) ? { ...item, explainer } : item
         ));
       }
 
@@ -511,8 +557,14 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
             type: order.direction,
             parentTradeId: order.parent_trade_id,
             entryPrice: order.entry_price,
+            exitPrice: order.exit_price,
             quantity: order.quantity,
             pnl: order.pnl,
+            exitReason: order.exit_reason,
+            entryTime: order.entry_time,
+            exitTime: order.exit_time,
+            holdingTimeSeconds: order.holding_time_seconds,
+            holdingTimeMins: order.holding_time_mins,
             status: order.status,
             stopLoss: order.stop_loss,
             takeProfit: order.take_profit,
@@ -618,6 +670,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
         setSessionType('REPLAY');
         setNewsItems([]);
         setSimulatedIndices([]);
+        setSessionLockedDate('');
         // Sync time to the end of history when turning off replay
         if (historicalCandles.length > 0) {
           setCurrentTime(new Date(historicalCandles[historicalCandles.length - 1].time * 1000));
@@ -630,24 +683,18 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
 
   const setSymbol = (symbol: string, _token: string) => {
     setSelectedSymbol(symbol);
-    loadAvailableDatesAndHistory(symbol, selectedDate);
+    const enforcedDate = sessionLockedDate || selectedDate;
+    loadAvailableDatesAndHistory(symbol, enforcedDate, Boolean(sessionLockedDate));
   };
 
   const setDate = (dateStr: string) => {
+    if (sessionLockedDate && dateStr !== sessionLockedDate) {
+      toast.error(`Session locked to ${sessionLockedDate}. Exit replay to choose a different date.`);
+      return;
+    }
     setSelectedDate(dateStr);
     // Load exactly 2 days prior to the selected date (context for replay)
     loadHistory(selectedSymbol, dateStr, 2);
-
-    // Pin time to start of new date if in replay mode
-    if (isReplayActive) {
-      const firstCandle = historicalCandles.find(c => {
-        const cDate = new Date(c.time * 1000).toISOString().split('T')[0];
-        return cDate === dateStr;
-      });
-      if (firstCandle) {
-        setCurrentTime(new Date(firstCandle.time * 1000));
-      }
-    }
   };
 
   const clearHistoryForReplay = () => {
@@ -677,6 +724,30 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
     stopPrice?: number
   ) => {
     try {
+      const effectiveSelectedDate = selectedDate || sessionLockedDate || '';
+
+      if (sessionLockedDate && effectiveSelectedDate !== sessionLockedDate) {
+        toast.error(`Trading session is locked to ${sessionLockedDate}.`);
+        return;
+      }
+
+      if (sessionLockedDate && !selectedDate) {
+        // Auto-heal transient date mismatch states before placing order.
+        setSelectedDate(sessionLockedDate);
+      }
+
+      if (isReplayActive && historicalCandles.length === 0) {
+        const dateToLoad = sessionLockedDate || selectedDate;
+        let loadedCount = historicalCandles.length;
+        if (dateToLoad) {
+          loadedCount = await loadHistory(symbol || selectedSymbol, dateToLoad, 2);
+        }
+        if (loadedCount === 0) {
+          toast.error(`No replay candles loaded for ${selectedSymbol} on ${effectiveSelectedDate || 'selected date'}.`);
+          return;
+        }
+      }
+
       const response = await fetch(`/api/trade/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -703,6 +774,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
       }
 
       const result = await response.json();
+      const lockDate = sessionLockedDate || effectiveSelectedDate;
+      if (!sessionLockedDate && lockDate) {
+        setSessionLockedDate(lockDate);
+        setAvailableDates([lockDate]);
+      }
       await fetchActiveTrades();
       await syncPortfolioNow(true);
       toast.success(result.message);
@@ -741,13 +817,20 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
 
   const closePosition = async (tradeId: string | number, exitType: 'MARKET' | 'LIMIT' = 'MARKET', limitPrice?: number, simulatedTime?: string | Date) => {
     try {
+      const activeTrade = trades.find(t => String(t.id) === String(tradeId));
+      const tradeSymbol = activeTrade?.symbol;
+      const symbolTickPrice = tradeSymbol ? replayTicks[tradeSymbol]?.close : undefined;
+      const safeExitPrice = exitType === 'LIMIT'
+        ? limitPrice
+        : (symbolTickPrice ?? (tradeSymbol === selectedSymbol ? currentPrice : undefined));
+
       const response = await fetch(`/api/trade/close/${tradeId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           exit_type: exitType,
           limit_price: limitPrice,
-          exit_price: currentPrice, // Pass the current simulated price for accuracy
+          exit_price: safeExitPrice, // Prefer symbol-matched replay price
           session_type: 'REPLAY',
           simulated_time: simulatedTime || currentTime
         }),
@@ -771,12 +854,22 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
 
   const closeAllPositions = async () => {
     try {
+      const openTrades = trades.filter(t => t.status === 'OPEN' || t.status === 'TRIGGERED');
+      const exitPriceMapping: Record<string, number> = {};
+      openTrades.forEach(t => {
+        const p = replayTicks[t.symbol]?.close;
+        if (typeof p === 'number' && Number.isFinite(p) && p > 0) {
+          exitPriceMapping[t.symbol] = p;
+        }
+      });
+
       const response = await fetch(`/api/trade/close-all`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           session_type: 'REPLAY',
-          exit_price: currentPrice, // Pass current price for bulk exit consistency
+          // Per-symbol replay prices keep PnL accurate across multi-symbol closes.
+          exit_price_mapping: exitPriceMapping,
           simulated_time: currentTime
         }),
         credentials: 'include'
@@ -801,6 +894,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
     setIsPlaying(false);
     setBalance(100000);
     setTrades([]);
+    setSessionLockedDate('');
     setHistoricalCandles([]);
     setNewsItems([]);
     setSimulatedIndices([]);
@@ -810,14 +904,14 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
 
   const contextValue = React.useMemo(() => ({
     isPlaying, speed, balance, currentPrice, currentCandle, currentTime,
-    historicalCandles, replayTicks, trades, newsItems, simulatedIndices, theme, selectedSymbol, selectedDate, availableDates, isLoadingHistory, isReplayActive,
+    historicalCandles, replayTicks, trades, newsItems, simulatedIndices, theme, selectedSymbol, selectedDate, availableDates: sessionLockedDate ? [sessionLockedDate] : availableDates, isLoadingHistory, isReplayActive,
     sessionType,
     userSettings,
     togglePlay, toggleTheme, setSpeed, setSymbol, setDate,
     placeOrder, modifyOrder, closePosition, closeAllPositions, resetSimulation, toggleReplay, clearHistoryForReplay, askNewsQuestion, updateUserSettings
   }), [
     isPlaying, speed, balance, currentPrice, currentCandle, currentTime,
-    historicalCandles, replayTicks, trades, newsItems, simulatedIndices, theme, selectedSymbol, selectedDate, availableDates, isLoadingHistory, isReplayActive,
+    historicalCandles, replayTicks, trades, newsItems, simulatedIndices, theme, selectedSymbol, selectedDate, availableDates, sessionLockedDate, isLoadingHistory, isReplayActive,
     sessionType,
     userSettings,
     togglePlay, toggleTheme, setSpeed, setSymbol, setDate,

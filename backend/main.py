@@ -1314,6 +1314,8 @@ async def websocket_endpoint(websocket: WebSocket):
     active_impact_observers = [] # Track news for 15-minute impact assessment
     news_delay_seconds = DEFAULT_DELAY_SECONDS
     news_replay_policy = DEFAULT_POLICY
+    news_loader_task = None
+    replay_session_nonce = 0
     tick_time        = datetime.datetime.now()
     last_tick_price  = 0.0
 
@@ -1344,7 +1346,8 @@ async def websocket_endpoint(websocket: WebSocket):
                     
                     target_date = message.get("date")
                     start_time_req = message.get("startTime") # e.g. "2026-04-02T10:00:00.000Z"
-                    speed       = float(message.get("speed", 1.0))
+                    requested_start_speed = float(message.get("speed", 1.0))
+                    speed = max(1.0, min(requested_start_speed, 20.0))
                     news_delay_minutes = int(message.get("news_delay_minutes", 45))
                     news_delay_seconds = max(0, news_delay_minutes * 60)
                     news_replay_policy = str(message.get("news_replay_policy", DEFAULT_POLICY))
@@ -1499,24 +1502,32 @@ async def websocket_endpoint(websocket: WebSocket):
                     # --- Load Benchmark Indices for Sync ---
                     indices_iterators = {}
                     indices_opens = {}
+                    index_aliases = {
+                        "NIFTY": ["NIFTY", "NIFTY 50", "^NSEI"],
+                        "BANKNIFTY": ["BANKNIFTY", "BANK NIFTY", "NIFTY BANK", "^NSEBANK"],
+                        "SENSEX": ["SENSEX", "BSE SENSEX", "^BSESN"],
+                    }
                     for idx_name in ["NIFTY", "BANKNIFTY", "SENSEX"]:
                         try:
-                            idx_df, _, _ = load_market_data_tiered(idx_name, target_date, allow_fallback=True)
-                            ic_date_col = next((c for c in ['datetime', 'date', 'time'] if c in idx_df.columns), None)
-                            if ic_date_col:
+                            loaded = False
+                            for idx_symbol in index_aliases.get(idx_name, [idx_name]):
+                                try:
+                                    idx_df, _, _ = load_market_data_tiered(idx_symbol, target_date, allow_fallback=True)
+                                except Exception:
+                                    continue
+                                ic_date_col = next((c for c in ['datetime', 'date', 'time'] if c in idx_df.columns), None)
+                                if not ic_date_col:
+                                    continue
+
                                 temp_idx = idx_df.copy()
                                 if not pd.api.types.is_datetime64_any_dtype(temp_idx[ic_date_col]):
                                     temp_idx[ic_date_col] = temp_idx[ic_date_col].apply(parse_market_datetime)
-                                
-                                # If fallback was used, the inherent date will be wrong. 
-                                # We shift the date of the index data to match the target_dt exactly.
+
                                 first_valid_dt = temp_idx[ic_date_col].dropna().iloc[0] if not temp_idx[ic_date_col].isnull().all() else None
                                 if first_valid_dt and first_valid_dt.date() != target_dt:
-                                    # Calculate difference in days to map to target_dt
                                     delta = pd.Timestamp(target_dt) - pd.Timestamp(first_valid_dt.date())
                                     temp_idx[ic_date_col] = temp_idx[ic_date_col] + delta
-                                    # print(f"⏳ Shifted {idx_name} data by {delta.days} days to match {target_dt}")
-                                
+
                                 mask_idx = (
                                     (temp_idx[ic_date_col].dt.date == target_dt) &
                                     (temp_idx[ic_date_col].dt.time >= datetime.time(9, 15)) &
@@ -1526,36 +1537,70 @@ async def websocket_endpoint(websocket: WebSocket):
                                 if not f_idx_df.empty:
                                     indices_iterators[idx_name] = iter(f_idx_df.to_dict(orient="records"))
                                     indices_opens[idx_name] = float(f_idx_df.iloc[0]['open'])
-                                    logger.info(f"✅ Loaded {len(f_idx_df)} sync candles for {idx_name}")
-                                else:
-                                    logger.warning(f"⚠️ Index {idx_name} matched no time rows for {target_dt}")
+                                    logger.info(f"✅ Loaded {len(f_idx_df)} sync candles for {idx_name} via {idx_symbol}")
+                                    loaded = True
+                                    break
+                            if not loaded:
+                                logger.warning(f"⚠️ Index {idx_name} matched no time rows for {target_dt}")
                         except Exception as e:
                             logger.error(f"⚠️ Could not sync index {idx_name}: {e}")
 
                     is_running = True
                     logger.info(f"▶️  Simulation Started | Symbols: {list(main_iterators.keys())} | Speed: {speed}x")
-
-                    # Fetch today's news for alignment with simulation ticks
+                    # Immediate ack so frontend and logs can verify the effective runtime speed.
                     try:
-                        raw_news = await get_replay_news_schedule(
+                        await websocket.send_json({"type": "SPEED_ACK", "data": {"speed": speed}})
+                    except Exception:
+                        pass
+
+                    replay_session_nonce += 1
+                    session_nonce = replay_session_nonce
+                    active_news = []
+                    if news_loader_task and not news_loader_task.done():
+                        news_loader_task.cancel()
+
+                    async def hydrate_replay_news(
+                        expected_nonce: int,
+                        symbol: str,
+                        replay_date: str,
+                        delay_seconds: int,
+                        replay_policy: str,
+                    ):
+                        try:
+                            raw_news = await get_replay_news_schedule(
+                                symbol,
+                                replay_date,
+                                delay_seconds=delay_seconds,
+                                replay_policy=replay_policy,
+                            )
+                            if expected_nonce != replay_session_nonce:
+                                return
+                            prepared_news = []
+                            for n in raw_news:
+                                n["triggered"] = False
+                                prepared_news.append(n)
+                            active_news.clear()
+                            active_news.extend(prepared_news)
+                            logger.info(
+                                f"✅ Replay news ready: {len(active_news)} events for "
+                                f"{replay_date} (delay={delay_seconds}s, policy={replay_policy})"
+                            )
+                        except asyncio.CancelledError:
+                            pass
+                        except Exception as e:
+                            logger.error(f"⚠️ Failed to prepare news for simulation on {replay_date}: {e}")
+                            if expected_nonce == replay_session_nonce:
+                                active_news.clear()
+
+                    news_loader_task = asyncio.create_task(
+                        hydrate_replay_news(
+                            session_nonce,
                             primary_symbol,
                             target_date,
-                            delay_seconds=news_delay_seconds,
-                            replay_policy=news_replay_policy,
+                            news_delay_seconds,
+                            news_replay_policy,
                         )
-                        active_news = []
-                        for n in raw_news:
-                            # Reset trigger state for replay and ensure naive timestamp
-                            n["triggered"] = False
-                            # Trust n["timestamp"] is a naive IST datetime from Market Clock Engine.
-                            active_news.append(n)
-                        logger.info(
-                            f"✅ Simulation Ready: Prepared {len(active_news)} replay-news events "
-                            f"for {target_date} (delay={news_delay_seconds}s, policy={news_replay_policy})"
-                        )
-                    except Exception as e:
-                        logger.error(f"⚠️ Failed to prepare news for simulation on {target_date}: {e}")
-                        active_news = []
+                    )
 
                 elif command == "BUY":
                     from app.schemas import TradeExecuteRequest, TradeDirection, OrderType
@@ -1635,7 +1680,8 @@ async def websocket_endpoint(websocket: WebSocket):
                             asyncio.create_task(fetch_answer(q_text, target_news, primary_symbol, news_id))
 
                 elif command == "SPEED":
-                    speed = float(message.get("speed", 1.0))
+                    requested_speed = float(message.get("speed", speed or 1.0))
+                    speed = max(1.0, min(requested_speed, 20.0))
                     logger.info(f"⏩ Speed dynamically updated to {speed}x")
 
             except asyncio.TimeoutError:
@@ -1710,14 +1756,23 @@ async def websocket_endpoint(websocket: WebSocket):
             # Stream each tick (second by second)
             try:
                 last_tick_sent_at = time.time()
+                index_labels = {"NIFTY": "NIFTY 50", "BANKNIFTY": "BANKNIFTY", "SENSEX": "SENSEX"}
+                indices_last_state = {}
                 for i in range(60):
                     tick_time = base_time + datetime.timedelta(seconds=i)
                     
                     # 1. Update Price for OMS (Primary Symbol only for now)
                     if primary_symbol in all_symbol_ticks:
                         current_price = all_symbol_ticks[primary_symbol][i]
+                        last_tick_price = current_price
                         from app.services.order_management import oms_service
-                        await oms_service.on_price_update(primary_symbol, current_price, simulated_time=tick_time, session_type="REPLAY")
+                        oms_service.queue_price_update(
+                            primary_symbol,
+                            current_price,
+                            simulated_time=tick_time,
+                            session_type="REPLAY",
+                            user_id=current_user_id,
+                        )
 
                     # 2. Push Ticks for ALL MAIN symbols
                     for sym, ticks in all_symbol_ticks.items():
@@ -1747,26 +1802,34 @@ async def websocket_endpoint(websocket: WebSocket):
                             return float(v)
                         except: return 0.0
 
-                    for idx_name, ticks_arr in indices_ticks.items():
-                        if i < len(ticks_arr):
+                    for idx_name in ["NIFTY", "BANKNIFTY", "SENSEX"]:
+                        display_name = index_labels.get(idx_name, idx_name)
+                        ticks_arr = indices_ticks.get(idx_name)
+
+                        if ticks_arr and i < len(ticks_arr):
                             curr_idx_price = safe_float(ticks_arr[i])
+                            if curr_idx_price <= 0 and idx_name in indices_last_state:
+                                indices_payload[display_name] = indices_last_state[idx_name]
+                                continue
+
                             day_open = safe_float(indices_opens.get(idx_name, curr_idx_price))
-                            
-                            if day_open == 0: day_open = curr_idx_price
-                            
+                            if day_open == 0:
+                                day_open = curr_idx_price
+
                             change = curr_idx_price - day_open
                             change_percent = (change / day_open) * 100 if day_open > 0 else 0
-                            
-                            display_name = idx_name
-                            if idx_name == "NIFTY": display_name = "NIFTY 50"
-                            
-                            indices_payload[display_name] = {
+                            state = {
                                 "name": display_name,
                                 "price": round(curr_idx_price, 2),
                                 "change": round(safe_float(change), 2),
                                 "change_percent": round(safe_float(change_percent), 2),
                                 "is_positive": change >= 0
                             }
+                            indices_last_state[idx_name] = state
+                            indices_payload[display_name] = state
+                        elif idx_name in indices_last_state:
+                            # Keep complete snapshot stable even if one stream briefly pauses.
+                            indices_payload[display_name] = indices_last_state[idx_name]
                     
                     # NEW: Add Primary Symbol to top ticker if it's not already an index
                     if primary_symbol and primary_symbol in all_symbol_ticks:
@@ -1787,21 +1850,27 @@ async def websocket_endpoint(websocket: WebSocket):
                     if indices_payload:
                         try:
                             await websocket.send_json({ "type": "INDICES_TICK", "data": indices_payload })
-                            # NEW: Diagnostic version heartbeat
-                            await websocket.send_json({ "type": "STATS", "data": { "tick": i, "speed": speed } })
+                            if i % 15 == 0:
+                                await websocket.send_json({ "type": "STATS", "data": { "tick": i, "speed": speed } })
                         except Exception: pass
 
                     # ─── Smooth Sub-Tick Brownian Bridge Simulation ───
-                    # Keep animation smooth at low speeds, but reduce message pressure at high speeds.
-                    # Replay timing target: at 20x, one 1-minute candle should complete in ~3 seconds.
-                    if speed >= 20:
+                    # Low speeds should feel closer to a live tape: softer easing, steadier pacing,
+                    # and realistic micro-moves without the chart looking mechanically linear.
+                    if speed <= 1:
+                        sub_steps = 12
+                    elif speed <= 2:
+                        sub_steps = 10
+                    elif speed <= 5:
+                        sub_steps = 8
+                    elif speed >= 20:
                         sub_steps = 8
                     elif speed >= 10:
                         sub_steps = 12
                     else:
-                        sub_steps = 20
-                    # Standard deviation (approx 0.005% of current price as volatility per tick)
-                    vol_scale = last_tick_price * 0.00005 if last_tick_price > 0 else 0.1
+                        sub_steps = 10
+                    base_price_for_noise = max(abs(last_tick_price), 1.0)
+                    vol_scale = base_price_for_noise * (0.00003 if speed <= 5 else 0.00005)
                     
                     # Generate raw Brownian components
                     raw_walk = [random.gauss(0, vol_scale) for _ in range(sub_steps)]
@@ -1828,7 +1897,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                 inner_msg = json.loads(inner_data)
                                 inner_cmd = inner_msg.get("command")
                                 if inner_cmd == "SPEED":
-                                    speed = float(inner_msg.get("speed", 1.0))
+                                    speed = max(1.0, min(float(inner_msg.get("speed", 1.0)), 20.0))
                                 elif inner_cmd == "STOP":
                                     is_running = False
                                     break
@@ -1855,9 +1924,21 @@ async def websocket_endpoint(websocket: WebSocket):
                         if primary_symbol and primary_symbol in all_symbol_ticks and i + 1 < len(all_symbol_ticks[primary_symbol]):
                             curr_val = float(all_symbol_ticks[primary_symbol][i])
                             next_val = float(all_symbol_ticks[primary_symbol][i+1])
+                            candle_row = main_current_rows.get(primary_symbol, {})
+                            candle_span = max(
+                                abs(float(candle_row.get('high', curr_val)) - float(candle_row.get('low', curr_val))),
+                                abs(next_val - curr_val),
+                                max(abs(curr_val), 1.0) * 0.0002,
+                            )
+                            noise_ratio = 0.18 if speed <= 1 else (0.14 if speed <= 2 else (0.10 if speed <= 5 else 0.05))
+                            vol_scale = candle_span * noise_ratio / max(sub_steps, 1)
                             
+                            eased_factor = factor
+                            if speed <= 5:
+                                eased_factor = factor * factor * (3 - 2 * factor)
+
                             # Linear path
-                            linear_price = curr_val + (next_val - curr_val) * factor
+                            linear_price = curr_val + (next_val - curr_val) * eased_factor
                             # Add Brownian noise
                             interp_price = linear_price + bridge_noise[step]
                             sub_tick_time = tick_time + datetime.timedelta(seconds=((step + 1) / sub_steps))
@@ -1879,20 +1960,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                 # --- SYNC WITH PORTFOLIO/OMS ENGINE ---
                                 # This ensures /api/portfolio/positions sees the simulated price as the LTP
                                 shoonya_live.update_symbol_price(primary_symbol, interp_price, sub_tick_time)
-                                
-                                # Update Global Ticker (simulatedIndices)
-                                interp_indices = {**indices_payload}
-                                day_open_main = float(main_symbol_opens.get(primary_symbol, curr_val) or curr_val)
-                                interp_change = interp_price - day_open_main
-                                interp_change_percent = (interp_change / day_open_main) * 100 if day_open_main > 0 else 0
-                                interp_indices[primary_symbol] = {
-                                    "name": primary_symbol,
-                                    "price": round(interp_price, 2),
-                                    "change": round(float(interp_change), 2),
-                                    "change_percent": round(float(interp_change_percent), 2),
-                                    "is_positive": interp_change >= 0
-                                }
-                                await websocket.send_json({ "type": "INDICES_TICK", "data": interp_indices })
+                                last_tick_price = interp_price
                             except Exception: break
 
                         # --- NEW: Synchronized News Injection (Second-Precision) ---

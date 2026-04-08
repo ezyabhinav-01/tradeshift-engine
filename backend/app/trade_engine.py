@@ -6,7 +6,7 @@ Creates trade records with advanced order parameters and builds
 WebSocket event payloads for order lifecycle notifications.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import TradeLog, User
 from app.schemas import TradeExecuteRequest, OrderType, TradeDirection
@@ -26,6 +26,18 @@ class TradeEngine:
     """
 
     @staticmethod
+    def _normalize_db_timestamp(ts: datetime | None) -> datetime | None:
+        """
+        Convert incoming timestamps to naive UTC-like datetime for DB columns
+        that use TIMESTAMP WITHOUT TIME ZONE.
+        """
+        if ts is None:
+            return None
+        if ts.tzinfo is not None:
+            return ts.astimezone(timezone.utc).replace(tzinfo=None)
+        return ts
+
+    @staticmethod
     async def execute_trade(request: TradeExecuteRequest, user_id: int, db: AsyncSession) -> dict:
         """
         Execute a trade order (Async).
@@ -43,7 +55,7 @@ class TradeEngine:
         is_market = order_type == "MARKET"
 
         # Determination of entry time - use simulated time if provided and strip tzinfo
-        entry_time = request.simulated_time.replace(tzinfo=None) if request.simulated_time else datetime.utcnow()
+        entry_time = TradeEngine._normalize_db_timestamp(request.simulated_time) or datetime.utcnow()
 
         # Determine status and effective prices - MARKET orders are OPEN immediately
         status = "OPEN" if is_market else "PENDING"
@@ -148,6 +160,8 @@ class TradeEngine:
 
         await db.commit()
         await db.refresh(trade)
+        from app.services.order_management import oms_service
+        oms_service.invalidate_pending_cache(request.symbol, request.session_type, user_id)
 
         status_label = "filled" if is_market else "placed as pending"
         logger.info(
@@ -179,6 +193,7 @@ class TradeEngine:
             "symbol": trade.symbol,
             "direction": trade.direction,
             "entry_price": trade.entry_price or 0.0,
+            "exit_price": trade.exit_price or 0.0,
             "stop_loss": trade.stop_loss,
             "take_profit": trade.take_profit,
             "limit_price": trade.limit_price,
@@ -187,6 +202,7 @@ class TradeEngine:
             "pnl": trade.pnl or 0.0,
             "parent_trade_id": trade.parent_trade_id,
             "session_type": trade.session_type,
+            "exit_reason": trade.exit_reason,
             "entry_time": trade.entry_time.isoformat() if trade.entry_time else None,
             "exit_time": trade.exit_time.isoformat() if trade.exit_time else None,
             "holding_time_seconds": round(trade.holding_time or 0, 1),

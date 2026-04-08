@@ -40,21 +40,34 @@ const NewsPage: React.FC = () => {
 
     setLoading(true);
     try {
-      const data = await fetchNewsApi(cat, 36);
-      
-      // 1. Expanded Temporal Filter (Current Time - 4 Days)
-      const cutoff = new Date().getTime() - 96 * 60 * 60 * 1000;
-      const freshData = data.filter(item => {
-        const publishedAt = new Date(item.publishedAt).getTime();
-        return publishedAt >= cutoff;
-      });
+      const parsePublishedAt = (value?: string): number | null => {
+        if (!value) return null;
+        const direct = new Date(value).getTime();
+        if (!Number.isNaN(direct)) return direct;
 
-      // 2. Strict Chronological Sort: Absolute Recency First
-      const sortedData = freshData.sort((a, b) => {
-        return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
-      });
+        const compact = value.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})$/);
+        if (compact) {
+          const [, y, m, d, hh, mm, ss] = compact;
+          const asIso = `${y}-${m}-${d}T${hh}:${mm}:${ss}Z`;
+          const parsed = new Date(asIso).getTime();
+          if (!Number.isNaN(parsed)) return parsed;
+        }
+        return null;
+      };
 
-      const finalData = sortedData.slice(0, 100);
+      let data = await fetchNewsApi(cat, 36);
+      if (cat !== 'all' && data.length === 0) {
+        // Automatic fallback so category dead-ends don't blank the page.
+        data = await fetchNewsApi('all', 36);
+      }
+
+      const cutoff = Date.now() - 96 * 60 * 60 * 1000;
+      const withTs = data.map(item => ({ item, ts: parsePublishedAt(item.publishedAt) }));
+      const freshData = withTs.filter(({ ts }) => ts !== null && ts >= cutoff);
+      const sourceData = freshData.length > 0 ? freshData : withTs;
+      const sortedData = sourceData.sort((a, b) => (b.ts ?? 0) - (a.ts ?? 0));
+
+      const finalData = sortedData.map(({ item }) => item).slice(0, 100);
       setNews(finalData);
       cacheRef.current[cacheKey] = { ts: now, items: finalData };
     } catch (error) {

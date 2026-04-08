@@ -36,23 +36,42 @@ export const GlobalTicker = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Decide which data source to render and map exactly to the 5 requested symbols
-  // In replay mode, always show replay-synced ticker values for date consistency,
-  // even when paused. During normal mode, use live indices.
-  const sourceData = isReplayActive ? simulatedIndices : liveIndices;
+  const normalizeTickerName = (value?: string) =>
+    (value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+  // Merge live + replay tickers so replay values override when available, but
+  // we never drop to all-zero placeholders due partial replay payloads.
+  const mergedByName = new Map<string, IndexData>();
+  liveIndices.forEach(item => {
+    mergedByName.set(normalizeTickerName(item.name), item);
+  });
+  simulatedIndices.forEach(item => {
+    const key = normalizeTickerName(item.name);
+    const existing = mergedByName.get(key);
+    const hasValidReplayPrice = Number.isFinite(item.price) && item.price > 0;
+    // Do not let placeholder replay zeros overwrite valid live values.
+    if (!existing || hasValidReplayPrice) {
+      mergedByName.set(key, item);
+    }
+  });
+
   const targetSymbols = [
     { searchName: 'NIFTY', displayName: 'NIFTY', exactMatches: ['NIFTY', 'NIFTY 50'] },
-    { searchName: 'BANKNIFTY', displayName: 'BANKNIFTY', exactMatches: ['BANKNIFTY'] },
+    { searchName: 'BANKNIFTY', displayName: 'BANKNIFTY', exactMatches: ['BANKNIFTY', 'BANK NIFTY'] },
     { searchName: 'SENSEX', displayName: 'SENSEX', exactMatches: ['SENSEX', 'BSE SENSEX'] },
-    { searchName: 'HDFCBANK', displayName: 'HDFCBANK', exactMatches: ['HDFCBANK'] },
+    { searchName: 'HDFCBANK', displayName: 'HDFCBANK', exactMatches: ['HDFCBANK', 'HDFC BANK'] },
     { searchName: 'RELIANCE', displayName: 'RELIANCE', exactMatches: ['RELIANCE'] }
   ];
 
   const displayIndices: IndexData[] = targetSymbols.map(target => {
-    const found = sourceData.find(idx =>
-      target.exactMatches.includes(idx.name?.toUpperCase()) ||
-      target.exactMatches.includes((idx as any).symbol?.toUpperCase())
-    );
+    let found: IndexData | undefined;
+    for (const alias of target.exactMatches) {
+      const byName = mergedByName.get(normalizeTickerName(alias));
+      if (byName) {
+        found = byName;
+        break;
+      }
+    }
 
     if (found) return found;
 

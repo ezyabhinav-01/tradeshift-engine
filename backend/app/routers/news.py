@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Union
 from ..news_service import get_news, explain_news
 
 router = APIRouter(prefix="/api/news", tags=["News"])
@@ -18,13 +18,13 @@ class NewsItem(BaseModel):
     sourceTrust: Optional[str] = "medium"
 
 class ExplainRequest(BaseModel):
-    news_id: str
+    news_id: Union[str, int]
     user_level: str = "Beginner"
     title: Optional[str] = None
     description: Optional[str] = None
 
 class ExplainResponse(BaseModel):
-    news_id: str
+    news_id: Union[str, int]
     explanation: str
 
 @router.get("/", response_model=List[NewsItem])
@@ -51,4 +51,8 @@ async def explain_news_endpoint(request: ExplainRequest):
         )
         return {"news_id": request.news_id, "explanation": explanation}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate explanation: {str(e)}")
+        fallback = (
+            "AI explainer is temporarily under load. "
+            "Focus on rate expectations, liquidity impact, and sector rotation, then retry shortly."
+        )
+        return {"news_id": request.news_id, "explanation": fallback}

@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import axios from 'axios';
-import { createChart, ColorType, CandlestickSeries } from '@pipsend/charts';
+import { createChart, ColorType, CandlestickSeries, createHorizontalLineTool } from '@pipsend/charts';
 import type { IChartApi, ISeriesApi } from '@pipsend/charts';
+import { Bell, ArrowUp, ArrowDown, ListPlus, Plus } from 'lucide-react';
 import { useChartIndicators } from '../../hooks/useChartIndicators';
 import { useDrawingTools } from '../../hooks/useDrawingTools';
 import type { DrawingToolId } from '../../hooks/useDrawingTools';
@@ -103,6 +104,7 @@ export const ProChart: React.FC<ProChartProps> = ({
     currentTime, simulatedIndices,
     replayTicks
   } = (gameData || internalGame) as any;
+  const placeOrderFn = (gameData as any)?.placeOrder ?? (internalGame as any).placeOrder;
 
   const { charts, activeTimeframe } = useMultiChartStore();
   const myChart = charts.find((c: ChartInstance) => c.id === chartId);
@@ -120,14 +122,123 @@ export const ProChart: React.FC<ProChartProps> = ({
   const positionLinesRef = useRef<{ id: string | number, type: 'ENTRY' | 'SL' | 'TP', line: any }[]>([]);
   const draggingRef = useRef<{ id: string | number, type: 'SL' | 'TP', line: any } | null>(null);
   const activeToolRef = useRef(activeDrawingTool);
+  const wheelZoomFrameRef = useRef<number | null>(null);
+  const wheelZoomTargetRef = useRef<{ from: number; to: number } | null>(null);
+  const panMomentumFrameRef = useRef<number | null>(null);
+  const panVelocityRef = useRef<number>(0);
 
   useEffect(() => {
     activeToolRef.current = activeDrawingTool;
   }, [activeDrawingTool]);
 
+  const stopWheelZoomAnimation = useCallback(() => {
+    if (wheelZoomFrameRef.current !== null) {
+      cancelAnimationFrame(wheelZoomFrameRef.current);
+      wheelZoomFrameRef.current = null;
+    }
+  }, []);
+
+  const stopPanMomentumAnimation = useCallback(() => {
+    if (panMomentumFrameRef.current !== null) {
+      cancelAnimationFrame(panMomentumFrameRef.current);
+      panMomentumFrameRef.current = null;
+    }
+    panVelocityRef.current = 0;
+  }, []);
+
+  const animateWheelZoom = useCallback(() => {
+    if (!chartRef.current || !wheelZoomTargetRef.current) {
+      wheelZoomFrameRef.current = null;
+      return;
+    }
+
+    const timeScale = chartRef.current.timeScale();
+    const current = timeScale.getVisibleLogicalRange();
+    const target = wheelZoomTargetRef.current;
+    if (!current) {
+      wheelZoomFrameRef.current = null;
+      return;
+    }
+
+    const lerpFactor = 0.28;
+    const nextFrom = current.from + (target.from - current.from) * lerpFactor;
+    const nextTo = current.to + (target.to - current.to) * lerpFactor;
+    timeScale.setVisibleLogicalRange({ from: nextFrom, to: nextTo });
+
+    const done = Math.abs(target.from - nextFrom) < 0.02 && Math.abs(target.to - nextTo) < 0.02;
+    if (done) {
+      timeScale.setVisibleLogicalRange(target);
+      wheelZoomFrameRef.current = null;
+      return;
+    }
+
+    wheelZoomFrameRef.current = requestAnimationFrame(animateWheelZoom);
+  }, []);
+
+  const animatePanMomentum = useCallback(() => {
+    if (!chartRef.current) {
+      panMomentumFrameRef.current = null;
+      return;
+    }
+
+    const timeScale = chartRef.current.timeScale();
+    const range = timeScale.getVisibleLogicalRange();
+    if (!range) {
+      panMomentumFrameRef.current = null;
+      return;
+    }
+
+    const velocity = panVelocityRef.current;
+    if (Math.abs(velocity) < 0.01) {
+      panMomentumFrameRef.current = null;
+      panVelocityRef.current = 0;
+      return;
+    }
+
+    const nextFrom = range.from + velocity;
+    const nextTo = range.to + velocity;
+    timeScale.setVisibleLogicalRange({ from: nextFrom, to: nextTo });
+
+    panVelocityRef.current *= 0.9;
+    panMomentumFrameRef.current = requestAnimationFrame(animatePanMomentum);
+  }, []);
+
+  const applyTradingViewDefaultViewport = useCallback((barsCount: number) => {
+    if (!chartRef.current || !chartContainerRef.current) return;
+
+    const chart = chartRef.current;
+    const timeScale = chart.timeScale();
+    const widthPx = chartContainerRef.current.clientWidth || 1200;
+    const targetVisibleBars = 120;
+    const rightPaddingBars = 8;
+    const barSpacing = Math.max(6, Math.min(18, widthPx / targetVisibleBars));
+
+    chart.applyOptions({
+      timeScale: {
+        rightOffset: 10,
+        minBarSpacing: 2,
+        barSpacing,
+        rightBarStaysOnScroll: true,
+        fixLeftEdge: false,
+        lockVisibleTimeRangeOnResize: false,
+      },
+    });
+
+    if (barsCount <= 0) return;
+    const to = barsCount - 1 + rightPaddingBars;
+    const from = to - targetVisibleBars;
+    timeScale.setVisibleLogicalRange({ from, to });
+  }, []);
+
   const [positionsWithPnL, setPositionsWithPnL] = useState<any[]>([]);
   const [hoveredCandle, setHoveredCandle] = useState<any | null>(null);
   const [isLocalAlertsOpen, setIsLocalAlertsOpen] = useState(false);
+  const [alertSeedPrice, setAlertSeedPrice] = useState<number | null>(null);
+  const [quickActionPrice, setQuickActionPrice] = useState<number | null>(null);
+  const [quickActionY, setQuickActionY] = useState<number | null>(null);
+  const [isQuickMenuOpen, setIsQuickMenuOpen] = useState(false);
+  const [isQuickMenuInteracting, setIsQuickMenuInteracting] = useState(false);
+  const quickMenuRef = useRef<HTMLDivElement | null>(null);
   const lastPriceRef = useRef<number>(currentPrice);
   const lastFitIdRef = useRef<string>('');
 
@@ -135,8 +246,74 @@ export const ProChart: React.FC<ProChartProps> = ({
   const isAlertsDialogOpen = externalAlertsOpen || isLocalAlertsOpen;
   const closeAlertsDialog = () => {
     setIsLocalAlertsOpen(false);
+    setAlertSeedPrice(null);
     onToggleAlerts?.();
   };
+
+  const formatPrice = useCallback((price: number) => price.toLocaleString('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }), []);
+
+  const drawHorizontalLineAtPrice = useCallback((price: number) => {
+    if (!chartInstance || !seriesInstance || !managerRef.current) return;
+    try {
+      const ctx = { chart: chartInstance, series: seriesInstance } as any;
+      const hue = Math.floor(Math.random() * 360);
+      const color = `hsl(${hue} 75% 55%)`;
+      const tool = createHorizontalLineTool(ctx, {
+        interactive: true,
+        price,
+        color,
+        lineColor: color,
+        lineWidth: 2,
+        lineStyle: 0,
+        extendLeft: true,
+        extendRight: true,
+      });
+      (tool as any)._userLineColor = color;
+      const id = managerRef.current.addTool(tool);
+      if (id) managerRef.current.selectTool(id);
+      toast.success(`Horizontal line added at ${formatPrice(price)}`);
+    } catch (e) {
+      console.error('Failed to draw horizontal line:', e);
+      toast.error('Could not draw horizontal line');
+    }
+  }, [chartInstance, formatPrice, seriesInstance]);
+
+  const openAlertAtPrice = useCallback((price: number) => {
+    setAlertSeedPrice(price);
+    setIsLocalAlertsOpen(true);
+    setIsQuickMenuOpen(false);
+  }, []);
+
+  const placeQuickOrder = useCallback(async (
+    direction: 'BUY' | 'SELL',
+    orderType: 'LIMIT' | 'STOP',
+    price: number
+  ) => {
+    if (typeof placeOrderFn !== 'function') {
+      toast.error('Order system unavailable');
+      return;
+    }
+    try {
+      const rounded = Math.round(price * 100) / 100;
+      if (orderType === 'LIMIT') {
+        await placeOrderFn(direction, 1, 'LIMIT', rounded, undefined, undefined, false, undefined, mySymbol, rounded, undefined);
+      } else {
+        await placeOrderFn(direction, 1, 'STOP', rounded, undefined, undefined, false, undefined, mySymbol, undefined, rounded);
+      }
+      setIsQuickMenuOpen(false);
+    } catch (e) {
+      console.error('Quick order failed:', e);
+      toast.error('Quick order failed');
+    }
+  }, [mySymbol, placeOrderFn]);
+
+  const openOrderPanelAtPrice = useCallback((price: number) => {
+    onPriceClick?.(Math.round(price * 100) / 100);
+    setIsQuickMenuOpen(false);
+  }, [onPriceClick]);
 
   // Sync non-primary charts (indices) with simulatedTicks
   const myIndexData = useMemo(() => {
@@ -405,6 +582,12 @@ export const ProChart: React.FC<ProChartProps> = ({
         secondsVisible: false, 
         borderColor: isDark ? 'rgba(42, 46, 57, 0.5)' : '#E0E3EB',
         kineticScroll: true,
+        rightOffset: 10,
+        minBarSpacing: 2,
+        barSpacing: 9,
+        rightBarStaysOnScroll: true,
+        fixLeftEdge: false,
+        lockVisibleTimeRangeOnResize: false,
         tickMarkFormatter: (time: number) => {
           const d = new Date(time * 1000);
           return d.toLocaleTimeString('en-IN', {
@@ -431,14 +614,14 @@ export const ProChart: React.FC<ProChartProps> = ({
         },
       },
       handleScroll: {
-        mouseWheel: true,
+        mouseWheel: false,
         pressedMouseMove: true,
         horzTouchDrag: true,
         vertTouchDrag: true,
       },
       handleScale: {
         axisPressedMouseMove: true,
-        mouseWheel: true,
+        mouseWheel: false,
         pinch: true,
       },
       crosshair: {
@@ -507,6 +690,9 @@ export const ProChart: React.FC<ProChartProps> = ({
     resizeObserver.observe(chartContainerRef.current);
 
     return () => {
+      stopWheelZoomAnimation();
+      stopPanMomentumAnimation();
+      wheelZoomTargetRef.current = null;
       resizeObserver.disconnect();
       chart.remove();
       chartRef.current = null;
@@ -516,7 +702,69 @@ export const ProChart: React.FC<ProChartProps> = ({
     };
   // Only re-create chart on theme change. Resize is handled by ResizeObserver.
   // Removing width/height prevents destroying indicators & drawings during replay.
-  }, [theme]);
+  }, [theme, stopWheelZoomAnimation, stopPanMomentumAnimation]);
+
+  useEffect(() => {
+    const container = chartContainerRef.current;
+    if (!container || !chartRef.current) return;
+
+    const onWheel = (e: WheelEvent) => {
+      if (!chartRef.current) return;
+      e.preventDefault();
+
+      const timeScale = chartRef.current.timeScale();
+      const range = timeScale.getVisibleLogicalRange();
+      if (!range) return;
+
+      const span = Math.max(1, range.to - range.from);
+      const rect = container.getBoundingClientRect();
+      const horizontalIntensity = Math.abs(e.deltaX);
+      const verticalIntensity = Math.abs(e.deltaY);
+      const isHorizontalPan = horizontalIntensity > 0.5 && horizontalIntensity > verticalIntensity * 1.05;
+
+      if (isHorizontalPan) {
+        stopWheelZoomAnimation();
+        const shiftLogical = (e.deltaX / Math.max(1, rect.width)) * span * 1.35;
+        const baseRange = wheelZoomTargetRef.current ?? range;
+        const nextFrom = baseRange.from + shiftLogical;
+        const nextTo = baseRange.to + shiftLogical;
+        wheelZoomTargetRef.current = { from: nextFrom, to: nextTo };
+        panVelocityRef.current = (panVelocityRef.current * 0.55) + (shiftLogical * 0.45);
+        if (wheelZoomFrameRef.current === null) {
+          wheelZoomFrameRef.current = requestAnimationFrame(animateWheelZoom);
+        }
+        stopPanMomentumAnimation();
+        panMomentumFrameRef.current = requestAnimationFrame(animatePanMomentum);
+        return;
+      }
+
+      const x = e.clientX - rect.left;
+      const anchorLogical = timeScale.coordinateToLogical(x) ?? ((range.from + range.to) / 2);
+      const anchorRatio = (anchorLogical - range.from) / span;
+
+      const zoomFactor = Math.exp(e.deltaY * 0.0012);
+      const nextSpan = Math.min(5000, Math.max(8, span * zoomFactor));
+      const nextFrom = anchorLogical - (nextSpan * anchorRatio);
+      const nextTo = nextFrom + nextSpan;
+
+      wheelZoomTargetRef.current = { from: nextFrom, to: nextTo };
+      if (wheelZoomFrameRef.current === null) {
+        wheelZoomFrameRef.current = requestAnimationFrame(animateWheelZoom);
+      }
+    };
+
+    container.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      container.removeEventListener('wheel', onWheel);
+    };
+  }, [animateWheelZoom, animatePanMomentum, stopPanMomentumAnimation, stopWheelZoomAnimation]);
+
+  useEffect(() => {
+    return () => {
+      stopWheelZoomAnimation();
+      stopPanMomentumAnimation();
+    };
+  }, [stopPanMomentumAnimation, stopWheelZoomAnimation]);
 
   useEffect(() => {
     if (chartInstance) {
@@ -549,13 +797,64 @@ export const ProChart: React.FC<ProChartProps> = ({
         updateHoverValues(null);
         setHoveredCandle(null);
       }
+
+      if (!isPrimary || !chartContainerRef.current || !seriesInstance) return;
+      if (!param || !param.point) {
+        // Do not clear while interacting with the quick-action controls;
+        // this prevents flicker when cursor moves from chart to "+" or menu.
+        if (!isQuickMenuOpen && !isQuickMenuInteracting) {
+          return;
+        }
+        return;
+      }
+
+      const p = seriesInstance.coordinateToPrice(param.point.y);
+      if (p === null || !Number.isFinite(p)) return;
+      const rect = chartContainerRef.current.getBoundingClientRect();
+      const clampedY = Math.max(24, Math.min(rect.height - 24, param.point.y));
+      setQuickActionPrice(Math.round(p * 100) / 100);
+      setQuickActionY(clampedY);
     };
 
     chartInstance.subscribeCrosshairMove(handleCrosshairMove);
     return () => {
       chartInstance.unsubscribeCrosshairMove(handleCrosshairMove);
     };
-  }, [chartInstance, updateHoverValues]);
+  }, [chartInstance, isPrimary, isQuickMenuInteracting, isQuickMenuOpen, seriesInstance, updateHoverValues]);
+
+  useEffect(() => {
+    const container = chartContainerRef.current;
+    if (!container) return;
+    const onLeave = () => {
+      if (!isQuickMenuOpen && !isQuickMenuInteracting) {
+        setQuickActionPrice(null);
+        setQuickActionY(null);
+      }
+    };
+    container.addEventListener('mouseleave', onLeave);
+    return () => container.removeEventListener('mouseleave', onLeave);
+  }, [isQuickMenuInteracting, isQuickMenuOpen]);
+
+  useEffect(() => {
+    const onDocMouseDown = (e: MouseEvent) => {
+      if (!isQuickMenuOpen) return;
+      const target = e.target as Node;
+      if (quickMenuRef.current && !quickMenuRef.current.contains(target)) {
+        setIsQuickMenuOpen(false);
+      }
+    };
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsQuickMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocMouseDown);
+    window.addEventListener('keydown', onEsc);
+    return () => {
+      document.removeEventListener('mousedown', onDocMouseDown);
+      window.removeEventListener('keydown', onEsc);
+    };
+  }, [isQuickMenuOpen]);
 
   // ─── Timeframe helpers ─────────────────────────────────────────────────────
   const TIMEFRAME_SECONDS: Record<string, number> = {
@@ -684,7 +983,7 @@ export const ProChart: React.FC<ProChartProps> = ({
         // Fit content ONLY IF symbol or timeframe has changed (to preserve user's manual zoom)
         const currentFitId = `${mySymbol}-${activeTimeframe}`;
         if (chartRef.current && uniqueData.length > 0 && lastFitIdRef.current !== currentFitId) {
-          chartRef.current.timeScale().fitContent();
+          applyTradingViewDefaultViewport(uniqueData.length);
           lastFitIdRef.current = currentFitId;
         }
       }
@@ -789,7 +1088,7 @@ export const ProChart: React.FC<ProChartProps> = ({
       lastDataSetTimeRef.current = 0;
       buildingCandleRef.current = null;
     }
-  }, [data, isReplayActive, isPlaying, currentTime, currentCandle, mySymbol, myIndexData, replayTicks, activeTimeframe]);
+  }, [data, isReplayActive, isPlaying, currentTime, currentCandle, mySymbol, myIndexData, replayTicks, activeTimeframe, applyTradingViewDefaultViewport]);
 
   useEffect(() => {
     if (!seriesRef.current) return;
@@ -1072,7 +1371,7 @@ export const ProChart: React.FC<ProChartProps> = ({
         isOpen={isAlertsDialogOpen}
         onClose={closeAlertsDialog}
         symbol={mySymbol || 'Symbol'}
-        currentPrice={currentPrice}
+        currentPrice={alertSeedPrice ?? currentPrice}
       />
 
       {/* PnL Overlay - Primary only */}
@@ -1132,6 +1431,102 @@ export const ProChart: React.FC<ProChartProps> = ({
 
       {isIndicatorsOpen && onToggleIndicators && (
         <IndicatorDialog isOpen={isIndicatorsOpen} onClose={onToggleIndicators} activeIds={Object.keys(activeIndicators)} onToggle={handleToggleIndicator} />
+      )}
+
+      {isPrimary && quickActionPrice !== null && quickActionY !== null && (
+        <>
+          <button
+            type="button"
+            onMouseEnter={() => setIsQuickMenuInteracting(true)}
+            onMouseLeave={() => setIsQuickMenuInteracting(false)}
+            onMouseDown={(e) => {
+              e.stopPropagation();
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsQuickMenuOpen((prev) => !prev);
+            }}
+            className="absolute z-[70] w-8 h-8 rounded-md border border-white/25 bg-[#2a2a2a]/90 text-white hover:bg-[#3a3a3a] transition-colors flex items-center justify-center shadow-[0_4px_14px_rgba(0,0,0,0.45)]"
+            style={{ top: quickActionY - 16, right: 76 }}
+            title={`Quick actions at ${formatPrice(quickActionPrice)}`}
+          >
+            <Plus size={16} />
+          </button>
+
+          {isQuickMenuOpen && (
+            <div
+              ref={quickMenuRef}
+              onMouseEnter={() => setIsQuickMenuInteracting(true)}
+              onMouseLeave={() => setIsQuickMenuInteracting(false)}
+              className="absolute z-[80] w-[460px] max-w-[calc(100%-20px)] rounded-2xl border border-white/10 bg-[#1b1c20]/95 backdrop-blur-md shadow-[0_18px_55px_rgba(0,0,0,0.5)] overflow-hidden"
+              style={{
+                top: Math.max(16, Math.min((quickActionY - 170), ((chartContainerRef.current?.clientHeight || 420) - 280))),
+                right: 116,
+              }}
+            >
+              <button
+                className="w-full px-5 py-4 flex items-center justify-between text-left hover:bg-white/5 transition-colors border-b border-white/10"
+                onClick={() => openAlertAtPrice(quickActionPrice)}
+              >
+                <span className="flex items-center gap-3 text-[18px] text-[#e5e7eb]">
+                  <Bell size={18} className="text-[#cbd5e1]" />
+                  <span>Add alert on {mySymbol} at {formatPrice(quickActionPrice)}</span>
+                </span>
+                <span className="text-xs text-white/35">A</span>
+              </button>
+
+              <button
+                className="w-full px-5 py-4 flex items-center justify-between text-left hover:bg-white/5 transition-colors"
+                onClick={() => placeQuickOrder('BUY', 'LIMIT', quickActionPrice)}
+              >
+                <span className="flex items-center gap-3 text-[18px] text-[#e5e7eb]">
+                  <ArrowUp size={18} className="text-[#34d399]" />
+                  <span>Buy 1 {mySymbol} @ {formatPrice(quickActionPrice)} limit</span>
+                </span>
+                <span className="text-xs text-white/35">B</span>
+              </button>
+
+              <button
+                className="w-full px-5 py-4 flex items-center justify-between text-left hover:bg-white/5 transition-colors"
+                onClick={() => placeQuickOrder('SELL', 'STOP', quickActionPrice)}
+              >
+                <span className="flex items-center gap-3 text-[18px] text-[#e5e7eb]">
+                  <ArrowDown size={18} className="text-[#f87171]" />
+                  <span>Sell 1 {mySymbol} @ {formatPrice(quickActionPrice)} stop</span>
+                </span>
+                <span className="text-xs text-white/35">S</span>
+              </button>
+
+              <button
+                className="w-full px-5 py-4 flex items-center justify-between text-left hover:bg-white/5 transition-colors border-b border-white/10"
+                onClick={() => openOrderPanelAtPrice(quickActionPrice)}
+              >
+                <span className="flex items-center gap-3 text-[18px] text-[#e5e7eb]">
+                  <ListPlus size={18} className="text-[#93c5fd]" />
+                  <span>Add order on {mySymbol} at {formatPrice(quickActionPrice)}...</span>
+                </span>
+                <span className="text-xs text-white/35">O</span>
+              </button>
+
+              <button
+                className="w-full px-5 py-4 flex items-center justify-between text-left hover:bg-white/5 transition-colors"
+                onClick={() => {
+                  drawHorizontalLineAtPrice(quickActionPrice);
+                  setIsQuickMenuOpen(false);
+                }}
+              >
+                <span className="flex items-center gap-3 text-[18px] text-[#e5e7eb]">
+                  <div className="w-5 h-3 relative">
+                    <div className="absolute left-0 right-0 top-1/2 h-px bg-[#d1d4dc]" />
+                    <div className="absolute left-[42%] -top-1 text-[#d1d4dc]">•</div>
+                  </div>
+                  <span>Draw horizontal line at {formatPrice(quickActionPrice)}</span>
+                </span>
+                <span className="text-xs text-white/35">H</span>
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       <div ref={chartContainerRef} className="w-full h-full" />

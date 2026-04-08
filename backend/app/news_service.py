@@ -5,16 +5,17 @@ import asyncio
 import aiohttp
 import hashlib
 import urllib.parse
-from datetime import datetime, timedelta
+from datetime import datetime
 from redis import Redis
 import html
 import feedparser
-import random
-from .nlp_engine import is_market_relevant, generate_news_explanation
+from .nlp_engine import generate_news_explanation
 
 # Environment Variables
 NEWSAPI_KEY = os.getenv("NEWSAPI_KEY", "")
 ALPHA_VANTAGE_KEY = os.getenv("ALPHA_VANTAGE_KEY", "")
+NEWSDATA_API_KEY = os.getenv("NEWSDATA_API_KEY", "")
+USE_NEWSAPI_FALLBACK = os.getenv("USE_NEWSAPI_FALLBACK", "false").lower() == "true"
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 
 # Redis Setup
@@ -210,6 +211,77 @@ async def fetch_alpha_vantage_sentiment() -> list[dict]:
             print(f"⚠️ Alpha Vantage Error: {e}")
     return []
 
+async def fetch_newsdata(category: str, limit: int = 50) -> list[dict]:
+    """
+    Fetch news from NewsData.io.
+    Acts as an additional reliable provider beside RSS baseline.
+    """
+    if not NEWSDATA_API_KEY:
+        return []
+
+    base_url = "https://newsdata.io/api/1/news"
+    params = {
+        "apikey": NEWSDATA_API_KEY,
+        "language": "en",
+    }
+
+    if category == "indian":
+        params.update({
+            "country": "in",
+            "category": "business",
+            "q": "NSE OR BSE OR Nifty OR Sensex OR Indian stock market",
+        })
+    elif category == "global":
+        params.update({
+            "category": "business",
+            "q": "global stock market OR wall street OR fed rates OR inflation",
+        })
+    else:
+        params.update({
+            "category": "business",
+            "q": "stock market OR economy OR finance",
+        })
+
+    all_items: list[dict] = []
+    next_page = None
+
+    async with aiohttp.ClientSession() as session:
+        # Fetch up to two pages to avoid excessive API use.
+        for _ in range(2):
+            req_params = dict(params)
+            if next_page:
+                req_params["page"] = next_page
+            try:
+                async with session.get(base_url, params=req_params, timeout=12) as resp:
+                    if resp.status != 200:
+                        print(f"⚠️ NewsData error: {resp.status}")
+                        break
+                    data = await resp.json()
+                    results = data.get("results", []) or []
+                    for item in results:
+                        url = item.get("link") or ""
+                        title = item.get("title") or ""
+                        if not url or not title:
+                            continue
+                        all_items.append({
+                            "id": hashlib.md5(url.encode()).hexdigest(),
+                            "title": title,
+                            "description": item.get("description"),
+                            "source": item.get("source_id", "NewsData"),
+                            "url": url,
+                            "publishedAt": item.get("pubDate"),
+                            "category": category,
+                            "imageUrl": item.get("image_url")
+                        })
+                    next_page = data.get("nextPage")
+                    if not next_page or len(all_items) >= limit:
+                        break
+            except Exception as e:
+                print(f"⚠️ NewsData Fetch Error: {e}")
+                break
+
+    return all_items[:limit]
+
 async def get_news(category: str = "all", limit: int = 50) -> list[dict]:
     """Merged, deduplicated, and sorted news."""
     cache_key = f"news_feed_{category}_{limit}"
@@ -221,21 +293,29 @@ async def get_news(category: str = "all", limit: int = 50) -> list[dict]:
     tasks = []
     # Increase the base limit to ensure we reach 3-day history
     fetch_limit = limit * 2 
-    
+
     if category == "indian":
-        # Prioritize RSS for India
+        # Baseline: Indian RSS + NewsData.
         tasks.append(fetch_indian_news_rss(fetch_limit))
-        if NEWSAPI_KEY:
-            tasks.append(fetch_newsapi(category, fetch_limit))
+        tasks.append(fetch_newsdata("indian", fetch_limit))
     elif category == "global":
-        tasks.append(fetch_newsapi(category, fetch_limit))
+        # Global: NewsData (+ AlphaVantage if available)
+        tasks.append(fetch_newsdata("global", fetch_limit))
         if ALPHA_VANTAGE_KEY:
             tasks.append(fetch_alpha_vantage_sentiment())
-    else: # "all"
+    else:  # "all"
+        # Primary flow without NewsAPI hard dependency.
         tasks.append(fetch_indian_news_rss(fetch_limit))
-        tasks.append(fetch_newsapi("all", fetch_limit))
+        tasks.append(fetch_newsdata("all", fetch_limit))
         if ALPHA_VANTAGE_KEY:
             tasks.append(fetch_alpha_vantage_sentiment())
+
+    # Optional NewsAPI fallback only if explicitly enabled.
+    if USE_NEWSAPI_FALLBACK and NEWSAPI_KEY:
+        if category == "global":
+            tasks.append(fetch_newsapi("global", fetch_limit))
+        else:
+            tasks.append(fetch_newsapi("all", fetch_limit))
     
     results = await asyncio.gather(*tasks)
     
@@ -324,105 +404,18 @@ async def explain_news(news_id: str, user_level: str = "Beginner", title: str = 
 # Enhanced simulation helper with Timestamp Shifting
 async def fetch_news_for_date(symbol: str, target_date: str) -> list[dict]:
     """
-    Fetches news and aligns it with the simulation date.
-    Shifts 'Live' news into the past or future to match target_date trading hours.
+    Backward-compatible shim.
+    Replay news scheduling is now handled by the Market Clock Engine
+    (publish_time + configured delay, deterministic and DB-backed).
     """
     try:
-        # 1. Fetch live news (all categories)
-        live_news = await get_news("all", 15)
-        
-        # 2. Extract base symbol
-        base_sym = symbol.split('-')[0].upper()
-        
-        # 3. Create a target base time (9:15 AM on target date)
-        target_dt = datetime.strptime(target_date, "%Y-%m-%d")
-        market_open = target_dt.replace(hour=9, minute=15, second=0)
-        
-        shifted_news = []
-        
-        # Predefined "Trigger slots" to ensure news is spread throughout the day
-        slots = [
-            market_open + timedelta(minutes=45),   # 10:00 AM
-            market_open + timedelta(hours=2),      # 11:15 AM
-            market_open + timedelta(hours=3, minutes=15), # 12:30 PM
-            market_open + timedelta(hours=4, minutes=45), # 2:00 PM
-            market_open + timedelta(hours=5, minutes=45), # 3:00 PM
-        ]
-        
-        # 4. Process real news items and shift them into slots
-        for i, item in enumerate(live_news):
-            if i >= len(slots): break
-            
-            # Map item to slot
-            trigger_time = slots[i]
-            
-            # Ensure naive datetime (no timezone)
-            if trigger_time.tzinfo is not None:
-                trigger_time = trigger_time.replace(tzinfo=None)
-            
-            shifted_news.append({
-                **item,
-                "timestamp": trigger_time,
-                "time_str": trigger_time.strftime("%H:%M:%S"),
-                "is_simulated": True,
-                "original_date": item.get("publishedAt", "Real-time"),
-                "imageUrl": item.get("imageUrl") or get_fallback_image(item.get("title", ""), item.get("category", "all"))
-            })
-
-        # 5. ALWAYS Add "Synthetic/Classic" news events to guarantee flashes
-        # These are mission-critical for the replay UX
-        base_sym_safe = urllib.parse.quote(base_sym)
-        synthetic = [
-            {
-                "id": f"syn_open_{target_date}",
-                "title": f"Market Opening Analysis: {base_sym} Trend",
-                "description": f"Initial volatility expected in {base_sym} as institutional desks adjust positions for the {target_date} session.",
-                "source": "FIN-GPT",
-                "url": "#",
-                "timestamp": (market_open + timedelta(minutes=5)).replace(tzinfo=None),
-                "time_str": "09:20:00",
-                "is_simulated": True,
-                "category": "indian",
-                "imageUrl": f"https://tse1.mm.bing.net/th?q=Market+Opening+Analysis+{base_sym_safe}&w=800&h=500&c=7&rs=1&p=0"
-            },
-            {
-                "id": f"syn_mid_{target_date}",
-                "title": f"Institutional Buying Spree spotted in {base_sym}",
-                "description": f"Large block trades detected in {base_sym} as domestic funds increase allocation.",
-                "source": "REUTERS",
-                "url": "#",
-                "timestamp": (market_open + timedelta(hours=1)).replace(tzinfo=None),
-                "time_str": "10:15:00",
-                "is_simulated": True,
-                "category": "indian",
-                "imageUrl": f"https://tse1.mm.bing.net/th?q=Institutional+Buying+Spree+{base_sym_safe}&w=800&h=500&c=7&rs=1&p=0"
-            },
-            {
-                "id": f"syn_global_{target_date}",
-                "title": "Global Markets Rally on Fed Optimism",
-                "description": "US Futures suggest a strong session ahead as inflation fears cool globally.",
-                "source": "BLOOMBERG",
-                "url": "#",
-                "timestamp": (market_open + timedelta(hours=4)).replace(tzinfo=None),
-                "time_str": "13:15:00",
-                "is_simulated": True,
-                "category": "global",
-                "imageUrl": f"https://tse1.mm.bing.net/th?q=Global+Markets+Rally+on+Fed+Optimism&w=800&h=500&c=7&rs=1&p=0"
-            }
-        ]
-
-        # Ensure synthetic items have images initially resolved via pollinations AI
-        for synth in synthetic:
-            if not synth.get("imageUrl"):
-                safe_title = urllib.parse.quote(synth.get("title", ""))
-                synth["imageUrl"] = f"https://tse1.mm.bing.net/th?q={safe_title}+news&w=800&h=500&c=7&rs=1&p=0"
-        
-        shifted_news.extend(synthetic)
-
-        # Sort by timestamp to ensure chronological triggering in simulation loop
-        shifted_news.sort(key=lambda x: x["timestamp"])
-        print(f"✅ Prepared {len(shifted_news)} news items for simulation on {target_date}")
-        return shifted_news
+        from .market_clock_news import get_replay_news_schedule, DEFAULT_DELAY_SECONDS, DEFAULT_POLICY
+        return await get_replay_news_schedule(
+            symbol=symbol,
+            target_date=target_date,
+            delay_seconds=DEFAULT_DELAY_SECONDS,
+            replay_policy=DEFAULT_POLICY,
+        )
 
     except Exception as e:
         print(f"⚠️ Error in fetch_news_for_date: {e}")

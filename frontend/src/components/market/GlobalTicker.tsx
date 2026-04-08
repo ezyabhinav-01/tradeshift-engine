@@ -16,7 +16,7 @@ export interface IndexData {
 export const GlobalTicker = () => {
   const navigate = useNavigate();
   const [liveIndices, setLiveIndices] = useState<IndexData[]>([]);
-  const { isPlaying, simulatedIndices, setSymbol } = useGame();
+  const { isPlaying, isReplayActive, simulatedIndices, setSymbol } = useGame();
   const { activeChartId, updateChart } = useMultiChartStore();
 
   useEffect(() => {
@@ -37,7 +37,9 @@ export const GlobalTicker = () => {
   }, []);
 
   // Decide which data source to render and map exactly to the 5 requested symbols
-  const sourceData = isPlaying ? simulatedIndices : liveIndices;
+  // In replay mode, always show replay-synced ticker values for date consistency,
+  // even when paused. During normal mode, use live indices.
+  const sourceData = isReplayActive ? simulatedIndices : liveIndices;
   const targetSymbols = [
     { searchName: 'NIFTY', displayName: 'NIFTY', exactMatches: ['NIFTY', 'NIFTY 50'] },
     { searchName: 'BANKNIFTY', displayName: 'BANKNIFTY', exactMatches: ['BANKNIFTY'] },
@@ -67,10 +69,10 @@ export const GlobalTicker = () => {
   return (
     <div className="flex items-center gap-4 px-4 overflow-x-auto whitespace-nowrap hide-scrollbar text-[13px] font-sans">
 
-      {isPlaying && (
+      {isReplayActive && (
         <>
-          <div className="flex items-center text-xs font-bold text-indigo-400 gap-1.5 animate-pulse shrink-0">
-            <span>SIM SYNC</span>
+          <div className={`flex items-center text-xs font-bold text-indigo-400 gap-1.5 shrink-0 ${isPlaying ? 'animate-pulse' : ''}`}>
+            <span>{isPlaying ? 'SIM SYNC' : 'REPLAY HOLD'}</span>
           </div>
           <Separator orientation="vertical" className="h-4 w-[3px] bg-tv-border/40 mx-2" />
         </>

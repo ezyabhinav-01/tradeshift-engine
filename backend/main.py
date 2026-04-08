@@ -17,6 +17,7 @@ import datetime
 import time
 import glob
 import random
+import re
 from redis import Redis
 from prometheus_fastapi_instrumentator import Instrumentator
 from app.oms import OrderManager
@@ -36,6 +37,22 @@ from app.config import SECRET_KEY, ALGORITHM
 # Configure Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+ISO_DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}')
+DMY_DATE_RE = re.compile(r'^\d{2}-\d{2}-\d{4}')
+
+def parse_market_datetime(value):
+    """
+    Parse market timestamps safely:
+    - Keep ISO (YYYY-MM-DD...) as year-month-day
+    - Use day-first only for DD-MM-YYYY strings
+    """
+    s = str(value).replace('Ok ', '').strip()
+    if ISO_DATE_RE.match(s):
+        return pd.to_datetime(s, dayfirst=False, errors='coerce')
+    if DMY_DATE_RE.match(s):
+        return pd.to_datetime(s, dayfirst=True, errors='coerce')
+    return pd.to_datetime(s, errors='coerce')
 
 # --- DB INITIALIZATION ---
 # Explicitly import models to ensure they are registered with Base.metadata
@@ -90,6 +107,10 @@ import traceback
 from apscheduler.schedulers.background import BackgroundScheduler
 from app.market_service import market_service
 from app.live_market import shoonya_live
+
+# Background workload controls.
+RUN_BACKGROUND_JOBS = os.getenv("RUN_BACKGROUND_JOBS", "true").lower() in ("1", "true", "yes", "on")
+ENABLE_COMMUNITY_SEED = os.getenv("ENABLE_COMMUNITY_SEED", "true").lower() in ("1", "true", "yes", "on")
 
 # --- BACKGROUND JOBS ---
 scheduler = BackgroundScheduler()
@@ -146,28 +167,37 @@ def periodical_fundamental_sync():
     except Exception as e:
         logger.error(f"❌ Error in periodic fundamental sync: {e}")
 
-# Run every 15 minutes
-scheduler.add_job(refresh_market_cache, 'interval', minutes=15)
+if RUN_BACKGROUND_JOBS:
+    # Run every 15 minutes
+    scheduler.add_job(refresh_market_cache, 'interval', minutes=15)
 
-# Rolling data refresh: Every day at 17:00 IST (5:00 PM)
-# This handles the daily fetch of today's data and pruning of the oldest day.
-scheduler.add_job(rolling_market_refresh, 'cron', hour=17, minute=0, timezone='Asia/Kolkata')
+    # Rolling data refresh: Every day at 17:00 IST (5:00 PM)
+    # This handles the daily fetch of today's data and pruning of the oldest day.
+    scheduler.add_job(rolling_market_refresh, 'cron', hour=17, minute=0, timezone='Asia/Kolkata')
 
-# 15-day Fundamental Sync
-scheduler.add_job(periodical_fundamental_sync, 'interval', days=15)
+    # 15-day Fundamental Sync
+    scheduler.add_job(periodical_fundamental_sync, 'interval', days=15)
 
-scheduler.start()
-
-# --- Async Tasks Scheduler ---
-setup_scheduler()
+    scheduler.start()
+    # --- Async Tasks Scheduler ---
+    setup_scheduler()
+else:
+    logger.info("⏸️ Background jobs disabled via RUN_BACKGROUND_JOBS=false")
 
 @app.on_event("startup")
 async def startup_event():
     # Attempt to connect to Shoonya Live WS in the background
-    asyncio.create_task(shoonya_live.connect())
+    try:
+        asyncio.create_task(shoonya_live.connect())
+    except Exception as e:
+        logger.warning(f"⚠️ Shoonya background connect skipped: {e}")
     
     # Seed community channels
-    await seed_community_channels()
+    if ENABLE_COMMUNITY_SEED:
+        try:
+            await seed_community_channels()
+        except Exception as e:
+            logger.warning(f"⚠️ Community seed skipped due to startup DB pressure: {e}")
 
 async def seed_community_channels():
     """Create default community channels if they don't exist."""
@@ -346,7 +376,7 @@ def load_market_data_tiered(symbol: str, target_date: str = None, allow_fallback
     base_symbol = symbol.split('-')[0] if '-' in symbol else symbol
     # Default to today if no date provided
     date_str = target_date if target_date else datetime.date.today().strftime('%Y-%m-%d')
-    cache_key = f"market_data_v2:{base_symbol}:{date_str}"
+    cache_key = f"market_data_v3:{base_symbol}:{date_str}"
 
     df = None
     source_info = "unknown"
@@ -433,14 +463,11 @@ def load_market_data_tiered(symbol: str, target_date: str = None, allow_fallback
         
         # Ensure datetime type and fix potential Month/Day swaps from parquet auto-loaders
         if 'datetime' in df.columns:
-            # We convert to string and re-parse with dayfirst=True to ensure consistency
-            # especially if the parquet loader already 'guessed' the wrong month.
+            # Parse datetimes without corrupting ISO strings.
+            # Root bug: dayfirst=True on "YYYY-MM-DD" can flip month/day.
             def aggressive_parse(ts):
-                ts_str = str(ts).replace('Ok ', '').strip()
-                # If it already looks like ISO (YYYY-MM-DD), pd.to_datetime handles it.
-                # If it's DD-MM-YYYY, dayfirst=True is critical.
-                return pd.to_datetime(ts_str, dayfirst=True, errors='coerce')
-            
+                return parse_market_datetime(ts)
+
             df['datetime'] = df['datetime'].apply(aggressive_parse)
         
         # Cleanup numeric and missing
@@ -591,7 +618,7 @@ async def get_historical_candles(
     Return historical OHLC candles from MinIO storage with Redis caching.
     """
     # 1. Redis Cache Check
-    cache_key = f"hist:{symbol}:{date or 'latest'}:{interval}:{lookback_days}:{limit}"
+    cache_key = f"hist:v2:{symbol}:{date or 'latest'}:{interval}:{lookback_days}:{limit}"
     if redis_client:
         try:
             cached_data = redis_client.get(cache_key)
@@ -697,7 +724,7 @@ async def get_historical_candles(
             # This fixes the "gap" and the 5:30 hour shift between history and ticker
             ts_val = row[time_col]
             if isinstance(ts_val, str):
-                ts_val = pd.to_datetime(ts_val.replace('Ok ', '').strip(), dayfirst=True)
+                ts_val = parse_market_datetime(ts_val)
             
             if ts_val.tzinfo is None:
                 ts_val = ts_val.tz_localize('UTC')
@@ -739,7 +766,7 @@ from app.nlp_engine import (
     generate_news_explainer,
     ask_news_question
 )
-from app.news_service import fetch_news_for_date
+from app.market_clock_news import get_replay_news_schedule, DEFAULT_DELAY_SECONDS, DEFAULT_POLICY
 from app.trade_engine import TradeEngine
 from pydantic import BaseModel
 
@@ -998,8 +1025,11 @@ async def websocket_endpoint(websocket: WebSocket):
     
     indices_iterators = {}    # { "NIFTY": iterator, "BANKNIFTY": iterator }
     indices_opens    = {}      # { "NIFTY": open_price, "BANKNIFTY": open_price }
+    main_symbol_opens = {}     # { "RELIANCE": day_open, ... }
     active_news      = []
     active_impact_observers = [] # Track news for 15-minute impact assessment
+    news_delay_seconds = DEFAULT_DELAY_SECONDS
+    news_replay_policy = DEFAULT_POLICY
     tick_time        = datetime.datetime.now()
     last_tick_price  = 0.0
 
@@ -1031,11 +1061,15 @@ async def websocket_endpoint(websocket: WebSocket):
                     target_date = message.get("date")
                     start_time_req = message.get("startTime") # e.g. "2026-04-02T10:00:00.000Z"
                     speed       = float(message.get("speed", 1.0))
+                    news_delay_minutes = int(message.get("news_delay_minutes", 45))
+                    news_delay_seconds = max(0, news_delay_minutes * 60)
+                    news_replay_policy = str(message.get("news_replay_policy", DEFAULT_POLICY))
                     
                     main_symbols = symbols_req
                     primary_symbol = symbols_req[0]
                     main_iterators = {}
                     main_current_rows = {}
+                    main_symbol_opens = {}
 
                     # Determine exact start limit for simulation and backfill
                     # Default: start of the target day (hour=0, minute=0)
@@ -1070,10 +1104,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             # Standardize dates
                             temp_df = df_sym.copy()
                             if not pd.api.types.is_datetime64_any_dtype(temp_df[date_col]):
-                                temp_df[date_col] = pd.to_datetime(
-                                    temp_df[date_col].astype(str).str.replace('Ok ', '', regex=False).str.strip(), 
-                                    dayfirst=True, errors='coerce'
-                                )
+                                temp_df[date_col] = temp_df[date_col].apply(parse_market_datetime)
                             
                             # Ensure temp_df is naive for comparison
                             if temp_df[date_col].dt.tz is not None:
@@ -1094,6 +1125,10 @@ async def websocket_endpoint(websocket: WebSocket):
                             
                             if not f_df.empty:
                                 main_iterators[symbol] = iter(f_df.to_dict(orient="records"))
+                                try:
+                                    main_symbol_opens[symbol] = float(f_df.iloc[0].get('open', 0) or 0)
+                                except Exception:
+                                    main_symbol_opens[symbol] = 0.0
                                 success_count += 1
                                 logger.info(f"✅ Loaded {len(f_df)} candles for {symbol} starting from {start_dt_limit}")
                         except Exception as e:
@@ -1144,10 +1179,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             backfill_ts_col = next((c for c in ['datetime', 'date', 'time'] if c in df_backfill.columns), None)
                             if backfill_ts_col:
                                 if not pd.api.types.is_datetime64_any_dtype(df_backfill[backfill_ts_col]):
-                                    df_backfill[backfill_ts_col] = pd.to_datetime(
-                                        df_backfill[backfill_ts_col].astype(str).str.replace('Ok ', '', regex=False).str.strip(), 
-                                        dayfirst=True, errors='coerce'
-                                    )
+                                    df_backfill[backfill_ts_col] = df_backfill[backfill_ts_col].apply(parse_market_datetime)
                                 
                                 # Ensure naive for comparison
                                 if df_backfill[backfill_ts_col].dt.tz is not None:
@@ -1190,10 +1222,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             if ic_date_col:
                                 temp_idx = idx_df.copy()
                                 if not pd.api.types.is_datetime64_any_dtype(temp_idx[ic_date_col]):
-                                    temp_idx[ic_date_col] = pd.to_datetime(
-                                        temp_idx[ic_date_col].astype(str).str.replace('Ok ', '', regex=False).str.strip(), 
-                                        dayfirst=True, errors='coerce'
-                                    )
+                                    temp_idx[ic_date_col] = temp_idx[ic_date_col].apply(parse_market_datetime)
                                 
                                 # If fallback was used, the inherent date will be wrong. 
                                 # We shift the date of the index data to match the target_dt exactly.
@@ -1224,14 +1253,22 @@ async def websocket_endpoint(websocket: WebSocket):
 
                     # Fetch today's news for alignment with simulation ticks
                     try:
-                        raw_news = await fetch_news_for_date(primary_symbol, target_date)
+                        raw_news = await get_replay_news_schedule(
+                            primary_symbol,
+                            target_date,
+                            delay_seconds=news_delay_seconds,
+                            replay_policy=news_replay_policy,
+                        )
                         active_news = []
                         for n in raw_news:
                             # Reset trigger state for replay and ensure naive timestamp
                             n["triggered"] = False
-                             # Trust n["timestamp"] is already a naive datetime from news_service.py
+                            # Trust n["timestamp"] is a naive IST datetime from Market Clock Engine.
                             active_news.append(n)
-                        logger.info(f"✅ Simulation Ready: Prepared {len(active_news)} shifted news items for {target_date}")
+                        logger.info(
+                            f"✅ Simulation Ready: Prepared {len(active_news)} replay-news events "
+                            f"for {target_date} (delay={news_delay_seconds}s, policy={news_replay_policy})"
+                        )
                     except Exception as e:
                         logger.error(f"⚠️ Failed to prepare news for simulation on {target_date}: {e}")
                         active_news = []
@@ -1264,7 +1301,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     # oms.sell(last_tick_price, qty=50)
                     from app.schemas import TradeExecuteRequest, TradeDirection, OrderType
                     request = TradeExecuteRequest(
-                        symbol=current_symbol,
+                        symbol=message.get("symbol", primary_symbol),
                         direction=TradeDirection.SELL,
                         quantity=message.get("quantity", 50),
                         price=last_tick_price,
@@ -1293,7 +1330,13 @@ async def websocket_endpoint(websocket: WebSocket):
                     q_text = message.get("question")
                     news_id = message.get("news_id")
                     if 'active_news' in locals():
-                        target_news = next((n for idx, n in enumerate(active_news) if idx == news_id), None)
+                        target_news = next(
+                            (
+                                n for idx, n in enumerate(active_news)
+                                if n.get("event_id") == news_id or idx == news_id
+                            ),
+                            None
+                        )
                         if target_news:
                             async def fetch_answer(nq, ni, sym, nid):
                                 ans = await ask_news_question(ni["title"], ni["description"], nq, sym)
@@ -1342,7 +1385,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     ref_row.get('time')     or
                     datetime.datetime.now()
                 )
-                base_time = pd.to_datetime(date_val, dayfirst=True) if not isinstance(date_val, datetime.datetime) else date_val
+                base_time = parse_market_datetime(date_val) if not isinstance(date_val, datetime.datetime) else date_val
                 # CRITICAL: Ensure base_time is naive for comparison with news timestamps
                 if hasattr(base_time, "tzinfo") and base_time.tzinfo is not None:
                     base_time = base_time.replace(tzinfo=None)
@@ -1440,13 +1483,17 @@ async def websocket_endpoint(websocket: WebSocket):
                     # NEW: Add Primary Symbol to top ticker if it's not already an index
                     if primary_symbol and primary_symbol in all_symbol_ticks:
                         curr_p = float(all_symbol_ticks[primary_symbol][i])
-                        # Use a simple change calculation based on first tick of day if open is not loaded
+                        day_open_main = safe_float(main_symbol_opens.get(primary_symbol, curr_p))
+                        if day_open_main == 0:
+                            day_open_main = curr_p
+                        main_change = curr_p - day_open_main
+                        main_change_percent = (main_change / day_open_main) * 100 if day_open_main > 0 else 0
                         indices_payload[primary_symbol] = {
                             "name": primary_symbol,
                             "price": round(curr_p, 2),
-                            "change": 0.0,
-                            "change_percent": 0.0,
-                            "is_positive": True
+                            "change": round(safe_float(main_change), 2),
+                            "change_percent": round(safe_float(main_change_percent), 2),
+                            "is_positive": main_change >= 0
                         }
                     
                     if indices_payload:
@@ -1532,12 +1579,15 @@ async def websocket_endpoint(websocket: WebSocket):
                                 
                                 # Update Global Ticker (simulatedIndices)
                                 interp_indices = {**indices_payload}
+                                day_open_main = float(main_symbol_opens.get(primary_symbol, curr_val) or curr_val)
+                                interp_change = interp_price - day_open_main
+                                interp_change_percent = (interp_change / day_open_main) * 100 if day_open_main > 0 else 0
                                 interp_indices[primary_symbol] = {
                                     "name": primary_symbol,
                                     "price": round(interp_price, 2),
-                                    "change": indices_payload[primary_symbol]["change"],
-                                    "change_percent": indices_payload[primary_symbol]["change_percent"],
-                                    "is_positive": indices_payload[primary_symbol]["is_positive"]
+                                    "change": round(float(interp_change), 2),
+                                    "change_percent": round(float(interp_change_percent), 2),
+                                    "is_positive": interp_change >= 0
                                 }
                                 await websocket.send_json({ "type": "INDICES_TICK", "data": interp_indices })
                             except Exception: break
@@ -1552,6 +1602,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             if not n_item.get("triggered") and sub_tick_time >= n_timestamp:
                                 active_news[idx]["triggered"] = True
                                 logger.info(f"📰 FLASHING NEWS: {n_item['title']} at simulated time {sub_tick_time.strftime('%H:%M:%S')}")
+                                event_id = n_item.get("event_id", idx)
                                 
                                 # Ensure time_str matches the EXACT trigger time for visual sync
                                 display_time = sub_tick_time.strftime("%H:%M:%S")
@@ -1559,13 +1610,17 @@ async def websocket_endpoint(websocket: WebSocket):
                                 asyncio.create_task(websocket.send_json({
                                     "type": "NEWS_FLASH",
                                     "data": {
-                                        "id": idx,
+                                        "id": event_id,
                                         "symbol": primary_symbol,
                                         "title": n_item["title"],
                                         "description": n_item["description"],
                                         "time_str": display_time,
                                         "source": n_item["source"],
                                         "url": n_item["url"],
+                                        "publish_time_ist": n_item.get("publish_time_ist"),
+                                        "flash_time_ist": n_item.get("flash_time_ist"),
+                                        "delay_seconds": n_item.get("delay_seconds"),
+                                        "source_reliability": n_item.get("source_reliability"),
                                         "is_simulated": n_item.get("is_simulated", False)
                                     }
                                 }))
@@ -1591,10 +1646,10 @@ async def websocket_endpoint(websocket: WebSocket):
                                     except Exception as ex:
                                         logger.error(f"⚠️ Error in News AI: {ex}")
                                         
-                                asyncio.create_task(perform_analysis(n_item, idx, primary_symbol))
+                                asyncio.create_task(perform_analysis(n_item, event_id, primary_symbol))
 
                                 active_impact_observers.append({
-                                    "news_id": idx,
+                                    "news_id": event_id,
                                     "baseline_price": interp_price,
                                     "target_time": sub_tick_time + datetime.timedelta(minutes=15)
                                 })

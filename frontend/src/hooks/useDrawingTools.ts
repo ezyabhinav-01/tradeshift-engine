@@ -58,12 +58,18 @@ const COLOR_PALETTE = [
   '#F44336', // Red
 ];
 
+const SELECTION_COLORS = new Set([
+  '#2962ff', // configured selection blue
+  '#ff6b00', // library selection orange
+]);
+
 export const useDrawingTools = (
   chart: IChartApi | null, 
   series: ISeriesApi<any> | null,
   containerRef: React.RefObject<HTMLDivElement | null>
 ) => {
   const [activeTool, setActiveTool] = useState<DrawingToolId>(null);
+  const activeToolRef = useRef<DrawingToolId>(null);
   const [selectedToolId, setSelectedToolId] = useState<string | null>(null);
   // Persistent ref that remembers the last selected tool ID even after
   // the library deselects it. This prevents the "double-click to delete" bug
@@ -71,11 +77,47 @@ export const useDrawingTools = (
   // click event fires.
   const lastSelectedIdRef = useRef<string | null>(null);
   const colorIndexRef = useRef(0);
+  const selectionNullStreakRef = useRef(0);
+  const emittedSelectedIdRef = useRef<string | null>(null);
+
+  const setActiveToolSync = useCallback((tool: DrawingToolId) => {
+    activeToolRef.current = tool;
+    setActiveTool(tool);
+  }, []);
+
+  useEffect(() => {
+    activeToolRef.current = activeTool;
+  }, [activeTool]);
 
   const getNextColor = useCallback(() => {
     const color = COLOR_PALETTE[colorIndexRef.current % COLOR_PALETTE.length];
     colorIndexRef.current++;
     return color;
+  }, []);
+
+  const readToolColor = useCallback((tool: any): string | null => {
+    if (!tool) return null;
+
+    if (typeof tool._userLineColor === 'string') {
+      return tool._userLineColor;
+    }
+
+    const candidates: any[] = [
+      tool.options,
+      tool._options,
+      tool._private__lineOptions,
+      tool._private__trendLineOptions,
+      tool._private__horizontalLineOptions,
+      tool._private__verticalLineOptions,
+    ];
+
+    for (const obj of candidates) {
+      if (!obj || typeof obj !== 'object') continue;
+      const color = obj.lineColor || obj.color;
+      if (typeof color === 'string' && color.startsWith('#')) return color;
+    }
+
+    return null;
   }, []);
 
   const managerRef = useRef<DrawingToolsManager | null>(null);
@@ -200,16 +242,16 @@ export const useDrawingTools = (
     try { hLineManagerRef.current?.disableClickToCreate(); } catch (_) {}
 
     if (!toolId || toolId === 'cursor') {
-      setActiveTool(null);
+      setActiveToolSync(null);
       return;
     }
 
-    setActiveTool(toolId);
+    setActiveToolSync(toolId);
 
     // Eraser mode handled by effect below
     if (toolId === 'eraser') {
       managerRef.current?.stopDrawing();
-      setActiveTool('eraser');
+      setActiveToolSync('eraser');
       return;
     }
 
@@ -234,7 +276,7 @@ export const useDrawingTools = (
       
       if (toolId === 'ray' || toolId === 'extended' || toolId === 'trendline') {
         tool = createTrendLineTool(ctx, { 
-          interactive: true, color, lineWidth: 2, 
+          interactive: true, color, lineColor: color, lineWidth: 2, 
           extendRight: toolId === 'ray' || toolId === 'extended',
           extendLeft: toolId === 'extended',
           textColor: '#2962FF', textOrientation: 'parallel', textPosition: 'top',
@@ -273,6 +315,7 @@ export const useDrawingTools = (
       }
 
       if (tool && managerRef.current) {
+        (tool as any)._userLineColor = color;
         const id = managerRef.current.addTool(tool);
         if (id) managerRef.current.selectTool(id);
         snapshotCurrentState();
@@ -280,55 +323,81 @@ export const useDrawingTools = (
     } catch (e) {
       console.error(`[DrawingTools] Failed to create ${toolId} tool:`, e);
     }
-  }, [chart, series, getNextColor, snapshotCurrentState]);
+  }, [chart, series, getNextColor, setActiveToolSync, snapshotCurrentState]);
 
   const disableDrawingMode = useCallback(() => {
     try { managerRef.current?.stopDrawing(); } catch (_) {}
     try { hLineManagerRef.current?.disableClickToCreate(); } catch (_) {}
-    setActiveTool(null);
-  }, []);
+    setActiveToolSync(null);
+  }, [setActiveToolSync]);
 
   const clearAllDrawings = useCallback(() => {
     managerRef.current?.clearAll();
-    setActiveTool(null);
+    setActiveToolSync(null);
     setSelectedToolId(null);
     lastSelectedIdRef.current = null;
-  }, []);
+    selectionNullStreakRef.current = 0;
+    emittedSelectedIdRef.current = null;
+  }, [setActiveToolSync]);
 
   const deleteSelected = useCallback(() => {
     if (!managerRef.current) return false;
-    
-    // Use ALL available sources to find the tool to delete.
-    // Priority: library real-time > React state > persistent ref
-    const currentManagerId = managerRef.current.getSelectedToolId();
-    const idToDelete = currentManagerId || selectedToolId || lastSelectedIdRef.current;
-    
-    if (!idToDelete) {
-      // Absolute last resort — ask the library to delete whatever it thinks is selected
-      try { return managerRef.current.deleteSelected() ?? false; } catch (_) { return false; }
-    }
-    
-    // 1. Force manual removal of the primitive from the canvas first.
-    // This is the key to preventing the "turns green but stays on screen" bug.
-    try {
-      const allTools = managerRef.current.getAllTools();
-      const tool = allTools instanceof Map ? allTools.get(idToDelete) : null;
-      if (tool && typeof (tool as any).remove === 'function') {
-        (tool as any).remove();
-        console.log(`[DrawingTools] Force-removed tool: ${idToDelete}`);
+
+    const getToolById = (toolId: string) => {
+      const allTools: any = managerRef.current?.getAllTools();
+      if (!allTools) return null;
+      if (allTools instanceof Map) return allTools.get(toolId) ?? null;
+      if (Array.isArray(allTools)) return allTools.find((t: any) => t?.id === toolId) ?? null;
+      if (typeof allTools === 'object') return (allTools as Record<string, any>)[toolId] ?? null;
+      return null;
+    };
+
+    const idsToTry = Array.from(
+      new Set(
+        [managerRef.current.getSelectedToolId(), selectedToolId, lastSelectedIdRef.current].filter(Boolean) as string[]
+      )
+    );
+
+    let removed = false;
+    for (const toolId of idsToTry) {
+      try {
+        const tool = getToolById(toolId);
+        if (tool && typeof (tool as any).remove === 'function') {
+          (tool as any).remove();
+        }
+      } catch (e) {
+        console.warn(`[DrawingTools] Primitive remove failed for ${toolId}:`, e);
       }
-    } catch (e) {
-      console.warn(`[DrawingTools] Manual removal failed for ${idToDelete}:`, e);
+
+      try {
+        managerRef.current.removeTool(toolId);
+      } catch (e) {
+        console.warn(`[DrawingTools] removeTool failed for ${toolId}:`, e);
+      }
+
+      if (!getToolById(toolId)) {
+        removed = true;
+        break;
+      }
     }
-    
-    // 2. Now call the manager's removeTool to clean up the internal map.
-    managerRef.current.removeTool(idToDelete);
-    
-    // Clear all selection state
-    setSelectedToolId(null);
-    lastSelectedIdRef.current = null;
-    snapshotCurrentState();
-    return true;
+
+    if (!removed) {
+      try {
+        removed = !!(managerRef.current.deleteSelected?.() ?? false);
+      } catch (_) {
+        removed = false;
+      }
+    }
+
+    if (removed) {
+      setSelectedToolId(null);
+      lastSelectedIdRef.current = null;
+      selectionNullStreakRef.current = 0;
+      emittedSelectedIdRef.current = null;
+      snapshotCurrentState();
+    }
+
+    return removed;
   }, [selectedToolId, snapshotCurrentState]);
 
   const handleUndo = useCallback(() => {
@@ -369,6 +438,8 @@ export const useDrawingTools = (
 
     const clickHandler = (param: any) => {
       if (!param || !param.point) return;
+      const currentActiveTool = activeToolRef.current;
+      if (!currentActiveTool) return;
       
       const price = series.coordinateToPrice(param.point.y);
       let time = param.time || (chart.timeScale().coordinateToTime(param.point.x) as any);
@@ -383,39 +454,42 @@ export const useDrawingTools = (
       if (price === null || time === null) return;
       if (!managerRef.current) return;
 
-      if (activeTool === 'hray') {
+      if (currentActiveTool === 'hray') {
         const color = getNextColor();
         const tool = createHorizontalLineTool({ chart, series } as any, {
-           price, time, interactive: true, color, lineWidth: 2, lineStyle: 0,
+           price, time, interactive: true, color, lineColor: color, lineWidth: 2, lineStyle: 0,
            extendLeft: false, extendRight: true
         });
+        (tool as any)._userLineColor = color;
         const id = managerRef.current.addTool(tool);
         managerRef.current.selectTool(id);
         snapshotCurrentState();
         selectTool(null);
       }
-      else if (activeTool === 'vline') {
+      else if (currentActiveTool === 'vline') {
         const color = getNextColor();
         const tool = createVerticalLineTool({ chart, series } as any, {
-           time, interactive: true, color, lineWidth: 2, lineStyle: 0
+           time, interactive: true, color, lineColor: color, lineWidth: 2, lineStyle: 0
         });
+        (tool as any)._userLineColor = color;
         const id = managerRef.current.addTool(tool);
         managerRef.current.selectTool(id);
         snapshotCurrentState();
         selectTool(null);
       }
-      else if (activeTool === 'hline') {
+      else if (currentActiveTool === 'hline') {
         const color = getNextColor();
         const tool = createHorizontalLineTool({ chart, series } as any, {
-           price, interactive: true, color, lineWidth: 2, lineStyle: 0,
+           price, interactive: true, color, lineColor: color, lineWidth: 2, lineStyle: 0,
            extendLeft: true, extendRight: true
         });
+        (tool as any)._userLineColor = color;
         const id = managerRef.current.addTool(tool);
         managerRef.current.selectTool(id);
         snapshotCurrentState();
         selectTool(null);
       }
-      else if (activeTool === 'cross') {
+      else if (currentActiveTool === 'cross') {
         const color = getNextColor();
         const hTool = createHorizontalLineTool({ chart, series } as any, {
            price, interactive: true, color, lineColor: color, lineWidth: 2, lineStyle: 0
@@ -423,6 +497,8 @@ export const useDrawingTools = (
         const vTool = createVerticalLineTool({ chart, series } as any, {
            time, interactive: true, color, lineColor: color, lineWidth: 2, lineStyle: 0
         });
+        (hTool as any)._userLineColor = color;
+        (vTool as any)._userLineColor = color;
 
         const hId = managerRef.current.addTool(hTool);
         managerRef.current.addTool(vTool);
@@ -430,8 +506,8 @@ export const useDrawingTools = (
         snapshotCurrentState();
         selectTool(null);
       }
-      else if (activeTool === 'long_pos' || activeTool === 'short_pos') {
-        const isLong = activeTool === 'long_pos';
+      else if (currentActiveTool === 'long_pos' || currentActiveTool === 'short_pos') {
+        const isLong = currentActiveTool === 'long_pos';
         
         // Calculate dynamic offsets based on visible price range to ensure both ends are visible
         const priceScale = series.priceScale();
@@ -470,7 +546,7 @@ export const useDrawingTools = (
         snapshotCurrentState();
         selectTool(null);
       }
-      else if (activeTool === 'ruler') {
+      else if (currentActiveTool === 'ruler') {
         const point = { time, price: price as number };
         rulerPointsRef.current.push(point);
         const count = rulerPointsRef.current.length;
@@ -520,7 +596,7 @@ export const useDrawingTools = (
       // zoom_in is now handled as an immediate command in useEffect below
       // (no chart click needed)
       // --- Fib Extension: 3-click interactive (Progressive version) ---
-      else if (activeTool === 'fib_ext') {
+      else if (currentActiveTool === 'fib_ext') {
         const point = { time, price: price as number };
         fibExtPointsRef.current.push(point);
         const count = fibExtPointsRef.current.length;
@@ -601,7 +677,33 @@ export const useDrawingTools = (
     return () => {
       chart.unsubscribeClick(clickHandler);
     };
-  }, [chart, series, activeTool, snapshotCurrentState, selectTool]);
+  }, [chart, series, activeTool, getNextColor, snapshotCurrentState, selectTool]);
+
+  // Fast sync of selection after pointer interactions, so one-click delete is reliable.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const syncSelectionSoon = () => {
+      requestAnimationFrame(() => {
+        const id = managerRef.current?.getSelectedToolId() ?? null;
+        if (id) {
+          lastSelectedIdRef.current = id;
+          selectionNullStreakRef.current = 0;
+          emittedSelectedIdRef.current = id;
+          setSelectedToolId(id);
+        }
+      });
+    };
+
+    container.addEventListener('mouseup', syncSelectionSoon);
+    container.addEventListener('click', syncSelectionSoon);
+
+    return () => {
+      container.removeEventListener('mouseup', syncSelectionSoon);
+      container.removeEventListener('click', syncSelectionSoon);
+    };
+  }, [containerRef]);
 
   // Mouse-move preview for Fib Extension and Ruler
   useEffect(() => {
@@ -693,12 +795,34 @@ export const useDrawingTools = (
     const interval = setInterval(() => {
 	    if (!managerRef.current) return;
       const id = managerRef.current.getSelectedToolId() ?? null;
-      setSelectedToolId(id);
-      
-      // Persist the last non-null selected ID in a ref so deletion
-      // still works even if the library deselects before the click fires
       if (id) {
+        selectionNullStreakRef.current = 0;
         lastSelectedIdRef.current = id;
+        if (emittedSelectedIdRef.current !== id) {
+          emittedSelectedIdRef.current = id;
+          setSelectedToolId(id);
+        }
+      } else {
+        const tools = managerRef.current?.getAllTools();
+        const hasAnyTools = tools instanceof Map
+          ? tools.size > 0
+          : Array.isArray(tools)
+            ? tools.length > 0
+            : !!tools && Object.keys(tools as any).length > 0;
+
+        if (hasAnyTools) {
+          selectionNullStreakRef.current += 1;
+          if (selectionNullStreakRef.current < 3) {
+            return;
+          }
+        } else {
+          selectionNullStreakRef.current = 0;
+        }
+
+        if (emittedSelectedIdRef.current !== null) {
+          emittedSelectedIdRef.current = null;
+          setSelectedToolId(null);
+        }
       }
 
       // Patch tools to be resilient against @pipsend/charts internal bugs
@@ -743,30 +867,50 @@ export const useDrawingTools = (
              const origApply = tool.applyOptions;
              if (typeof origApply === 'function') {
                 tool.applyOptions = function(options: any) {
+                   const opts = options && typeof options === 'object' ? { ...options } : {};
+                   const incomingColor = (opts.lineColor || opts.color) as string | undefined;
+                   const normalizedIncoming = typeof incomingColor === 'string' ? incomingColor.toLowerCase() : '';
+                   const isSelectionColor = normalizedIncoming ? SELECTION_COLORS.has(normalizedIncoming) : false;
+                   const allowColorMutation = !!(this as any)._allowNextColorMutation;
+
                    if (options && options.selectionColor) {
-                      delete options.selectionColor; // Prevent library override
+                      delete opts.selectionColor; // Prevent library override
                    }
                    // Ensure lines and points both get the color
-                   if (options && options.color && options.lineColor === undefined) {
-                      options.lineColor = options.color;
+                   if (opts && opts.color && opts.lineColor === undefined) {
+                      opts.lineColor = opts.color;
                    }
-                   if (options && options.lineColor && options.color === undefined) {
-                      options.color = options.lineColor;
+                   if (opts && opts.lineColor && opts.color === undefined) {
+                      opts.color = opts.lineColor;
                    }
+
+                   // Prevent selection/highlight colors from mutating the actual drawing color.
+                   if (isSelectionColor && !allowColorMutation) {
+                      delete opts.color;
+                      delete opts.lineColor;
+                   }
+
+                   if (allowColorMutation && incomingColor) {
+                      (this as any)._userLineColor = incomingColor;
+                   } else if (!(this as any)._userLineColor) {
+                      const existing = readToolColor(this);
+                      if (existing) (this as any)._userLineColor = existing;
+                   }
+                   (this as any)._allowNextColorMutation = false;
                    
-                   try { return origApply.call(this, options); } catch (e) {
+                   try { return origApply.call(this, opts); } catch (e) {
                       // fallback manually update properties if it crashes
-                      if (options.color) (this as any)._color = options.color;
-                      if (options.lineColor) (this as any)._lineColor = options.lineColor;
-                      if (options.lineWidth) (this as any)._lineWidth = options.lineWidth;
-                      if (options.lineStyle) (this as any)._lineStyle = options.lineStyle;
+                      if (opts.color) (this as any)._color = opts.color;
+                      if (opts.lineColor) (this as any)._lineColor = opts.lineColor;
+                      if (opts.lineWidth) (this as any)._lineWidth = opts.lineWidth;
+                      if (opts.lineStyle) (this as any)._lineStyle = opts.lineStyle;
                       
                       // Also update any inner options objects
                       if ((this as any).options) {
-                         if (options.color) (this as any).options.color = options.color;
-                         if (options.lineColor) (this as any).options.lineColor = options.lineColor;
-                         if (options.lineWidth) (this as any).options.lineWidth = options.lineWidth;
-                         if (options.lineStyle) (this as any).options.lineStyle = options.lineStyle;
+                         if (opts.color) (this as any).options.color = opts.color;
+                         if (opts.lineColor) (this as any).options.lineColor = opts.lineColor;
+                         if (opts.lineWidth) (this as any).options.lineWidth = opts.lineWidth;
+                         if (opts.lineStyle) (this as any).options.lineStyle = opts.lineStyle;
                       }
                       
                       if (typeof (this as any)._private__requestUpdate === 'function') {
@@ -1067,18 +1211,8 @@ export const useDrawingTools = (
               }
 
               // --- Standard orange override fix ---
-              let realColor = '#2196F3';
-              const allProps = [...Object.keys(this), ...Object.getOwnPropertyNames(this)];
-              for (const k of allProps) {
-                const obj = (this as any)[k];
-                if (typeof obj === 'object' && obj !== null) {
-                  const c = obj.lineColor || obj.color;
-                  if (c && typeof c === 'string' && c.startsWith('#')) {
-                    realColor = c;
-                    break;
-                  }
-                }
-              }
+              const stableColor = (this as any)._userLineColor || readToolColor(this);
+              let realColor = stableColor || '#2196F3';
 
               const proxyCtx = new Proxy(ctx, {
                 set(target, prop, value) {
@@ -1100,7 +1234,7 @@ export const useDrawingTools = (
           }
         });
       }
-    }, 200);
+    }, 80);
     return () => clearInterval(interval);
   }, [chart, series]);
 

@@ -169,17 +169,17 @@ const NewsPanelItem = ({ item, isNew, qInputs, setQInputs, loadingQAs, handleAsk
                                 type="text" 
                                 placeholder="Ask about impact..." 
                                 className="w-full bg-black/40 border border-white/10 rounded-xl py-2 px-3 pr-10 text-[10px] text-white placeholder:text-gray-600 focus:outline-none focus:border-primary transition-all"
-                                value={qInputs[item.id] || ''}
-                                onChange={e => setQInputs((prev: any) => ({ ...prev, [item.id]: e.target.value }))}
+                                value={qInputs[String(item.id)] || ''}
+                                onChange={e => setQInputs((prev: any) => ({ ...prev, [String(item.id)]: e.target.value }))}
                                 onKeyDown={e => { if(e.key === 'Enter') handleAsk(item.id); }}
-                                disabled={loadingQAs[item.id]}
+                                disabled={loadingQAs[String(item.id)]}
                             />
                             <button 
                                 onClick={() => handleAsk(item.id)}
-                                disabled={loadingQAs[item.id] || !qInputs[item.id]?.trim()}
+                                disabled={loadingQAs[String(item.id)] || !qInputs[String(item.id)]?.trim()}
                                 className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-primary text-black rounded-lg hover:scale-105 active:scale-95 disabled:opacity-50 transition-all shadow-lg shadow-primary/20"
                             >
-                                {loadingQAs[item.id] ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                                {loadingQAs[String(item.id)] ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
                             </button>
                         </div>
                     </div>
@@ -191,16 +191,17 @@ const NewsPanelItem = ({ item, isNew, qInputs, setQInputs, loadingQAs, handleAsk
 
 const NewsPanel = () => {
     const { newsItems, askNewsQuestion } = useGame();
-    const [qInputs, setQInputs] = useState<Record<number, string>>({});
-    const [loadingQAs, setLoadingQAs] = useState<Record<number, boolean>>({});
+    const [qInputs, setQInputs] = useState<Record<string, string>>({});
+    const [loadingQAs, setLoadingQAs] = useState<Record<string, boolean>>({});
 
-    const handleAsk = (newsId: number) => {
-        const q = qInputs[newsId];
+    const handleAsk = (newsId: string | number) => {
+        const key = String(newsId);
+        const q = qInputs[key];
         if (!q || q.trim() === '') return;
         
-        setLoadingQAs(prev => ({ ...prev, [newsId]: true }));
+        setLoadingQAs(prev => ({ ...prev, [key]: true }));
         askNewsQuestion(newsId, q);
-        setQInputs(prev => ({ ...prev, [newsId]: '' }));
+        setQInputs(prev => ({ ...prev, [key]: '' }));
     };
 
     // Remove loading state when qa_history changes
@@ -208,8 +209,9 @@ const NewsPanel = () => {
         const newLoadings = { ...loadingQAs };
         let changed = false;
         newsItems.forEach(item => {
-            if (newLoadings[item.id] && item.qa_history && item.qa_history.length > 0) {
-                newLoadings[item.id] = false;
+            const key = String(item.id);
+            if (newLoadings[key] && item.qa_history && item.qa_history.length > 0) {
+                newLoadings[key] = false;
                 changed = true;
             }
         });

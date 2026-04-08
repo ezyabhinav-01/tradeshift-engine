@@ -10,6 +10,7 @@ import ssl
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.pool import NullPool
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -24,6 +25,23 @@ _db_cache = {
 }
 
 Base = declarative_base()
+
+
+def _env_int(name: str, default: int) -> int:
+    val = os.getenv(name)
+    if val is None:
+        return default
+    try:
+        return int(val)
+    except Exception:
+        return default
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    val = os.getenv(name)
+    if val is None:
+        return default
+    return str(val).strip().lower() in ("1", "true", "yes", "on")
 
 def get_database_url():
     # Default to localhost for local dev, 'db' for docker
@@ -74,9 +92,10 @@ async def connect_to_database():
         
         # Determine if SSL is needed (skip for local Docker/localhost)
         is_local = "localhost" in db_url or "@db:" in db_url or "127.0.0.1" in db_url
+        is_supabase = "supabase.com" in db_url or "supabase.co" in db_url
         
         connect_args = {}
-        if not is_local or "supabase.com" in db_url or "supabase.co" in db_url:
+        if not is_local or is_supabase:
             ssl_ctx = ssl.create_default_context()
             ssl_ctx.check_hostname = False
             ssl_ctx.verify_mode = ssl.CERT_NONE
@@ -86,13 +105,29 @@ async def connect_to_database():
         # asyncpg must have statement cache disabled in transaction mode.
         connect_args["statement_cache_size"] = 0
         
-        engine = create_async_engine(
-            db_url, 
-            pool_pre_ping=True,
-            pool_size=20,
-            max_overflow=10,
-            connect_args=connect_args
-        )
+        # Conservative defaults for managed poolers (e.g. Supabase free/pro pooler).
+        pool_size = _env_int("DB_POOL_SIZE", 3 if is_supabase else 10)
+        max_overflow = _env_int("DB_MAX_OVERFLOW", 2 if is_supabase else 10)
+        pool_timeout = _env_int("DB_POOL_TIMEOUT", 30)
+        pool_recycle = _env_int("DB_POOL_RECYCLE", 1800)
+        use_null_pool = _env_bool("DB_USE_NULL_POOL", default=is_supabase)
+
+        engine_kwargs = {
+            "pool_pre_ping": True,
+            "connect_args": connect_args,
+        }
+        if use_null_pool:
+            engine_kwargs["poolclass"] = NullPool
+            logger.info("🛟 Async DB using NullPool (delegating pooling to provider).")
+        else:
+            engine_kwargs.update({
+                "pool_size": max(1, pool_size),
+                "max_overflow": max(0, max_overflow),
+                "pool_timeout": max(5, pool_timeout),
+                "pool_recycle": max(300, pool_recycle),
+            })
+
+        engine = create_async_engine(db_url, **engine_kwargs)
         
         # Test Connection
         async with engine.connect() as connection:
@@ -155,12 +190,34 @@ def connect_to_database_sync():
     
     # Determine if SSL is needed
     is_local = "localhost" in url or "@db:" in url or "127.0.0.1" in url
+    is_supabase = "supabase.com" in url or "supabase.co" in url
     connect_args = {}
-    if not is_local or "supabase.com" in url or "supabase.co" in url:
+    if not is_local or is_supabase:
         # Explicitly require SSL for psycopg2 connections to remote like Supabase
         connect_args["sslmode"] = "require"
-        
-    engine = create_engine(url, pool_pre_ping=True, connect_args=connect_args)
+
+    pool_size = _env_int("DB_POOL_SIZE_SYNC", 2 if is_supabase else 5)
+    max_overflow = _env_int("DB_MAX_OVERFLOW_SYNC", 1 if is_supabase else 5)
+    pool_timeout = _env_int("DB_POOL_TIMEOUT_SYNC", 30)
+    pool_recycle = _env_int("DB_POOL_RECYCLE_SYNC", 1800)
+    use_null_pool = _env_bool("DB_USE_NULL_POOL_SYNC", default=is_supabase)
+
+    engine_kwargs = {
+        "pool_pre_ping": True,
+        "connect_args": connect_args
+    }
+    if use_null_pool:
+        engine_kwargs["poolclass"] = NullPool
+        logger.info("🛟 Sync DB using NullPool (delegating pooling to provider).")
+    else:
+        engine_kwargs.update({
+            "pool_size": max(1, pool_size),
+            "max_overflow": max(0, max_overflow),
+            "pool_timeout": max(5, pool_timeout),
+            "pool_recycle": max(300, pool_recycle),
+        })
+
+    engine = create_engine(url, **engine_kwargs)
     _db_cache["engine_sync"] = engine
     _db_cache["session_maker_sync"] = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     return engine

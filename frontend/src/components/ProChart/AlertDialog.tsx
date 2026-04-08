@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Info, ChevronDown } from 'lucide-react';
 import { useAlerts } from '../../store/useAlerts';
 import type { AlertCondition, AlertTrigger } from '../../store/useAlerts';
@@ -23,6 +23,13 @@ export const AlertDialog: React.FC<AlertDialogProps> = ({
   const [message, setMessage] = useState(`${symbol} Crossing ${value.toFixed(2)}`);
   
   const { addAlert } = useAlerts();
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const rounded = Math.round(currentPrice * 100) / 100;
+    setValue(rounded);
+    setMessage(`${symbol} ${condition.replace('_', ' ')} ${rounded.toFixed(2)}`);
+  }, [isOpen, symbol, currentPrice, condition]);
 
   if (!isOpen) return null;
 

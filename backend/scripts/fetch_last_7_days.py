@@ -10,6 +10,7 @@ Robust 7-day rolling market data pipeline (Deployment Ready).
 import sys
 import os
 import glob
+import asyncio
 import pandas as pd
 import yfinance as yf
 import pyotp
@@ -23,6 +24,7 @@ from dotenv import load_dotenv
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.database import connect_to_database_sync, get_db_sync
 from app.models import MarketCandle, Notification
+from app.market_clock_news import ingest_news_snapshot_for_date, prune_news_parallel_with_market_window_sync
 from NorenRestApiPy.NorenApi import NorenApi
 
 # Logging setup
@@ -275,6 +277,25 @@ def fetch_rolling_7days(days=1):
 
     # Final Prune and Alert
     prune_old_data(data_dir)
+    try:
+        news_snapshot = asyncio.run(ingest_news_snapshot_for_date(date.today()))
+        logger.info(
+            f"📰 Market Clock News Snapshot: raw={news_snapshot.get('raw', 0)}, "
+            f"canonical={news_snapshot.get('canonical_upserts', 0)}, "
+            f"events={news_snapshot.get('events', 0)}"
+        )
+    except Exception as e:
+        logger.error(f"⚠️ News snapshot pipeline failed: {e}")
+
+    try:
+        news_prune = prune_news_parallel_with_market_window_sync(keep_trading_days=7)
+        logger.info(
+            f"🧹 Market Clock News Prune: events_deleted={news_prune.get('events_deleted', 0)}, "
+            f"canonical_deleted={news_prune.get('canonical_deleted', 0)}"
+        )
+    except Exception as e:
+        logger.error(f"⚠️ News retention prune failed: {e}")
+
     alert_msg = "\n".join(summary[:20]) + ("\n..." if len(summary) > 20 else "")
     create_admin_alert(f"Optimized Sync Results:\n{alert_msg}")
     logger.info("🏁 Pipeline complete.")

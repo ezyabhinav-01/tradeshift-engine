@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, Text, JSON, ForeignKeyConstraint
+from sqlalchemy import Column, Integer, String, Float, DateTime, Date, Boolean, ForeignKey, Text, JSON, ForeignKeyConstraint, UniqueConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.database import Base  # Import Base from database.py
@@ -572,3 +572,60 @@ class SystemAlertLog(Base):
     alert_type = Column(String)  # PRICE_UP, PRICE_DOWN, CROSS_OVER
     message = Column(String)
     trigger_price = Column(Float)
+
+
+class NewsCanonical(Base):
+    """
+    Canonical normalized news record stored per trading day (IST).
+    This is immutable enough for deterministic replay schedules.
+    """
+    __tablename__ = "news_canonical"
+    __table_args__ = (
+        UniqueConstraint("source_url_hash", name="uq_news_canonical_source_url_hash"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    source = Column(String(120), nullable=False, index=True)
+    source_url = Column(Text, nullable=False)
+    source_url_hash = Column(String(64), nullable=False, index=True)
+    title = Column(Text, nullable=False)
+    description = Column(Text, nullable=True)
+    category = Column(String(30), nullable=True, index=True)
+    image_url = Column(Text, nullable=True)
+    reliability_score = Column(Float, default=0.5)
+
+    published_at_utc = Column(DateTime, nullable=False, index=True)
+    published_at_ist = Column(DateTime, nullable=False, index=True)
+    trading_date_ist = Column(Date, nullable=False, index=True)
+    session_second = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class ReplayNewsEvent(Base):
+    """
+    Replay-ready deterministic event schedule (publish + delay) per trading day.
+    """
+    __tablename__ = "replay_news_events"
+    __table_args__ = (
+        UniqueConstraint("event_key", name="uq_replay_news_events_event_key"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    event_key = Column(String(128), nullable=False, index=True)
+    trading_date_ist = Column(Date, nullable=False, index=True)
+    symbol_scope = Column(String(60), nullable=False, default="ALL", index=True)
+    source = Column(String(120), nullable=False)
+    title = Column(Text, nullable=False)
+    description = Column(Text, nullable=True)
+    source_url = Column(Text, nullable=True)
+    image_url = Column(Text, nullable=True)
+    category = Column(String(30), nullable=True, index=True)
+
+    publish_time_ist = Column(DateTime, nullable=False, index=True)
+    flash_time_ist = Column(DateTime, nullable=False, index=True)
+    delay_seconds = Column(Integer, nullable=False, default=2700)
+    event_priority = Column(Integer, default=0)
+    source_reliability = Column(Float, default=0.5)
+    replay_policy = Column(String(30), default="STRICT_SESSION")
+
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)

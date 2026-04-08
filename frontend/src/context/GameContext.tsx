@@ -9,7 +9,7 @@ import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
 
 export interface NewsItem {
-  id: number;
+  id: string | number;
   symbol: string;
   title: string;
   description: string;
@@ -94,7 +94,7 @@ interface GameState {
   modifyOrder: (orderId: number | string, updates: any) => Promise<void>;
   resetSimulation: () => void;
   clearHistoryForReplay: () => void;
-  askNewsQuestion: (newsId: number, question: string) => void;
+  askNewsQuestion: (newsId: string | number, question: string) => void;
 }
 
 export const GameContext = createContext<GameState | null>(null);
@@ -645,7 +645,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
     setCurrentCandle(null);
   };
 
-  const askNewsQuestion = (newsId: number, question: string) => {
+  const askNewsQuestion = (newsId: string | number, question: string) => {
     marketDataService.sendMessage({
       command: 'NEWS_QUESTION',
       news_id: newsId,

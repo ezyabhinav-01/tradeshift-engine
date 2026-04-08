@@ -173,6 +173,12 @@ export const DrawingPropertiesPanel: React.FC<DrawingPropertiesPanelProps> = ({
       const tool = tools instanceof Map ? tools.get(selectedToolId) : tools.find?.((t: any) => t.id === selectedToolId);
       
       if (tool) {
+        const isColorMutation = key === 'color' || key === 'lineColor';
+        if (isColorMutation) {
+          (tool as any)._allowNextColorMutation = true;
+          (tool as any)._userLineColor = value;
+        }
+
         // 1. Manually update all objects on the tool that look like options (robust for mangled code)
         Object.keys(tool).forEach(k => {
           const obj = (tool as any)[k];

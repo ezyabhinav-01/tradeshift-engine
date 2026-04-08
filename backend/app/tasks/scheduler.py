@@ -1,4 +1,5 @@
 import logging
+import os
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
 from app.database import get_session
@@ -46,13 +47,18 @@ def setup_scheduler():
     """
     Initialize the scheduler and add the 6-hour sync job.
     """
+    if os.getenv("RUN_ASYNC_SCHEDULER", "true").lower() not in ("1", "true", "yes", "on"):
+        logger.info("⏸️ Async scheduler disabled via RUN_ASYNC_SCHEDULER=false")
+        return None
+
     scheduler = AsyncIOScheduler()
     
     # Add the sync job - run every 6 hours
     scheduler.add_job(sync_chatbot_navigation, 'interval', hours=6, id='chatbot_nav_sync')
     
-    # Also run once on startup
-    scheduler.add_job(sync_chatbot_navigation, 'date', id='startup_sync')
+    # Optional startup sync (disabled by default to reduce startup DB pressure)
+    if os.getenv("RUN_ASYNC_STARTUP_SYNC", "false").lower() in ("1", "true", "yes", "on"):
+        scheduler.add_job(sync_chatbot_navigation, 'date', id='startup_sync')
     
     scheduler.start()
     logger.info("🛠️ APScheduler initialized with 6-hour Chatbot Sync job.")

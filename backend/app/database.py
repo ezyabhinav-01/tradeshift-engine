@@ -7,6 +7,7 @@ load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
 import time
 import asyncio
 import ssl
+from urllib.parse import urlparse
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, declarative_base
@@ -49,6 +50,15 @@ def get_database_url():
     default_url = "postgresql+asyncpg://user:password@localhost:5432/tradeshift_db" 
     url = os.getenv("DATABASE_URL", default_url)
     return url
+
+def is_local_database_url(url: str | None = None) -> bool:
+    """
+    Treat Docker service names and localhost-style hosts as local databases.
+    Remote managed databases should not block app boot on eager schema sync.
+    """
+    parsed = urlparse(url or get_database_url())
+    host = (parsed.hostname or "").lower()
+    return host in {"localhost", "127.0.0.1", "db"}
 
 def get_database_url_async():
     url = get_database_url()
@@ -100,6 +110,7 @@ async def connect_to_database():
             ssl_ctx.check_hostname = False
             ssl_ctx.verify_mode = ssl.CERT_NONE
             connect_args["ssl"] = ssl_ctx
+            connect_args["timeout"] = _env_int("DB_CONNECT_TIMEOUT", 5)
             
         # 🔥 Mandatory fix for Supabase Transaction Pooler (PgBouncer)
         # asyncpg must have statement cache disabled in transaction mode.
@@ -167,6 +178,26 @@ async def get_db():
         finally:
             await session.close()
 
+async def get_optional_db():
+    """
+    Best-effort DB dependency for features that can serve mock or degraded data.
+    """
+    try:
+        if not _db_cache["session_maker"]:
+            timeout = max(1, _env_int("DB_OPTIONAL_TIMEOUT", 2))
+            await asyncio.wait_for(connect_to_database(), timeout=timeout)
+    except Exception as e:
+        logger.warning(f"⚠️ Optional DB unavailable, serving degraded response: {e}")
+        yield None
+        return
+
+    async_session = _db_cache["session_maker"]
+    async with async_session() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
+
 def connect_to_database_sync():
     """
     Singleton pattern for sync engine.
@@ -195,6 +226,7 @@ def connect_to_database_sync():
     if not is_local or is_supabase:
         # Explicitly require SSL for psycopg2 connections to remote like Supabase
         connect_args["sslmode"] = "require"
+        connect_args["connect_timeout"] = _env_int("DB_CONNECT_TIMEOUT_SYNC", 5)
 
     pool_size = _env_int("DB_POOL_SIZE_SYNC", 2 if is_supabase else 5)
     max_overflow = _env_int("DB_MAX_OVERFLOW_SYNC", 1 if is_supabase else 5)

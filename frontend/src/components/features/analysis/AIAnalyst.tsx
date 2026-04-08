@@ -23,21 +23,57 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
   const [laymanExplanation, setLaymanExplanation] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(true);
   const [isSimplifying, setIsSimplifying] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [analysisUpdatedAt, setAnalysisUpdatedAt] = useState<string | null>(null);
   const [chatInput, setChatInput] = useState("");
   const [chatHistory, setChatHistory] = useState<{role: 'user' | 'assistant', content: string}[]>([]);
   const [isSending, setIsSending] = useState(false);
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
 
+  const postWithTimeout = (url: string, body?: any, timeoutMs = 45000) => {
+    return Promise.race([
+      axios.post(url, body),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Request timeout. Please retry.")), timeoutMs)),
+    ]) as Promise<any>;
+  };
+
   const performAnalysis = async () => {
+    if (!symbol) {
+      setIsAnalyzing(false);
+      setAnalysisError("Symbol not available for analysis.");
+      return;
+    }
     setIsAnalyzing(true);
     setAnalysis(null);
+    setAnalysisError(null);
     try {
-      const response = await axios.post(`/api/stock/${symbol}/analyze`);
+      let response: any = null;
+      let lastErr: any = null;
+
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          response = await postWithTimeout(`/api/stock/${symbol}/analyze`);
+          break;
+        } catch (err) {
+          lastErr = err;
+          if (attempt < 3) {
+            await new Promise((r) => setTimeout(r, attempt * 1200));
+          }
+        }
+      }
+
+      if (!response?.data?.analysis) {
+        throw lastErr || new Error("No analysis returned from server.");
+      }
+
       setAnalysis(response.data.analysis);
+      setAnalysisUpdatedAt(new Date().toISOString());
       setLaymanExplanation(null); // Reset explanation when new analysis comes
       setChatHistory([]); // Reset chat when new analysis is generated
     } catch (error) {
       console.error("AI Analysis failed:", error);
+      const errMsg = (error as any)?.message || "AI thesis request failed. Please retry.";
+      setAnalysisError(errMsg);
     } finally {
       setIsAnalyzing(false);
     }
@@ -98,9 +134,20 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbol]);
 
+  // Keep thesis reasonably fresh while user is on page.
+  React.useEffect(() => {
+    const interval = setInterval(() => {
+      if (!isAnalyzing && !isSending) {
+        performAnalysis();
+      }
+    }, 180000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbol, isAnalyzing, isSending]);
+
   if (!analysis && !isAnalyzing) {
     return (
-      <div className="flex flex-col items-center justify-center p-12 bg-white dark:bg-[#0a0a0a] border border-gray-200 dark:border-white/5 border-dashed rounded-3xl space-y-4 text-center h-[600px] shadow-sm dark:shadow-none">
+      <div className="flex flex-col items-center justify-center p-10 bg-white dark:bg-[#0a0a0a] border border-gray-200 dark:border-white/5 border-dashed rounded-3xl space-y-4 text-center min-h-[420px] shadow-sm dark:shadow-none">
         <div className="p-4 bg-primary/10 rounded-full">
           <BrainCircuit className="w-10 h-10 text-primary" />
         </div>
@@ -109,6 +156,11 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
           <p className="text-gray-500 text-sm max-w-xs">
             Ask FinGPT to scan all fundamentals to generate a high-conviction investment thesis.
           </p>
+          {analysisError && (
+            <p className="text-red-500 text-xs max-w-sm bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg">
+              {analysisError}
+            </p>
+          )}
         </div>
         <button 
           onClick={performAnalysis}
@@ -125,7 +177,7 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
   const isLoading = isAnalyzing || (isLaymanMode && isSimplifying);
 
   return (
-    <div className="bg-white dark:bg-[#0a0a0a] border border-gray-200 dark:border-white/5 shadow-sm dark:shadow-none rounded-3xl overflow-hidden flex flex-col h-[600px]">
+    <div className="bg-white dark:bg-[#0a0a0a] border border-gray-200 dark:border-white/5 shadow-sm dark:shadow-none rounded-3xl overflow-hidden flex flex-col min-h-[420px] max-h-[78vh]">
       <div className="p-5 border-b border-gray-200 dark:border-white/5 flex justify-between items-center bg-gray-50 dark:bg-white/[0.02]">
         <div className="flex items-center gap-2">
           {isLaymanMode ? (
@@ -137,13 +189,20 @@ const AIAnalyst: React.FC<AIAnalystProps> = ({ symbol, isLaymanMode }) => {
             {isLaymanMode ? "AI ANALYST (LAYMAN)" : "INSTITUTIONAL GRADE THESIS"}
           </span>
         </div>
-        <button 
-          onClick={performAnalysis}
-          className="p-2 hover:bg-gray-200 dark:hover:bg-white/5 rounded-lg text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors"
-          title="Regenerate Analysis"
-        >
-          <RotateCcw className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          {analysisUpdatedAt && (
+            <span className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">
+              Updated {new Date(analysisUpdatedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
+          <button 
+            onClick={performAnalysis}
+            className="p-2 hover:bg-gray-200 dark:hover:bg-white/5 rounded-lg text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors"
+            title="Regenerate Analysis"
+          >
+            <RotateCcw className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 p-6 overflow-y-auto space-y-6">

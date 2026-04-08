@@ -156,6 +156,8 @@ services:
       context: ./backend
       dockerfile: chatbot/Dockerfile
     container_name: tradeshift_chatbot
+    env_file:
+      - ./backend/.env
     volumes:
       - ./backend/chatbot:/app
       - ./backend/app:/app/app
@@ -163,7 +165,6 @@ services:
     ports:
       - "8001:8001"
     environment:
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
       - CHATBOT_API_KEY=tradeshift-local-key
     restart: always
 

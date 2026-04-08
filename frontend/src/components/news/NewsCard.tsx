@@ -68,6 +68,12 @@ export const NewsCard: React.FC<NewsCardProps> = ({ news, onExplain, explaining 
   };
 
   const sentiment = getSentimentDetails(news.sentiment);
+  const trustLevel = (news.sourceTrust || 'medium').toLowerCase() === 'high' ? 'high' : 'medium';
+  const trustClass =
+    trustLevel === 'high'
+      ? 'text-emerald-500 bg-emerald-500/15 border-emerald-500/30'
+      : 'text-amber-500 bg-amber-500/15 border-amber-500/30';
+  const trustLabel = trustLevel === 'high' ? 'Source: High' : 'Source: Medium';
 
   const handleImageError = () => {
     if (errorStage === 0) {
@@ -98,6 +104,9 @@ export const NewsCard: React.FC<NewsCardProps> = ({ news, onExplain, explaining 
           <img
             src={imgSrc}
             alt={news.title}
+            loading="lazy"
+            decoding="async"
+            referrerPolicy="no-referrer"
             onLoad={() => setIsLoading(false)}
             onError={handleImageError}
             className={`w-full h-full object-cover grayscale-[0.2] transition-all duration-[1.5s] group-hover:grayscale-0 relative z-10 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
@@ -106,12 +115,17 @@ export const NewsCard: React.FC<NewsCardProps> = ({ news, onExplain, explaining 
 
         {/* Floating Metadata Glassy Chips */}
         <div className="magazine-metadata-bar">
-          <span className="px-2.5 py-1 text-[9px] font-black uppercase tracking-widest bg-slate-100/90 dark:bg-black/40 backdrop-blur-md text-slate-800 dark:text-white/80 border border-slate-200 dark:border-white/10 rounded-md shadow-sm">
-            {news.source}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="px-2.5 py-1 text-[9px] font-black uppercase tracking-widest bg-slate-100/90 dark:bg-black/40 backdrop-blur-md text-slate-800 dark:text-white/80 border border-slate-200 dark:border-white/10 rounded-md shadow-sm">
+              {news.source}
+            </span>
+            <span className={`px-2.5 py-1 rounded-md border text-[9px] font-black uppercase tracking-widest backdrop-blur-md ${trustClass}`}>
+              {trustLabel}
+            </span>
+          </div>
           <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[9px] font-black uppercase tracking-widest backdrop-blur-md ${sentiment.color}`}>
             {sentiment.icon}
-            {sentiment.label}
+            <span>{sentiment.label}</span>
           </div>
         </div>
       </div>
@@ -124,7 +138,7 @@ export const NewsCard: React.FC<NewsCardProps> = ({ news, onExplain, explaining 
 
         {/* 3. Narrative Hover Reveal (Insight line) */}
         <p className="narrative-insight italic line-clamp-1 text-slate-600 dark:text-slate-400 group-hover:text-emerald-500 dark:group-hover:text-slate-100">
-          "{news.description.substring(0, 100)}..."
+          "{(news.description || '').substring(0, 100)}..."
         </p>
 
         <div className="mt-auto flex items-center justify-between pt-5 border-t border-slate-100 dark:border-white/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500">

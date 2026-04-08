@@ -26,6 +26,43 @@ const ResearchHub: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isLaymanMode, setIsLaymanMode] = useState(false);
   const [news, setNews] = useState<NewsItem[]>([]);
+  const f = profile?.fundamentals || {};
+
+  const formatNumber = (value: any, digits = 2) => {
+    if (value === null || value === undefined || Number.isNaN(Number(value))) return 'N/A';
+    return Number(value).toLocaleString(undefined, { maximumFractionDigits: digits });
+  };
+
+  const formatPercent = (value: any, digits = 2) => {
+    if (value === null || value === undefined || Number.isNaN(Number(value))) return 'N/A';
+    return `${Number(value).toFixed(digits)}%`;
+  };
+
+  const formatAsOf = (value: string | undefined) => {
+    if (!value) return 'N/A';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return 'N/A';
+    return d.toLocaleString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const metricStatusClass = (field: string) => {
+    const missing = profile?.quality?.missing_fields || [];
+    if (missing.includes(field)) {
+      return 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20';
+    }
+    return 'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20';
+  };
+
+  const metricStatusText = (field: string) => {
+    const missing = profile?.quality?.missing_fields || [];
+    return missing.includes(field) ? 'Missing' : 'Live';
+  };
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -69,9 +106,9 @@ const ResearchHub: React.FC = () => {
       <div className="absolute top-0 inset-x-0 h-[500px] w-full bg-gradient-to-b from-primary/10 via-blue-500/5 to-transparent pointer-events-none"></div>
       <div className="absolute -top-[300px] -right-[200px] w-[600px] h-[600px] bg-primary/20 rounded-full blur-[120px] pointer-events-none opacity-50 dark:opacity-100"></div>
       
-      <div className="relative z-10 p-6 space-y-8 mt-4">
+      <div className="relative z-10 max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         {/* Header Section */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-white dark:bg-white/[0.02] p-8 rounded-xl border border-gray-200 dark:border-white/10 shadow-sm dark:shadow-[0_20px_40px_-20px_rgba(0,0,0,0.5)] backdrop-blur-md">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-5 bg-white dark:bg-white/[0.02] p-6 rounded-2xl border border-gray-200 dark:border-white/10 shadow-sm dark:shadow-[0_20px_40px_-20px_rgba(0,0,0,0.5)] backdrop-blur-md">
           <div className="space-y-2">
           <div className="flex items-center gap-3">
             <h1 className="text-4xl font-bold tracking-tight text-gray-900 dark:text-white">{symbol}</h1>
@@ -98,21 +135,45 @@ const ResearchHub: React.FC = () => {
 
       {/* Company Overview & Metrics (Screener.in style) */}
       {profile?.fundamentals && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 w-full mt-4">
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 w-full items-start">
           
           {/* 3x3 Metrics Card */}
-          <div className="lg:col-span-2 bg-white dark:bg-[#0a0a0a] border border-tv-border dark:border-white/5 shadow-xl dark:shadow-2xl rounded-3xl p-8 relative overflow-hidden">
+          <div className="xl:col-span-8 self-start bg-white dark:bg-[#0a0a0a] border border-tv-border dark:border-white/5 shadow-xl dark:shadow-2xl rounded-3xl p-6 relative overflow-hidden">
              
              {/* Title & Actions */}
              <div className="flex justify-between flex-wrap gap-4 items-center border-b border-tv-border dark:border-white/5 pb-6 mb-6">
                 <div>
                    <h2 className="text-2xl font-black tracking-tight text-tv-text-primary dark:text-white flex items-center gap-3">
-                     {profile.fundamentals.current_price ? `₹${profile.fundamentals.current_price.toLocaleString()}` : ''}
-                     <span className="text-sm font-medium px-2 py-0.5 rounded-md bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20">
-                       -1.2%
-                     </span>
+                     {f.current_price ? `₹${formatNumber(f.current_price)}` : 'N/A'}
+                     {f.daily_change_percent !== null && f.daily_change_percent !== undefined && (
+                       <span className={`text-sm font-medium px-2 py-0.5 rounded-md border ${
+                         Number(f.daily_change_percent) >= 0
+                           ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20'
+                           : 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20'
+                       }`}>
+                         {formatPercent(f.daily_change_percent, 2)}
+                       </span>
+                     )}
                    </h2>
-                   <p className="text-xs text-tv-text-secondary dark:text-gray-500 mt-1 uppercase tracking-wider font-bold">NSE: {symbol} · BSE: 500{symbol?.length || '000'}</p>
+                   <p className="text-xs text-tv-text-secondary dark:text-gray-500 mt-1 uppercase tracking-wider font-bold">
+                     NSE: {symbol}
+                     {profile?.meta?.bse_code ? ` · BSE: ${profile.meta.bse_code}` : ''}
+                   </p>
+                   <div className="flex flex-wrap items-center gap-2 mt-3">
+                     <span className="text-[10px] px-2 py-1 rounded-md border border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-300 uppercase tracking-wider font-bold">
+                       Source: {profile?.meta?.source || 'N/A'}
+                     </span>
+                     <span className="text-[10px] px-2 py-1 rounded-md border border-gray-500/20 bg-gray-500/10 text-gray-700 dark:text-gray-300 uppercase tracking-wider font-bold">
+                       As Of: {formatAsOf(profile?.meta?.fetched_at || profile?.quality?.last_db_update)}
+                     </span>
+                     <span className={`text-[10px] px-2 py-1 rounded-md border uppercase tracking-wider font-bold ${
+                       profile?.quality?.status === 'ok'
+                         ? 'border-green-500/20 bg-green-500/10 text-green-700 dark:text-green-300'
+                         : 'border-yellow-500/20 bg-yellow-500/10 text-yellow-700 dark:text-yellow-300'
+                     }`}>
+                       Quality: {profile?.quality?.grade || 'N/A'} ({profile?.quality?.status || 'unknown'})
+                     </span>
+                   </div>
                 </div>
                 <div className="flex items-center gap-3">
                    <button className="px-4 py-2 bg-tv-bg-pane dark:bg-white/5 hover:bg-tv-border dark:hover:bg-white/10 text-tv-text-primary dark:text-white text-xs font-bold rounded-lg border border-tv-border dark:border-white/10 transition-colors uppercase tracking-wider">
@@ -127,80 +188,98 @@ const ResearchHub: React.FC = () => {
              {/* 3 columns grid */}
              <div className="grid grid-cols-2 md:grid-cols-3 gap-y-8 gap-x-4">
                 <div className="flex justify-between items-center md:items-start md:flex-col md:gap-2 border-b border-tv-border dark:border-white/5 pb-3 md:border-none md:pb-0">
-                  <span className="text-tv-text-secondary dark:text-gray-500 text-xs uppercase font-bold tracking-wider">Market Cap</span>
-                  <span className="text-tv-text-primary dark:text-white font-black text-xl">₹{profile.fundamentals.market_cap?.toLocaleString()} <span className="text-xs text-tv-text-secondary dark:text-gray-500 font-bold uppercase">Cr.</span></span>
+                  <span className="text-tv-text-secondary dark:text-gray-500 text-xs uppercase font-bold tracking-wider flex items-center gap-2">
+                    Market Cap
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded border ${metricStatusClass('market_cap')}`}>{metricStatusText('market_cap')}</span>
+                  </span>
+                  <span className="text-tv-text-primary dark:text-white font-black text-xl">
+                    {f.market_cap !== null && f.market_cap !== undefined ? `₹${formatNumber(f.market_cap)}` : 'N/A'} <span className="text-xs text-tv-text-secondary dark:text-gray-500 font-bold uppercase">Cr.</span>
+                  </span>
                 </div>
                 
                 <div className="flex justify-between items-center md:items-start md:flex-col md:gap-2 border-b border-tv-border dark:border-white/5 pb-3 md:border-none md:pb-0">
                   <span className="text-tv-text-secondary dark:text-gray-500 text-xs uppercase font-bold tracking-wider">Current Price</span>
-                  <span className="text-tv-text-primary dark:text-white font-black text-xl">₹{profile.fundamentals.current_price || 'N/A'}</span>
+                  <span className="text-tv-text-primary dark:text-white font-black text-xl">{f.current_price ? `₹${formatNumber(f.current_price)}` : 'N/A'}</span>
                 </div>
 
                 <div className="flex justify-between items-center md:items-start md:flex-col md:gap-2 border-b border-tv-border dark:border-white/5 pb-3 md:border-none md:pb-0">
                   <span className="text-tv-text-secondary dark:text-gray-500 text-xs uppercase font-bold tracking-wider">High / Low</span>
-                  <span className="text-tv-text-primary dark:text-white font-black text-xl">₹{profile.fundamentals.high_52w || 'N/A'} <span className="text-gray-600 dark:text-gray-500 font-normal">/</span> {profile.fundamentals.low_52w || 'N/A'}</span>
+                  <span className="text-tv-text-primary dark:text-white font-black text-xl">
+                    {f.high_52w ? `₹${formatNumber(f.high_52w)}` : 'N/A'} <span className="text-gray-600 dark:text-gray-500 font-normal">/</span> {f.low_52w ? `₹${formatNumber(f.low_52w)}` : 'N/A'}
+                  </span>
                 </div>
 
                 <div className="flex justify-between items-center md:items-start md:flex-col md:gap-2 border-b border-tv-border dark:border-white/5 pb-3 md:border-none md:pb-0">
-                  <span className="text-tv-text-secondary dark:text-gray-500 text-xs uppercase font-bold tracking-wider">Stock P/E</span>
-                  <span className="text-tv-text-primary dark:text-white font-black text-xl">{profile.fundamentals.pe_ratio}</span>
+                  <span className="text-tv-text-secondary dark:text-gray-500 text-xs uppercase font-bold tracking-wider flex items-center gap-2">
+                    Stock P/E
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded border ${metricStatusClass('pe_ratio')}`}>{metricStatusText('pe_ratio')}</span>
+                  </span>
+                  <span className="text-tv-text-primary dark:text-white font-black text-xl">{formatNumber(f.pe_ratio)}</span>
                 </div>
 
                 <div className="flex justify-between items-center md:items-start md:flex-col md:gap-2 border-b border-tv-border dark:border-white/5 pb-3 md:border-none md:pb-0">
                   <span className="text-tv-text-secondary dark:text-gray-500 text-xs uppercase font-bold tracking-wider">Book Value</span>
-                  <span className="text-tv-text-primary dark:text-white font-black text-xl">₹{profile.fundamentals.book_value || 'N/A'}</span>
+                  <span className="text-tv-text-primary dark:text-white font-black text-xl">{f.book_value ? `₹${formatNumber(f.book_value)}` : 'N/A'}</span>
                 </div>
 
                 <div className="flex justify-between items-center md:items-start md:flex-col md:gap-2 border-b border-tv-border dark:border-white/5 pb-3 md:border-none md:pb-0">
-                  <span className="text-tv-text-secondary dark:text-gray-500 text-xs uppercase font-bold tracking-wider">Dividend Yield</span>
-                  <span className="text-tv-text-primary dark:text-white font-black text-xl">{profile.fundamentals.dividend_yield}%</span>
+                  <span className="text-tv-text-secondary dark:text-gray-500 text-xs uppercase font-bold tracking-wider flex items-center gap-2">
+                    Dividend Yield
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded border ${metricStatusClass('dividend_yield')}`}>{metricStatusText('dividend_yield')}</span>
+                  </span>
+                  <span className="text-tv-text-primary dark:text-white font-black text-xl">{formatPercent(f.dividend_yield)}</span>
                 </div>
 
                 <div className="flex justify-between items-center md:items-start md:flex-col md:gap-2 border-b border-tv-border dark:border-white/5 pb-3 md:border-none md:pb-0 mt-2 md:mt-0">
-                  <span className="text-tv-text-secondary dark:text-gray-500 text-xs uppercase font-bold tracking-wider">ROCE</span>
-                  <span className="text-tv-text-primary dark:text-white font-black text-xl">{profile.fundamentals.roce}%</span>
+                  <span className="text-tv-text-secondary dark:text-gray-500 text-xs uppercase font-bold tracking-wider flex items-center gap-2">
+                    ROCE
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded border ${metricStatusClass('roce')}`}>{metricStatusText('roce')}</span>
+                  </span>
+                  <span className="text-tv-text-primary dark:text-white font-black text-xl">{formatPercent(f.roce)}</span>
                 </div>
 
                 <div className="flex justify-between items-center md:items-start md:flex-col md:gap-2 border-b border-tv-border dark:border-white/5 pb-3 md:border-none md:pb-0 mt-2 md:mt-0">
-                  <span className="text-tv-text-secondary dark:text-gray-500 text-xs uppercase font-bold tracking-wider">ROE</span>
-                  <span className="text-tv-text-primary dark:text-white font-black text-xl">{profile.fundamentals.roe}%</span>
+                  <span className="text-tv-text-secondary dark:text-gray-500 text-xs uppercase font-bold tracking-wider flex items-center gap-2">
+                    ROE
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded border ${metricStatusClass('roe')}`}>{metricStatusText('roe')}</span>
+                  </span>
+                  <span className="text-tv-text-primary dark:text-white font-black text-xl">{formatPercent(f.roe)}</span>
                 </div>
 
                 <div className="flex justify-between items-center md:items-start md:flex-col md:gap-2 mt-2 md:mt-0">
                   <span className="text-tv-text-secondary dark:text-gray-500 text-xs uppercase font-bold tracking-wider">Face Value</span>
-                  <span className="text-tv-text-primary dark:text-white font-black text-xl">₹{profile.fundamentals.face_value || 'N/A'}</span>
+                  <span className="text-tv-text-primary dark:text-white font-black text-xl">{f.face_value ? `₹${formatNumber(f.face_value)}` : 'N/A'}</span>
                 </div>
              </div>
              
-             {/* Edit Ratios Input mock */}
-             <div className="mt-8 pt-6 border-t border-tv-border dark:border-white/5 flex items-center justify-between">
-                <div className="flex-1 max-w-sm relative">
-                  <input type="text" placeholder="Add ratio to table (eg. Promoter holding)" className="w-full bg-tv-bg-pane dark:bg-black/40 border border-tv-border dark:border-white/10 rounded-lg py-2.5 px-4 text-xs text-tv-text-primary dark:text-white focus:border-primary/50 outline-none" />
-                </div>
-                <button className="text-primary text-xs font-bold uppercase tracking-wider flex items-center gap-2 hover:bg-primary/10 px-3 py-1.5 rounded-md transition-colors">
-                  EDIT RATIOS
-                </button>
+             <div className="mt-7 pt-4 border-t border-tv-border dark:border-white/5 flex items-center justify-between text-xs">
+                <span className="text-gray-500 dark:text-gray-400">
+                  Missing metrics: {(profile?.quality?.missing_fields || []).length}
+                </span>
+                <span className="text-gray-500 dark:text-gray-400">
+                  Last sync: {formatAsOf(profile?.meta?.fetched_at || profile?.quality?.last_db_update)}
+                </span>
              </div>
           </div>
 
           {/* About Section */}
-          <div className="bg-white dark:bg-[#0a0a0a] border border-tv-border dark:border-white/5 shadow-xl dark:shadow-2xl rounded-3xl p-8 space-y-8 h-full">
+          <div className="xl:col-span-4 self-start bg-white dark:bg-[#0a0a0a] border border-tv-border dark:border-white/5 shadow-xl dark:shadow-2xl rounded-3xl p-6 space-y-6 max-h-[560px] overflow-y-auto">
               <div>
                 <h3 className="text-sm font-black tracking-widest uppercase text-tv-text-primary dark:text-white mb-4 flex items-center gap-2">
                   About <button className="text-[10px] text-blue-500 dark:text-blue-400 font-normal hover:underline lowercase tracking-normal">[edit]</button>
                 </h3>
                 <p className="text-sm text-tv-text-secondary dark:text-gray-400 leading-relaxed font-medium">
-                  {profile.fundamentals.about || `${symbol} is a publicly traded company on the Indian stock exchanges.`}
+                  {f.about || `${symbol} is a publicly traded company on the Indian stock exchanges.`}
                 </p>
               </div>
               
-              {profile.fundamentals.key_points && (
+              {f.key_points && (
                 <div>
                   <h3 className="text-sm font-black tracking-widest uppercase text-tv-text-primary dark:text-white mb-4 flex items-center gap-2">
                     Key Points <button className="text-[10px] text-blue-500 dark:text-blue-400 font-normal hover:underline lowercase tracking-normal">[edit]</button>
                   </h3>
                   <div className="space-y-5 text-sm">
-                    {Object.entries(profile.fundamentals.key_points).map(([key, val]) => (
+                    {Object.entries(f.key_points).map(([key, val]) => (
                        <div key={key}>
                          <span className="font-bold text-tv-text-primary dark:text-gray-200 block mb-1 text-[15px]">{key}</span>
                          <span className="text-tv-text-secondary dark:text-gray-400 whitespace-pre-line leading-relaxed block">{val as string}</span>
@@ -217,9 +296,9 @@ const ResearchHub: React.FC = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 mt-2">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
         {/* Left Content: Fundamentals & Charts */}
-        <div className="xl:col-span-2 space-y-8 rounded-lg">
+        <div className="xl:col-span-8 space-y-6 rounded-lg">
           {/* Key Metrics Grid */}
           <section className="space-y-4">
             <div className="flex items-center gap-2 px-1">
@@ -230,8 +309,8 @@ const ResearchHub: React.FC = () => {
           </section>
 
           {/* Quarterly Performance Table */}
-          {profile?.quarterly_performance && (
-            <section className="space-y-4 pt-4">
+          {!!profile?.quarterly_performance?.length && (
+            <section className="space-y-4">
               <div className="flex items-center gap-2 px-1">
                 <CalendarDays className="w-5 h-5 text-primary" />
                 <h2 className="text-xl font-semibold">Quarterly Performance</h2>
@@ -274,29 +353,29 @@ const ResearchHub: React.FC = () => {
               <h2 className="text-xl font-semibold">Yearly Financial Growth</h2>
             </div>
             <div className="bg-white dark:bg-[#0a0a0a] 
-                p-6 rounded-lg 
+                p-5 rounded-xl 
                 border border-gray-200 dark:border-white/5 
                 shadow-md dark:shadow-none 
-                h-[400px]">
+                h-[360px] sm:h-[380px]">
               <FinancialCharts data={profile?.financials} />
             </div>
           </section>
         </div>
 
         {/* Right Content: AI Analyst Section */}
-        <div className="space-y-8">
-          <section className="space-y-4 h-full">
+        <div className="xl:col-span-4 space-y-6">
+          <section className="space-y-4">
             <div className="flex items-center gap-2 px-1">
               <Sparkles className="w-5 h-5 text-primary animate-pulse" />
               <h2 className="text-xl font-semibold">The AI's Thesis</h2>
             </div>
-            <div className="flex-1 min-h-[400px]">
+            <div>
                 <AIAnalyst symbol={symbol || ''} isLaymanMode={isLaymanMode} />
             </div>
           </section>
 
           {/* Latest News & Insights */}
-          <section className="space-y-4 pt-4">
+          <section className="space-y-4">
             <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-2">
                 <Newspaper className="w-5 h-5 text-primary" />

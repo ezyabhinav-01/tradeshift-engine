@@ -30,13 +30,14 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from app.fundamental_service import FundamentalService
 from app.models import User, UserEvent
-from app.database import Base, get_db, get_session, connect_to_database, connect_to_database_sync, get_db_sync, sync_schema_hotpatch
+from app.database import Base, get_db, get_optional_db, get_session, connect_to_database, connect_to_database_sync, get_db_sync, sync_schema_hotpatch, is_local_database_url
 import jwt
 from app.config import SECRET_KEY, ALGORITHM
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+engine_sync = None
 
 ISO_DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}')
 DMY_DATE_RE = re.compile(r'^\d{2}-\d{2}-\d{4}')
@@ -60,21 +61,28 @@ import app.models
 
 # Connect and Create Tables using the cached connection pattern
 try:
-    engine_sync = connect_to_database_sync()
-    Base.metadata.create_all(bind=engine_sync)
-    logger.info("✅ Database Tables Created/Verified")
-    
-    # 🔥 HOT PATCH: Sync missing columns for remote Supabase DB
-    try:
-        sync_schema_hotpatch(engine_sync)
-        logger.info("✅ Database Hot-Patch Complete")
-    except Exception as patch_err:
-        logger.warning(f"⚠️ Hot-patching failed (this might be fine if DB is local): {patch_err}")
+    if is_local_database_url():
+        engine_sync = connect_to_database_sync()
+        Base.metadata.create_all(bind=engine_sync)
+        logger.info("✅ Database Tables Created/Verified")
 
-    # 🔎 Double-check the tables in metadata
+        try:
+            sync_schema_hotpatch(engine_sync)
+            logger.info("✅ Database Hot-Patch Complete")
+        except Exception as patch_err:
+            logger.warning(f"⚠️ Hot-patching failed (this might be fine if DB is local): {patch_err}")
+    else:
+        logger.info("⏭️ Skipping eager schema sync for remote database to keep API boot non-blocking.")
+
     logger.info(f"Registered Tables: {Base.metadata.tables.keys()}")
 except Exception as e:
     logger.error(f"❌ Database Initialization Failed: {e}")
+
+def ensure_sync_engine():
+    global engine_sync
+    if engine_sync is None:
+        engine_sync = connect_to_database_sync()
+    return engine_sync
 
 
 # --- 1. ROBUST IMPORT FOR SIMULATION ---
@@ -111,12 +119,49 @@ from app.live_market import shoonya_live
 # Background workload controls.
 RUN_BACKGROUND_JOBS = os.getenv("RUN_BACKGROUND_JOBS", "true").lower() in ("1", "true", "yes", "on")
 ENABLE_COMMUNITY_SEED = os.getenv("ENABLE_COMMUNITY_SEED", "true").lower() in ("1", "true", "yes", "on")
+MARKET_REFRESH_MINUTES = int(os.getenv("MARKET_REFRESH_MINUTES", "5"))
+FUND_SYNC_SYMBOL_LIMIT = int(os.getenv("FUND_SYNC_SYMBOL_LIMIT", "200"))
+FUND_SYNC_DAILY_HOUR = int(os.getenv("FUND_SYNC_DAILY_HOUR_IST", "18"))
+FUND_SYNC_DAILY_MINUTE = int(os.getenv("FUND_SYNC_DAILY_MINUTE_IST", "10"))
+FUND_SYNC_EXTRA_HOUR = int(os.getenv("FUND_SYNC_EXTRA_HOUR_IST", "12"))
+FUND_SYNC_EXTRA_MINUTE = int(os.getenv("FUND_SYNC_EXTRA_MINUTE_IST", "30"))
+FUND_SYNC_WEEKLY_HOUR = int(os.getenv("FUND_SYNC_WEEKLY_HOUR_IST", "9"))
+FUND_SYNC_WEEKLY_MINUTE = int(os.getenv("FUND_SYNC_WEEKLY_MINUTE_IST", "30"))
+FUND_SYNC_FALLBACK_SYMBOLS = [
+    s.strip().upper() for s in os.getenv("FUND_SYNC_FALLBACK_SYMBOLS", "").split(",") if s.strip()
+]
+MARKET_REFRESH_MINUTES = min(max(MARKET_REFRESH_MINUTES, 1), 59)
 
 # --- BACKGROUND JOBS ---
 scheduler = BackgroundScheduler()
+job_run_state = {}
+
+def _mark_job_started(job_name: str):
+    state = job_run_state.get(job_name, {})
+    state["last_started_at"] = datetime.datetime.utcnow().isoformat()
+    state["last_status"] = "running"
+    state.setdefault("run_count", 0)
+    state.setdefault("last_success_at", None)
+    state.setdefault("last_error", None)
+    job_run_state[job_name] = state
+
+def _mark_job_finished(job_name: str, success: bool, error: str = None):
+    state = job_run_state.get(job_name, {})
+    state["last_finished_at"] = datetime.datetime.utcnow().isoformat()
+    state["run_count"] = int(state.get("run_count", 0)) + 1
+    if success:
+        state["last_status"] = "success"
+        state["last_success_at"] = state["last_finished_at"]
+        state["last_error"] = None
+    else:
+        state["last_status"] = "failed"
+        state["last_error"] = error
+    job_run_state[job_name] = state
 
 def refresh_market_cache():
     """Background job to refresh Redis cache for market data."""
+    job_name = "refresh_market_cache"
+    _mark_job_started(job_name)
     try:
         logger.info("Running scheduled market data refresh...")
         market_service.get_indices()
@@ -125,23 +170,45 @@ def refresh_market_cache():
         market_service.get_option_chain("^NSEI")
         market_service.get_option_chain("^NSEBANK")
         logger.info("Market data refresh complete.")
+        _mark_job_finished(job_name, success=True)
     except Exception as e:
         logger.error(f"Error in background market refresh: {e}")
+        _mark_job_finished(job_name, success=False, error=str(e))
 
 def rolling_market_refresh():
     """Daily job to refresh the 7-day rolling market data files."""
+    job_name = "rolling_market_refresh"
+    _mark_job_started(job_name)
     try:
         logger.info("🔄 Running daily 7-day rolling market data refresh...")
         from scripts.fetch_last_7_days import fetch_rolling_7days
         fetch_rolling_7days()
         logger.info("✅ Daily market data refresh complete.")
+        _mark_job_finished(job_name, success=True)
     except Exception as e:
         logger.error(f"❌ Error in daily market data refresh: {e}")
+        _mark_job_finished(job_name, success=False, error=str(e))
 
-def periodical_fundamental_sync():
-    """Sync stock fundamentals and financials every 15 days."""
+def _load_fundamental_symbols_query(limit: int) -> str:
+    return f"""
+    WITH ranked AS (
+      SELECT DISTINCT UPPER(symbol) AS sym
+      FROM instruments_master
+      WHERE symbol IS NOT NULL
+        AND symbol <> ''
+        AND UPPER(COALESCE(instrument_type, '')) IN ('EQUITY', 'STOCK')
+        AND UPPER(COALESCE(exchange, '')) IN ('NSE', 'BSE')
+      LIMIT {max(limit, 1)}
+    )
+    SELECT sym FROM ranked
+    """
+
+def scheduled_fundamental_sync(limit: int = FUND_SYNC_SYMBOL_LIMIT, reason: str = "scheduled"):
+    """Sync stock fundamentals and financials for NSE/BSE symbols."""
+    job_name = f"scheduled_fundamental_sync:{reason}"
+    _mark_job_started(job_name)
     try:
-        logger.info("📅 Running 15-day periodic stock fundamental sync...")
+        logger.info(f"📅 Running fundamentals sync ({reason}) for up to {limit} symbols...")
         from app.database import get_session
         from sqlalchemy import text
         from app.services.fundamental_fetcher import FundamentalFetcherService
@@ -149,34 +216,94 @@ def periodical_fundamental_sync():
 
         async def run_sync():
             async with await get_session() as db:
-                query = text("SELECT DISTINCT instrument FROM index_metadata LIMIT 50")
+                symbols = []
                 try:
-                    result = await db.execute(query)
+                    result = await db.execute(text(_load_fundamental_symbols_query(limit)))
                     symbols = [row[0] for row in result.all()]
-                except:
-                    symbols = []
-                    
+                except Exception as query_err:
+                    logger.warning(f"⚠️ instruments_master lookup failed: {query_err}")
+
                 if not symbols:
-                    symbols = ["RELIANCE", "HDFCBANK", "TCS", "ICICIBANK", "INFY", "BHARTIARTL", "SBIN", "ITC", "HINDUNILVR", "BAJFINANCE"]
-                
+                    try:
+                        result = await db.execute(
+                            text("SELECT DISTINCT UPPER(instrument) FROM index_metadata LIMIT :limit"),
+                            {"limit": max(limit, 1)},
+                        )
+                        symbols = [row[0] for row in result.all() if row[0]]
+                    except Exception as idx_err:
+                        logger.warning(f"⚠️ index_metadata lookup failed: {idx_err}")
+
+                if not symbols:
+                    symbols = FUND_SYNC_FALLBACK_SYMBOLS
+
+                if not symbols:
+                    logger.warning("⚠️ No symbols found for fundamentals sync. Set FUND_SYNC_FALLBACK_SYMBOLS if needed.")
+                    return
+
                 await FundamentalFetcherService.sync_stock_data(db, symbols)
+                logger.info(f"✅ Fundamentals sync completed for {len(symbols)} symbols.")
 
         # BackgroundScheduler runs in a separate thread, so we can use asyncio.run
         asyncio.run(run_sync())
-        logger.info("✅ 15-day fundamental sync complete.")
+        _mark_job_finished(job_name, success=True)
     except Exception as e:
-        logger.error(f"❌ Error in periodic fundamental sync: {e}")
+        logger.error(f"❌ Error in fundamentals sync ({reason}): {e}")
+        _mark_job_finished(job_name, success=False, error=str(e))
 
 if RUN_BACKGROUND_JOBS:
-    # Run every 15 minutes
-    scheduler.add_job(refresh_market_cache, 'interval', minutes=15)
+    # Run market cache refresh during market days/hours for more real-time freshness.
+    scheduler.add_job(
+        refresh_market_cache,
+        'cron',
+        day_of_week='mon-fri',
+        hour='9-15',
+        minute=f'*/{max(MARKET_REFRESH_MINUTES, 1)}',
+        timezone='Asia/Kolkata'
+    )
 
     # Rolling data refresh: Every day at 17:00 IST (5:00 PM)
     # This handles the daily fetch of today's data and pruning of the oldest day.
-    scheduler.add_job(rolling_market_refresh, 'cron', hour=17, minute=0, timezone='Asia/Kolkata')
+    scheduler.add_job(
+        rolling_market_refresh,
+        'cron',
+        day_of_week='mon-fri',
+        hour=17,
+        minute=0,
+        timezone='Asia/Kolkata'
+    )
 
-    # 15-day Fundamental Sync
-    scheduler.add_job(periodical_fundamental_sync, 'interval', days=15)
+    # Daily post-market fundamentals sync.
+    scheduler.add_job(
+        scheduled_fundamental_sync,
+        'cron',
+        day_of_week='mon-fri',
+        hour=FUND_SYNC_DAILY_HOUR,
+        minute=FUND_SYNC_DAILY_MINUTE,
+        timezone='Asia/Kolkata',
+        kwargs={"limit": FUND_SYNC_SYMBOL_LIMIT, "reason": "daily_post_market"}
+    )
+
+    # Mid-day top-up sync for earnings season drift.
+    scheduler.add_job(
+        scheduled_fundamental_sync,
+        'cron',
+        day_of_week='mon-fri',
+        hour=FUND_SYNC_EXTRA_HOUR,
+        minute=FUND_SYNC_EXTRA_MINUTE,
+        timezone='Asia/Kolkata',
+        kwargs={"limit": max(25, FUND_SYNC_SYMBOL_LIMIT // 2), "reason": "midday_topup"}
+    )
+
+    # Weekly broader sync on Saturday.
+    scheduler.add_job(
+        scheduled_fundamental_sync,
+        'cron',
+        day_of_week='sat',
+        hour=FUND_SYNC_WEEKLY_HOUR,
+        minute=FUND_SYNC_WEEKLY_MINUTE,
+        timezone='Asia/Kolkata',
+        kwargs={"limit": max(300, FUND_SYNC_SYMBOL_LIMIT), "reason": "weekly_reconciliation"}
+    )
 
     scheduler.start()
     # --- Async Tasks Scheduler ---
@@ -194,10 +321,13 @@ async def startup_event():
     
     # Seed community channels
     if ENABLE_COMMUNITY_SEED:
-        try:
-            await seed_community_channels()
-        except Exception as e:
-            logger.warning(f"⚠️ Community seed skipped due to startup DB pressure: {e}")
+        if is_local_database_url():
+            try:
+                asyncio.create_task(seed_community_channels())
+            except Exception as e:
+                logger.warning(f"⚠️ Community seed skipped due to startup DB pressure: {e}")
+        else:
+            logger.info("⏭️ Skipping community seed during startup for remote DB deployments.")
 
 async def seed_community_channels():
     """Create default community channels if they don't exist."""
@@ -249,6 +379,31 @@ async def user_heartbeat():
     Lightweight endpoint to trigger 'last_active_at' updates via middleware.
     """
     return {"status": "alive", "timestamp": datetime.datetime.utcnow()}
+
+@app.get("/api/admin/scheduler/status")
+async def scheduler_status():
+    """
+    Operational endpoint to verify scheduler health and recent job runs.
+    """
+    jobs = []
+    try:
+        for j in scheduler.get_jobs():
+            jobs.append({
+                "id": j.id,
+                "name": j.name,
+                "next_run_time": j.next_run_time.isoformat() if j.next_run_time else None,
+                "trigger": str(j.trigger),
+            })
+    except Exception as e:
+        logger.warning(f"⚠️ Unable to enumerate scheduler jobs: {e}")
+
+    return {
+        "scheduler_running": bool(getattr(scheduler, "running", False)),
+        "timezone": "Asia/Kolkata",
+        "jobs": jobs,
+        "job_run_state": job_run_state,
+        "checked_at": datetime.datetime.utcnow().isoformat(),
+    }
 
 @app.middleware("http")
 async def log_user_activity(request: Request, call_next):
@@ -410,7 +565,7 @@ def load_market_data_tiered(symbol: str, target_date: str = None, allow_fallback
                         WHERE instrument = :symbol ORDER BY start_date DESC LIMIT 1
                     """)
                 
-                with engine_sync.connect() as conn:
+                with ensure_sync_engine().connect() as conn:
                     row = conn.execute(meta_query, {"symbol": base_symbol, "target_date": date_str}).fetchone()
                 
                 if row:
@@ -441,7 +596,7 @@ def load_market_data_tiered(symbol: str, target_date: str = None, allow_fallback
                 WHERE symbol = :s AND DATE(timestamp) = :d
                 ORDER BY timestamp ASC
             """)
-            with engine_sync.connect() as conn:
+            with ensure_sync_engine().connect() as conn:
                 result = conn.execute(query, {"s": base_symbol, "d": date_str})
                 rows = result.fetchall()
                 if rows:
@@ -518,7 +673,7 @@ async def search_instruments(query: str):
             LIMIT 10
         """)
         
-        with engine_sync.connect() as conn:
+        with ensure_sync_engine().connect() as conn:
             result = conn.execute(search_query, {"query": f"%{query}%"})
             rows = result.fetchall()
             
@@ -548,7 +703,7 @@ async def get_available_symbols():
         # Query distinct instruments from Supabase metadata
         query = text("SELECT DISTINCT instrument FROM index_metadata ORDER BY instrument")
         
-        with engine_sync.connect() as conn:
+        with ensure_sync_engine().connect() as conn:
             result = conn.execute(query)
             rows = result.fetchall()
         
@@ -593,7 +748,7 @@ async def get_available_dates(symbol: str):
             ORDER BY start_date DESC
         """)
         
-        with engine_sync.connect() as conn:
+        with ensure_sync_engine().connect() as conn:
             result = conn.execute(query, {"symbol": base_symbol})
             rows = result.fetchall()
             
@@ -775,7 +930,7 @@ class StockChatRequest(BaseModel):
     history: list = []
 
 @app.get("/api/screener/multibagger")
-async def get_multibagger_screener(db: AsyncSession = Depends(get_db)):
+async def get_multibagger_screener(db: AsyncSession = Depends(get_optional_db)):
     """
     Returns a list of potential multi-bagger stocks based on fundamental screeners.
     """
@@ -787,7 +942,7 @@ async def get_multibagger_screener(db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/stock/{symbol}/profile")
-async def get_stock_profile(symbol: str, db: AsyncSession = Depends(get_db)):
+async def get_stock_profile(symbol: str, db: AsyncSession = Depends(get_optional_db)):
     """
     Returns fundamental metrics and yearly financials for a stock.
     """
@@ -799,7 +954,7 @@ async def get_stock_profile(symbol: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/stock/{symbol}/analyze")
-async def get_stock_analysis(symbol: str, db: AsyncSession = Depends(get_db)):
+async def get_stock_analysis(symbol: str, db: AsyncSession = Depends(get_optional_db)):
     """
     Triggers FinGPT deep professional analysis.
     """
@@ -830,7 +985,7 @@ async def get_layman_explanation(symbol: str, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/stock/{symbol}/chat")
-async def chat_about_stock_endpoint(symbol: str, request: StockChatRequest, db: AsyncSession = Depends(get_db)):
+async def chat_about_stock_endpoint(symbol: str, request: StockChatRequest, db: AsyncSession = Depends(get_optional_db)):
     """
     Interactive chat for users to ask questions about a stock's fundamentals.
     """

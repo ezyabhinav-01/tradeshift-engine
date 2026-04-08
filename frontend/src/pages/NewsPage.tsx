@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { NewsCard } from '../components/news/NewsCard';
 import { fetchNews as fetchNewsApi, explainNews } from '../services/newsApi';
 import type { NewsItem } from '../services/newsApi';
@@ -7,36 +7,40 @@ import { toast } from 'sonner';
 
 const CATEGORIES = ['all', 'indian', 'global'];
 
+const CATEGORY_LABELS: Record<string, string> = {
+  all: 'All',
+  indian: 'India',
+  global: 'Global',
+};
+
 // Using Bing proxy to reliably resolve dynamic market imagery
 // Using Bing Image Search for highly reliable, realistic market imagery
 const FALLBACK_HERO = `https://tse1.mm.bing.net/th?q=${encodeURIComponent("global financial market news trading floor")}&w=1600&h=900&c=7&rs=1&p=0`;
-
-// Evergreen Market Narratives (Self-Healing Fallback)
-const MOCK_MARKET_NARRATIVES: Partial<NewsItem>[] = [
-  { title: "Institutional Volume Analysis: Nifty 50 Resistance Levels", description: "Large block trades detected near key psychological resistance as institutional desks rebalance portfolio weightings for the new quarter.", source: "REUTERS", category: "all" },
-  { title: "Wall Street Legacy: S&P 500 Historical Performance", description: "Long-term data analysis suggests a strong correlation between tech sector innovation and broader market stability despite recent volatility.", source: "BLOOMBERG", category: "global" },
-  { title: "Asian Markets: HDFC & Reliance Lead Recovery", description: "Domestic heavyweights provide a cushion for the Indian indices as global sentiment remains cautious amid inflationary concerns.", source: "MONEYCONTROL", category: "indian" },
-  { title: "Tech Sector Resilience: AI Innovation Driving Valuations", description: "Hyperscalers continue to report robust infrastructure demand, signaling a long-term growth cycle for semiconductor and software constituents.", source: "TV-TERMINAL", category: "global" },
-  { title: "Gold & Commodity Pulse: Safe Haven Demand Shifts", description: "Precious metals see a tactical retreat as treasury yields firm up, signaling a potential rotation back into risk-on equity assets.", source: "FIN-GPT", category: "all" },
-  { title: "Global Logistics: Supply Chain Optimization Gains", description: "Maritime freight rates stabilize as global logistics networks adapt to new trade routes and increased efficiency measures.", source: "WALL-STREET", category: "global" },
-  { title: "Banking Sector: RBI Maintains Neutral Stance", description: "Financial institutions report healthy credit growth as domestic demand remains resilient across urban and rural markets.", source: "ECON-TIMES", category: "indian" },
-  { title: "Eurozone PMI: Manufacturing Recovery spotted", description: "Initial indicators suggest a bottoming out of the industrial slowdown in Europe as energy costs finally normalize.", source: "FT", category: "global" }
-];
 
 const NewsPage: React.FC = () => {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [activeCategory, setActiveCategory] = useState('all');
   const [loading, setLoading] = useState(true);
   const [explainingId, setExplainingId] = useState<string | null>(null);
+  const cacheRef = useRef<Record<string, { ts: number; items: NewsItem[] }>>({});
 
   // AI Explanation Modal State
   const [explanation, setExplanation] = useState<string | null>(null);
   const [selectedNewsTitle, setSelectedNewsTitle] = useState<string | null>(null);
 
   const fetchNews = useCallback(async (cat: string) => {
+    const cacheKey = `${cat}:36`;
+    const cached = cacheRef.current[cacheKey];
+    const now = Date.now();
+    if (cached && now - cached.ts < 120_000) {
+      setNews(cached.items);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
-      const data = await fetchNewsApi(cat);
+      const data = await fetchNewsApi(cat, 36);
       
       // 1. Expanded Temporal Filter (Current Time - 4 Days)
       const cutoff = new Date().getTime() - 96 * 60 * 60 * 1000;
@@ -50,31 +54,9 @@ const NewsPage: React.FC = () => {
         return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
       });
 
-      // 3. Self-Healing Fallback (Ensure 16+ cards always exist)
-      let finalData = [...sortedData];
-      if (finalData.length < 16) {
-        const now = new Date();
-        const diff = 16 - finalData.length;
-        
-        for (let i = 0; i < diff; i++) {
-          const mock = MOCK_MARKET_NARRATIVES[i % MOCK_MARKET_NARRATIVES.length];
-          // Assign dates in 24h, 48h, 72h offsets to fill grids
-          const mockDate = new Date(now.getTime() - (Math.floor(i / 5) + 1) * 24 * 60 * 60 * 1000);
-          
-          finalData.push({
-            id: `mock-${i}-${mock.title}`,
-            title: mock.title!,
-            description: mock.description!,
-            source: mock.source!,
-            url: "#",
-            publishedAt: mockDate.toISOString(),
-            category: mock.category || 'all',
-            imageUrl: `https://tse1.mm.bing.net/th?q=${encodeURIComponent(mock.title!)}&w=800&h=500&c=7&rs=1&p=0`
-          });
-        }
-      }
-      
-      setNews(finalData.slice(0, 100)); 
+      const finalData = sortedData.slice(0, 100);
+      setNews(finalData);
+      cacheRef.current[cacheKey] = { ts: now, items: finalData };
     } catch (error) {
       console.error('Failed to fetch news:', error);
       toast.error('Failed to load news. Please try again later.');
@@ -135,38 +117,14 @@ const NewsPage: React.FC = () => {
     tda.setDate(tda.getDate() - 2);
     const twoDaysAgoStr = getISTDateStr(tda);
 
-    const padSection = (currentList: NewsItem[], count: number, sectionOffsetDays: number) => {
-      if (currentList.length >= count) return currentList;
-      const needed = count - currentList.length;
-      const padded = [...currentList];
-      const now = new Date();
-      const baseOffset = sectionOffsetDays * 24 * 60 * 60 * 1000;
-      
-      for (let i = 0; i < needed; i++) {
-        const mock = MOCK_MARKET_NARRATIVES[i % MOCK_MARKET_NARRATIVES.length];
-        const date = new Date(now.getTime() - baseOffset - (i * 1000 * 60 * 15)); // Minor offsets to keep sort
-        padded.push({
-          id: `pad-${sectionOffsetDays}-${i}-${mock.title}`,
-          title: mock.title!,
-          description: mock.description!,
-          source: mock.source!,
-          url: "#",
-          publishedAt: date.toISOString(),
-          category: mock.category || 'all',
-          imageUrl: `https://tse1.mm.bing.net/th?q=${encodeURIComponent(mock.title!)}&w=800&h=500&c=7&rs=1&p=0`
-        });
-      }
-      return padded;
-    };
-
     const todayList = regularNews.filter(item => getISTDateStr(new Date(item.publishedAt)) === todayStr);
     const yesterdayList = regularNews.filter(item => getISTDateStr(new Date(item.publishedAt)) === yesterdayStr);
     const twoDaysAgoList = regularNews.filter(item => getISTDateStr(new Date(item.publishedAt)) === twoDaysAgoStr);
 
     return {
-      today: padSection(todayList, 5, 0),
-      yesterday: padSection(yesterdayList, 5, 1),
-      twoDaysAgo: padSection(twoDaysAgoList, 5, 2),
+      today: todayList,
+      yesterday: yesterdayList,
+      twoDaysAgo: twoDaysAgoList,
       older: regularNews.filter(item => {
         const dStr = getISTDateStr(new Date(item.publishedAt));
         return dStr !== todayStr && dStr !== yesterdayStr && dStr !== twoDaysAgoStr;
@@ -221,7 +179,7 @@ const NewsPage: React.FC = () => {
                 : 'text-slate-400 hover:text-white hover:bg-white/5 active:scale-95'
                 }`}
             >
-              {cat}
+              {CATEGORY_LABELS[cat] || cat}
             </button>
           ))}
         </div>
@@ -233,7 +191,9 @@ const NewsPage: React.FC = () => {
               <Loader2 className="h-16 w-16 text-tv-primary animate-spin mb-6" />
               <div className="absolute inset-0 blur-xl bg-tv-primary/20 animate-pulse" />
             </div>
-            <p className="text-slate-400 font-black uppercase tracking-[0.3em] text-sm">Aggregating Global Data</p>
+            <p className="text-slate-400 font-black uppercase tracking-[0.3em] text-sm">
+              Loading {CATEGORY_LABELS[activeCategory] || activeCategory} Feed
+            </p>
           </div>
         ) : news.length > 0 ? (
           <div className="space-y-12">

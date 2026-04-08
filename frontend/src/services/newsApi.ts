@@ -12,6 +12,7 @@ export interface NewsItem {
   sentiment?: string;
   category: string;
   imageUrl?: string;
+  sourceTrust?: 'high' | 'medium';
 }
 
 export interface ExplainResponse {
@@ -22,7 +23,8 @@ export interface ExplainResponse {
 export const fetchNews = async (category: string = 'all', limit: number = 50): Promise<NewsItem[]> => {
   try {
     const response = await axios.get(`${API_BASE}/`, {
-      params: { category, limit }
+      params: { category, limit },
+      timeout: 8000,
     });
     return response.data;
   } catch (error) {

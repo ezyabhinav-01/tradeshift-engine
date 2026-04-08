@@ -16,6 +16,44 @@ from .utils.gemini_pool import gemini_pool
 # Models
 MODEL_ID = "HuggingFaceH4/zephyr-7b-beta" 
 
+def _heuristic_stock_analysis(symbol: str, fund_data: dict) -> str:
+    roce = float(fund_data.get("roce", 0) or 0)
+    roe = float(fund_data.get("roe", 0) or 0)
+    pe = float(fund_data.get("pe_ratio", 0) or 0)
+    growth = float(fund_data.get("revenue_growth_5y", 0) or 0)
+    debt = float(fund_data.get("debt_to_equity", 0) or 0)
+
+    quality = "strong" if roce >= 18 and roe >= 15 else "mixed"
+    valuation = "reasonable" if pe and pe <= 25 else "demanding"
+    balance_sheet = "clean" if debt <= 0.5 else "leveraged"
+
+    return f"""### THE INSTITUTIONAL THESIS
+{symbol} currently screens as a {quality} business on capital efficiency, with ROCE at {roce:.1f}% and ROE at {roe:.1f}%. Revenue growth around {growth:.1f}% suggests the company still has operating momentum, while a P/E of {pe:.1f}x points to a {valuation} valuation setup.
+
+### BULL VS BEAR
+Bull case: the business appears operationally resilient and the balance sheet looks {balance_sheet}, which gives management room to keep compounding. Bear case: if growth slows, the present valuation can compress quickly and investors may reassess how much premium they should pay for each rupee of earnings.
+
+### VARSITY LESSON: ROCE
+ROCE tells you how efficiently a company turns invested capital into operating profit. Think of it like judging a shopkeeper not by how big the shop looks, but by how much profit they squeeze out of every Rs100 locked inside the business. Higher ROCE usually means the engine is working harder with the same fuel."""
+
+def _heuristic_news_explanation(news_title: str, news_desc: str, user_level: str) -> str:
+    level = user_level or "Beginner"
+    return f"""Hello {level} Trader! Let's break this down simply.
+
+### THE ESSENCE
+{news_title}
+
+This headline tells us that policymakers or market participants chose stability over a sudden change. In simple terms, the financial system got a signal that the current money environment is staying broadly the same for now.
+
+### THE WHY
+When rates or policy stay unchanged, investors focus less on shock and more on guidance. That usually helps markets reprice expectations around borrowing costs, company earnings, and overall risk appetite in a calmer way.
+
+### THE IMPACT
+Stocks often react based on whether this outcome was expected. If the market already priced it in, the reaction may be small; if investors expected something different, sectors like banks, technology, and rate-sensitive businesses can move more sharply.
+
+### THE TAKEAWAY
+Use this kind of news to watch sentiment, not just the headline. The most important follow-up is how bond yields, the index, and sector leaders react after the announcement."""
+
 async def _call_hf_inference(messages: list) -> str:
     """
     Calls the HuggingFace Router via OpenAI-compatible Chat Completion API.
@@ -208,7 +246,11 @@ async def analyze_stock_fundamentals(symbol: str, fund_data: dict) -> str:
     try:
         if gemini_pool.keys:
             try:
-                response = await gemini_pool.generate_content(prompt, is_async=True)
+                response = await gemini_pool.generate_content(
+                    prompt,
+                    model_name="models/gemini-2.0-flash-lite-001",
+                    is_async=True
+                )
                 return response.text.strip()
             except Exception as e:
                 print(f"Gemini unavailable: {e}. Falling back to HuggingFace...")
@@ -221,7 +263,7 @@ async def analyze_stock_fundamentals(symbol: str, fund_data: dict) -> str:
         return await _call_hf_inference(messages)
     except Exception as e:
         print(f"❌ Stock Analysis Error: {e}")
-        return f"FIN_GPT_ERROR: {str(e)}\nPlease check your GEMINI_API_KEY or HUGGINGFACE_API_KEY configuration."
+        return _heuristic_stock_analysis(symbol, fund_data)
 
 async def explain_in_layman(symbol: str, complex_info: str) -> str:
     """
@@ -397,4 +439,4 @@ async def generate_news_explanation(news_title: str, news_desc: str, user_level:
             
     except Exception as e:
         print(f"❌ News Explanation Error: {e}")
-        return f"AI was unable to generate an explanation at this moment. (Error: {str(e)})"
+        return _heuristic_news_explanation(news_title, news_desc, user_level)

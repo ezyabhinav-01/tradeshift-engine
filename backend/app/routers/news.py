@@ -15,6 +15,7 @@ class NewsItem(BaseModel):
     sentiment: Optional[str] = None
     category: str
     imageUrl: Optional[str] = None
+    sourceTrust: Optional[str] = "medium"
 
 class ExplainRequest(BaseModel):
     news_id: str

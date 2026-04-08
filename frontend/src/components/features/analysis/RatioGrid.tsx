@@ -16,6 +16,15 @@ interface RatioGridProps {
 const RatioCard: React.FC<{ label: string; value: string | number; icon: any; laymanLabel: string; laymanExplainer: string; isLaymanMode: boolean }> = React.memo(({
   label, value, icon: Icon, laymanLabel, laymanExplainer, isLaymanMode
 }) => {
+  const isNumeric = typeof value === 'number' && Number.isFinite(value);
+  const showPercent = label.includes('RO') || label.includes('Growth') || label.includes('Yield');
+  const formattedValue = (() => {
+    if (!isNumeric) return value ?? 'N/A';
+    if (label === 'Market Cap') return value;
+    if (label.includes('Ratio') || label.includes('Debt')) return value.toFixed(2);
+    return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  })();
+
   return (
     <div className="bg-white dark:bg-[#0a0a0a] p-5 rounded-2xl border border-gray-200 dark:border-white/5 hover:border-gray-300 dark:hover:border-primary/20 transition-all group relative overflow-hidden shadow-sm hover:shadow-lg dark:shadow-none dark:hover:shadow-none">
       <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full -mr-12 -mt-12 group-hover:bg-primary/10 transition-colors"></div>
@@ -36,8 +45,8 @@ const RatioCard: React.FC<{ label: string; value: string | number; icon: any; la
           {isLaymanMode ? laymanLabel : label}
         </p>
         <p className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-400 bg-clip-text text-transparent">
-          {typeof value === 'number' && label.includes('Ratio') ? value.toFixed(2) : value}
-          {label.includes('RO') || label.includes('Growth') || label.includes('Yield') ? '%' : ''}
+          {formattedValue}
+          {isNumeric && showPercent ? '%' : ''}
         </p>
       </div>
 
@@ -77,7 +86,7 @@ const RatioGrid: React.FC<RatioGridProps> = React.memo(({ data, isLaymanMode }) 
     },
     {
       label: "Market Cap",
-      value: `₹${(data.market_cap / 1000).toFixed(1)}T`,
+      value: data.market_cap ? `₹${(data.market_cap / 1000).toFixed(1)}T` : 'N/A',
       icon: Coins,
       laymanLabel: "Total Size",
       laymanExplainer: "The total price tag to buy the whole company today."

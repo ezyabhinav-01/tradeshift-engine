@@ -9,6 +9,7 @@ from datetime import datetime
 from redis import Redis
 import html
 import feedparser
+from typing import Any
 from .nlp_engine import generate_news_explanation
 
 # Environment Variables
@@ -37,7 +38,7 @@ def _get_cache(key: str):
             return _IN_MEMORY_CACHE.get(key)
     return _IN_MEMORY_CACHE.get(key)
 
-def _set_cache(key: str, value: any, expire: int = 3600):
+def _set_cache(key: str, value: Any, expire: int = 3600):
     if redis_client:
         try:
             redis_client.setex(key, expire, json.dumps(value))
@@ -59,72 +60,204 @@ async def fetch_indian_news_rss(limit: int = 50) -> list[dict]:
         "https://www.financialexpress.com/market/feed/"
     ]
     
-    all_articles = []
-    async with aiohttp.ClientSession() as session:
-        for url in rss_urls:
-            try:
-                async with session.get(url, timeout=5) as resp:
-                    if resp.status == 200:
-                        content = await resp.text()
-                        feed = feedparser.parse(content)
-                        for entry in feed.entries:
-                            # 1. RAW CONTENT EXTRACTION (Save for image regex before cleaning)
-                            raw_desc = entry.get("description", entry.get("summary", ""))
-                            raw_content = ""
-                            if 'content' in entry:
-                                raw_content = entry.content[0].get('value', '')
-                            
-                            # Combine and unescape for regex
-                            full_html = html.unescape(raw_desc + " " + raw_content)
-                            
-                            # 2. IMAGE EXTRACTION (Primary)
-                            image_url = None
-                            
-                            # - Check media:content
-                            if 'media_content' in entry:
-                                image_url = entry.media_content[0].get('url')
-                            # - Check enclosure
-                            if not image_url and 'enclosures' in entry:
-                                for enc in entry.enclosures:
-                                    if 'image' in enc.get('type', ''):
-                                        image_url = enc.get('href')
-                                        break
-                            # - Extract <img> from RAW HTML (Crucial for Moneycontrol & ET)
-                            if not image_url:
-                                # Look for data-src or src in <img> tags
-                                img_match = re.search(r'<img[^>]+(?:src|data-src)=["\']([^"\']+\.(?:jpg|png|jpeg|webp))["\']', full_html, re.IGNORECASE)
-                                if img_match:
-                                    image_url = img_match.group(1)
-                            
-                            # - Check for RSS enclosure (Standard)
-                            if not image_url and 'links' in entry:
-                                for l in entry.links:
-                                    if 'image' in l.get('type', ''):
-                                        image_url = l.get('href')
-                                        break
-                            
-                            # 3. TEXT CLEANUP (Displayed to user)
-                            title = html.unescape(entry.get("title", ""))
-                            summary = re.sub(r'<[^>]+>', '', html.unescape(raw_desc))
-                            published_at = entry.get("published", entry.get("updated", datetime.now().isoformat()))
-                            
+    async def fetch_single_rss(url: str, session: aiohttp.ClientSession) -> list[dict]:
+        rows: list[dict] = []
+        try:
+            async with session.get(url) as resp:
+                if resp.status != 200:
+                    return rows
+                content = await resp.text()
+                feed = feedparser.parse(content)
+                for entry in feed.entries:
+                    raw_desc = entry.get("description", entry.get("summary", ""))
+                    raw_content = ""
+                    if "content" in entry:
+                        raw_content = entry.content[0].get("value", "")
 
-                            all_articles.append({
-                                "id": hashlib.md5(entry.get("link", "").encode()).hexdigest(),
-                                "title": title,
-                                "description": summary[:250] + "..." if len(summary) > 250 else summary,
-                                "source": feed.feed.get("title", "Indian Market News"),
-                                "url": entry.get("link"),
-                                "publishedAt": published_at,
-                                "category": "indian",
-                                "imageUrl": image_url
-                            })
-            except Exception as e:
-                print(f"⚠️ RSS Fetch Error for {url}: {e}")
+                    full_html = html.unescape(raw_desc + " " + raw_content)
+
+                    image_url = None
+                    if "media_content" in entry and entry.media_content:
+                        image_url = entry.media_content[0].get("url")
+                    if not image_url and "enclosures" in entry:
+                        for enc in entry.enclosures:
+                            if "image" in enc.get("type", ""):
+                                image_url = enc.get("href")
+                                break
+                    if not image_url:
+                        img_match = re.search(
+                            r'<img[^>]+(?:src|data-src)=["\']([^"\']+\.(?:jpg|png|jpeg|webp))["\']',
+                            full_html,
+                            re.IGNORECASE,
+                        )
+                        if img_match:
+                            image_url = img_match.group(1)
+                    if not image_url and "links" in entry:
+                        for link_item in entry.links:
+                            if "image" in link_item.get("type", ""):
+                                image_url = link_item.get("href")
+                                break
+
+                    title = html.unescape(entry.get("title", "")).strip()
+                    summary = re.sub(r"<[^>]+>", "", html.unescape(raw_desc or "")).strip()
+                    published_at = entry.get("published", entry.get("updated", datetime.now().isoformat()))
+                    link = entry.get("link", "")
+                    if not title or not link:
+                        continue
+
+                    rows.append({
+                        "id": hashlib.md5(link.encode()).hexdigest(),
+                        "title": title,
+                        "description": summary[:280] + "..." if len(summary) > 280 else summary,
+                        "source": feed.feed.get("title", "Indian Market News"),
+                        "url": link,
+                        "publishedAt": published_at,
+                        "category": "indian",
+                        "imageUrl": image_url,
+                    })
+        except Exception as e:
+            print(f"⚠️ RSS Fetch Error for {url}: {e}")
+        return rows
+
+    all_articles: list[dict] = []
+    timeout = aiohttp.ClientTimeout(total=6, connect=2, sock_read=4)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        per_feed = await asyncio.gather(*(fetch_single_rss(url, session) for url in rss_urls))
+        for feed_items in per_feed:
+            all_articles.extend(feed_items)
     
     # Sort by "published" if possible (feedparser published_parsed)
     # For simplicity, we just return the collected items
     return all_articles[:limit]
+
+
+FINANCIAL_KEYWORDS = (
+    "stock", "market", "share", "equity", "nifty", "sensex", "nse", "bse", "rbi",
+    "earnings", "revenue", "profit", "ipo", "inflation", "interest rate", "fed",
+    "wall street", "bond", "yield", "bank", "finance", "economy", "gdp", "sebi",
+)
+
+INDIA_KEYWORDS = (
+    "india", "indian", "nse", "bse", "sensex", "nifty", "rbi", "sebi", "mumbai",
+    "rupee", "inr", "bombay stock exchange",
+)
+
+GLOBAL_KEYWORDS = (
+    "global", "wall street", "nasdaq", "dow jones", "s&p", "federal reserve",
+    "ecb", "boe", "boj", "us economy", "europe", "china market", "japan market",
+)
+
+INDIA_DOMAINS = (
+    "moneycontrol.com",
+    "economictimes.indiatimes.com",
+    "livemint.com",
+    "business-standard.com",
+    "financialexpress.com",
+    "ndtvprofit.com",
+    "thehindubusinessline.com",
+)
+
+LOW_QUALITY_SOURCE_HINTS = (
+    "reddit",
+    "youtube",
+    "facebook",
+    "instagram",
+    "x.com",
+    "twitter",
+)
+
+HIGH_TRUST_DOMAINS = (
+    "reuters.com",
+    "bloomberg.com",
+    "wsj.com",
+    "ft.com",
+    "economictimes.indiatimes.com",
+    "moneycontrol.com",
+    "livemint.com",
+    "business-standard.com",
+    "thehindubusinessline.com",
+)
+
+
+def _parse_datetime(value: str | None) -> datetime:
+    if not value:
+        return datetime.min
+    raw = value.strip()
+    try:
+        # Handles ISO with trailing Z.
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except Exception:
+        pass
+    for fmt in ("%Y%m%dT%H%M%S", "%a, %d %b %Y %H:%M:%S %z", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(raw, fmt)
+        except Exception:
+            continue
+    return datetime.min
+
+
+def _safe_text(item: dict) -> str:
+    title = (item.get("title") or "").strip()
+    desc = (item.get("description") or "").strip()
+    source = (item.get("source") or "").strip()
+    return f"{title} {desc} {source}".lower()
+
+
+def _get_domain(url: str | None) -> str:
+    if not url:
+        return ""
+    try:
+        return urllib.parse.urlparse(url).netloc.lower()
+    except Exception:
+        return ""
+
+
+def _is_financially_relevant(item: dict) -> bool:
+    text = _safe_text(item)
+    return any(keyword in text for keyword in FINANCIAL_KEYWORDS)
+
+
+def _is_source_reliable(item: dict) -> bool:
+    source = (item.get("source") or "").lower()
+    domain = _get_domain(item.get("url"))
+    haystack = f"{source} {domain}"
+    return not any(noise in haystack for noise in LOW_QUALITY_SOURCE_HINTS)
+
+def _source_trust_level(item: dict) -> str:
+    domain = _get_domain(item.get("url"))
+    source = (item.get("source") or "").lower()
+    if any(d in domain for d in HIGH_TRUST_DOMAINS):
+        return "high"
+    if any(name in source for name in ("reuters", "bloomberg", "mint", "economic times", "moneycontrol")):
+        return "high"
+    return "medium"
+
+
+def _infer_geo(item: dict) -> str:
+    text = _safe_text(item)
+    domain = _get_domain(item.get("url"))
+    source = (item.get("source") or "").lower()
+
+    if any(india_domain in domain for india_domain in INDIA_DOMAINS):
+        return "indian"
+
+    indian_hits = sum(1 for k in INDIA_KEYWORDS if k in text)
+    global_hits = sum(1 for k in GLOBAL_KEYWORDS if k in text)
+
+    if indian_hits > global_hits and indian_hits > 0:
+        return "indian"
+    if global_hits > indian_hits and global_hits > 0:
+        return "global"
+
+    if "india" in source or "indian" in source:
+        return "indian"
+    return "unknown"
+
+
+def _default_image_for(item: dict) -> str:
+    title = (item.get("title") or "financial market news").strip()
+    safe_title = urllib.parse.quote(title)
+    return f"https://tse1.mm.bing.net/th?q={safe_title}+news&w=800&h=500&c=7&rs=1&p=0"
 
 async def fetch_newsapi(category: str, limit: int = 50) -> list[dict]:
     """Fetch news from NewsAPI. Categories: 'indian', 'global', 'all'."""
@@ -291,8 +424,8 @@ async def get_news(category: str = "all", limit: int = 50) -> list[dict]:
 
     # Fetch tasks
     tasks = []
-    # Increase the base limit to ensure we reach 3-day history
-    fetch_limit = limit * 2 
+    # Mild over-fetching for dedupe while keeping latency low.
+    fetch_limit = min(max(limit + 20, 40), 100)
 
     if category == "indian":
         # Baseline: Indian RSS + NewsData.
@@ -323,50 +456,36 @@ async def get_news(category: str = "all", limit: int = 50) -> list[dict]:
     seen_urls = set()
     for res_list in results:
         for item in res_list:
-            if item["url"] not in seen_urls:
+            url = item.get("url")
+            if not url:
+                continue
+            if url not in seen_urls:
                 merged.append(item)
-                seen_urls.add(item["url"])
-    
-    # Sort by publishedAt (assumes standard ISO format)
-    merged.sort(key=lambda x: x.get("publishedAt", ""), reverse=True)
-    
-    # Take limit
-    final_news = merged[:limit]
+                seen_urls.add(url)
 
-    # Dynamically fetch image from Reddit / Pollinations AI based on article content/title
-    async with aiohttp.ClientSession() as session:
-        async def enrich_image(article):
-            if article.get("imageUrl"):
-                return  # Use primary source image
-                
-            clean_title = article.get("title", "").replace('"', '').replace("'", "").strip()
-            if not clean_title:
-                return
+    filtered: list[dict] = []
+    for item in merged:
+        if not item.get("title"):
+            continue
+        if not _is_source_reliable(item):
+            continue
+        if not _is_financially_relevant(item):
+            continue
 
-            safe_title = urllib.parse.quote(clean_title)
-            
-            # Step 1: Scrape relevant image from Reddit
-            reddit_url = f"https://www.reddit.com/search.json?q={safe_title}&type=link&sort=relevance"
-            try:
-                headers = {'User-Agent': 'Tradeshift-News-Service/1.0'}
-                async with session.get(reddit_url, headers=headers, timeout=5) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        for child in data.get("data", {}).get("children", []):
-                            post = child.get("data", {})
-                            if "preview" in post and "images" in post["preview"]:
-                                article["imageUrl"] = html.unescape(post["preview"]["images"][0]["source"]["url"])
-                                return
-                            elif post.get("url", "").endswith((".jpg", ".png", ".jpeg")):
-                                article["imageUrl"] = post["url"]
-                                return
-            except Exception:
-                pass
-                
-            # Step 2: Use Bing Thumbnail Search based on article content
-            article["imageUrl"] = f"https://tse1.mm.bing.net/th?q={safe_title}+news&w=800&h=500&c=7&rs=1&p=0"
-            
-        await asyncio.gather(*(enrich_image(a) for a in final_news))
+        geo = _infer_geo(item)
+        if category == "indian" and geo != "indian":
+            continue
+        if category == "global" and geo == "indian":
+            continue
+
+        if not item.get("imageUrl"):
+            item["imageUrl"] = _default_image_for(item)
+        item["sourceTrust"] = _source_trust_level(item)
+
+        filtered.append(item)
+
+    filtered.sort(key=lambda x: _parse_datetime(x.get("publishedAt")), reverse=True)
+    final_news = filtered[:limit]
 
     _set_cache(cache_key, final_news, expire=120) # 2 min high-frequency cache
     return final_news

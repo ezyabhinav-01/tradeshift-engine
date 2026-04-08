@@ -919,10 +919,6 @@ export const ProChart: React.FC<ProChartProps> = ({
       // Detect if we need a full reload (e.g. initial load or scrubbing backwards)
       const currentTickTime = currentTime ? Math.floor(currentTime.getTime() / 1000) : 0;
 
-      // 🚨 CRITICAL FIX: To prevent "whole chart" flash on remount, we MUST have a valid 
-      // currentTickTime before filtering. If it's 0 (initial state on mount), wait.
-      if (isReplayActive && currentTickTime === 0) return;
-
       const needsFullReset = lastDataSetTimeRef.current === 0 || 
                             (isReplayActive && currentTickTime < lastDataSetTimeRef.current);
 

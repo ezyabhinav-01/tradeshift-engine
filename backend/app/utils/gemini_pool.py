@@ -37,7 +37,8 @@ class GeminiPool:
     def _get_model_for_key(self, key_index: int, model_name: str):
         """
         Creates or retrieves a GenerativeModel instance for a specific key.
-        Uses the low-level client to avoid global configuration conflicts.
+        Uses per-request API key configuration to stay compatible with the
+        currently installed Gemini SDK.
         """
         cache_key = (key_index, model_name)
         if cache_key in self.models:
@@ -45,16 +46,15 @@ class GeminiPool:
         
         key = self.keys[key_index]
         try:
-            # Create a dedicated client for this specific API key
-            client = glm.GenerativeServiceClient(client_options={'api_key': key})
-            model = genai.GenerativeModel(model_name=model_name, client=client)
+            genai.configure(api_key=key)
+            model = genai.GenerativeModel(model_name=model_name)
             self.models[cache_key] = model
             return model
         except Exception as e:
             print(f"❌ [GeminiPool] Error creating model for key index {key_index}: {e}")
             return None
 
-    async def generate_content(self, prompt: str, model_name: str = "gemini-1.5-flash", is_async: bool = False):
+    async def generate_content(self, prompt: str, model_name: str = "models/gemini-2.0-flash-lite-001", is_async: bool = False):
         """
         Generates content using one of the available keys.
         If a key fails with 429 (Resource Exhausted), it automatically tries the next one.
@@ -99,7 +99,7 @@ class GeminiPool:
         
         raise Exception("All Gemini API keys in the pool are currently exhausted or invalid.")
 
-    async def get_embeddings_async(self, texts: list, model_name: str = "models/text-embedding-004"):
+    async def get_embeddings_async(self, texts: list, model_name: str = "models/gemini-embedding-001"):
         """
         Generates embeddings for a list of strings using the pool's keys.
         Supports automatic rotation on rate limits.
@@ -109,23 +109,45 @@ class GeminiPool:
 
         num_keys = len(self.keys)
         start_index = self.current_index
+        model_candidates = [
+            model_name,
+            "models/gemini-embedding-001",
+            "models/gemini-embedding-2-preview",
+            "models/embedding-001",
+            "embedding-001",
+            "models/text-embedding-004",
+            "text-embedding-004",
+        ]
         
         for attempt in range(num_keys):
             idx = (start_index + attempt) % num_keys
             key = self.keys[idx]
             
             try:
-                # Use the embed_content method on the library directly with the specific key
-                # This is preferred for batch operations
                 genai.configure(api_key=key)
-                response = await genai.embed_content_async(
-                    model=model_name,
-                    content=texts,
-                    task_type="retrieval_document" if len(texts) > 1 else "retrieval_query"
-                )
-                
-                self.current_index = (idx + 1) % num_keys
-                return response['embeddings']
+                last_error = None
+
+                for candidate in model_candidates:
+                    try:
+                        response = await genai.embed_content_async(
+                            model=candidate,
+                            content=texts,
+                            task_type="retrieval_document" if len(texts) > 1 else "retrieval_query"
+                        )
+                        self.current_index = (idx + 1) % num_keys
+                        if 'embeddings' in response:
+                            return response['embeddings']
+                        if 'embedding' in response:
+                            return [response['embedding']]
+                        raise KeyError("embedding")
+                    except Exception as model_error:
+                        last_error = model_error
+                        error_msg = str(model_error).lower()
+                        if "not found" in error_msg or "not supported" in error_msg:
+                            continue
+                        raise model_error
+
+                raise last_error or Exception("No compatible embedding model available.")
             except Exception as e:
                 error_msg = str(e).lower()
                 if "429" in error_msg or "resource_exhausted" in error_msg:

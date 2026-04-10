@@ -14,7 +14,13 @@ class MarketService:
     def __init__(self):
         redis_host = os.getenv("REDIS_HOST", "localhost")
         redis_port = int(os.getenv("REDIS_PORT", 6379))
-        self.redis_client = redis.Redis(host=redis_host, port=redis_port, decode_responses=True)
+        try:
+            client = redis.Redis(host=redis_host, port=redis_port, decode_responses=True)
+            client.ping()
+            self.redis_client = client
+        except Exception as e:
+            logger.warning(f"Redis unavailable for MarketService: {e}. Continuing without cache.")
+            self.redis_client = None
         self.cache_ttl = 300  # 5 minutes
         
         # Mapping of common names to Yahoo Finance symbols for Indian Indices
@@ -39,7 +45,24 @@ class MarketService:
             "Infra": "^CNXINFRA",
             "Media": "^CNXMEDIA"
         }
-    
+
+    def _cache_get(self, key: str):
+        if not self.redis_client:
+            return None
+        try:
+            return self.redis_client.get(key)
+        except Exception as e:
+            logger.warning(f"MarketService cache read failed for {key}: {e}")
+            return None
+
+    def _cache_set(self, key: str, value: Any) -> None:
+        if not self.redis_client:
+            return
+        try:
+            self.redis_client.setex(key, self.cache_ttl, json.dumps(value))
+        except Exception as e:
+            logger.warning(f"MarketService cache write failed for {key}: {e}")
+
     def _safe_float(self, val: Any) -> float:
         """Ensure the value is a valid JSON-compliant float (no NaN/Inf)."""
         try:
@@ -166,7 +189,7 @@ class MarketService:
     def get_indices(self) -> List[Dict[str, Any]]:
         """Fetch current data for major indices, using cache if available."""
         cache_key = "market:indices"
-        cached_data = self.redis_client.get(cache_key)
+        cached_data = self._cache_get(cache_key)
         
         if cached_data:
             logger.info("Serving indices from Redis cache")
@@ -244,7 +267,7 @@ class MarketService:
                 r["change"] = self._safe_float(r["change"])
                 r["change_percent"] = self._safe_float(r["change_percent"])
 
-            self.redis_client.setex(cache_key, self.cache_ttl, json.dumps(results))
+            self._cache_set(cache_key, results)
             
         return results
 
@@ -255,7 +278,7 @@ class MarketService:
         For this simulation/MVP we will use a curated list of Nifty 50 tokens to check.
         """
         cache_key = "market:movers"
-        cached_data = self.redis_client.get(cache_key)
+        cached_data = self._cache_get(cache_key)
         
         if cached_data:
             logger.info("Serving movers from Redis cache")
@@ -310,14 +333,14 @@ class MarketService:
         }
         
         # Cache the results
-        self.redis_client.setex(cache_key, self.cache_ttl, json.dumps(results))
+        self._cache_set(cache_key, results)
         
         return results
 
     def get_sector_performance(self) -> List[Dict[str, Any]]:
         """Fetch current data for major sectors."""
         cache_key = "market:sectors"
-        cached_data = self.redis_client.get(cache_key)
+        cached_data = self._cache_get(cache_key)
         
         if cached_data:
             logger.info("Serving sectors from Redis cache")
@@ -351,14 +374,14 @@ class MarketService:
         results = sorted(results, key=lambda x: x["change_percent"], reverse=True)
             
         if results:
-            self.redis_client.setex(cache_key, self.cache_ttl, json.dumps(results))
+            self._cache_set(cache_key, results)
             
         return results
 
     def get_option_chain(self, symbol: str = "^NSEI") -> Dict[str, Any]:
         """Fetch option chain, calculate PCR, Max Pain, and format for UI."""
         cache_key = f"market:options:{symbol}"
-        cached_data = self.redis_client.get(cache_key)
+        cached_data = self._cache_get(cache_key)
         
         if cached_data:
             return json.loads(cached_data)
@@ -374,7 +397,7 @@ class MarketService:
             if not expirations:
                 logger.info(f"YFinance returned no options for {symbol}. Generating mock options chain...")
                 mock_data = self._generate_mock_option_chain(symbol, current_price)
-                self.redis_client.setex(cache_key, self.cache_ttl, json.dumps(mock_data))
+                self._cache_set(cache_key, mock_data)
                 return mock_data
                 
             # Use closest expiration
@@ -464,7 +487,7 @@ class MarketService:
                 "chain": chain_data
             }
             
-            self.redis_client.setex(cache_key, self.cache_ttl, json.dumps(result))
+            self._cache_set(cache_key, result)
             return result
         except Exception as e:
             logger.error(f"Error fetching option chain for {symbol}: {e}")

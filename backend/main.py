@@ -191,6 +191,7 @@ ALLOWED_CORS_ORIGINS = parse_cors_origins(os.getenv("CORS_ALLOWED_ORIGINS"), DEF
 
 # --- BACKGROUND JOBS ---
 scheduler = BackgroundScheduler()
+async_scheduler = None
 job_run_state = {}
 replay_session_semaphore = asyncio.Semaphore(REPLAY_MAX_CONCURRENT_SESSIONS)
 replay_ai_semaphore = asyncio.Semaphore(REPLAY_AI_MAX_CONCURRENCY)
@@ -623,15 +624,23 @@ if RUN_BACKGROUND_JOBS:
     )
 
     scheduler.start()
-    # --- Async Tasks Scheduler ---
-    setup_scheduler()
 else:
     logger.info("⏸️ Background jobs disabled via RUN_BACKGROUND_JOBS=false")
 
 @app.on_event("startup")
 async def startup_event():
+    global async_scheduler
     await start_auth_side_effect_worker()
     REPLAY_START_SUCCESS_RATIO.set(1.0)
+    app_env = (os.getenv("APP_ENV") or "development").strip().lower()
+    async_scheduler_enabled = not (app_env == "test" and "RUN_ASYNC_SCHEDULER" not in os.environ)
+    if async_scheduler is None and async_scheduler_enabled:
+        try:
+            async_scheduler = setup_scheduler()
+        except Exception as e:
+            logger.warning(f"⚠️ Async scheduler startup skipped: {e}")
+    elif not async_scheduler_enabled:
+        logger.info("⏭️ Async scheduler skipped for test runtime.")
     # Attempt to connect to Shoonya Live WS in the background
     if ENABLE_SHOONYA_BACKGROUND_CONNECT:
         try:
@@ -654,7 +663,14 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
+    global async_scheduler
     await stop_auth_side_effect_worker()
+    try:
+        if async_scheduler is not None:
+            async_scheduler.shutdown(wait=False)
+            async_scheduler = None
+    except Exception:
+        pass
     try:
         replay_executor.shutdown(wait=False, cancel_futures=True)
     except Exception:

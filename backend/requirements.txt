@@ -8,6 +8,7 @@ pydantic
 sqlalchemy
 psycopg2-binary
 asyncpg
+greenlet
 
 # === Data Processing ===
 pandas
@@ -65,3 +66,4 @@ aiosqlite
 # === Testing ===
 pytest
 pytest-asyncio
+httpx

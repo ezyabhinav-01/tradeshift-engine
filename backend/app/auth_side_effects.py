@@ -15,12 +15,19 @@ AUTH_SIDE_EFFECT_QUEUE_SIZE = max(int(os.getenv("AUTH_SIDE_EFFECT_QUEUE_SIZE", "
 
 _queue: asyncio.Queue[tuple[str, Callable[..., Awaitable[Any]], tuple[Any, ...], dict[str, Any]]] | None = None
 _worker_task: asyncio.Task | None = None
+_queue_loop: asyncio.AbstractEventLoop | None = None
 
 
 def _ensure_queue() -> asyncio.Queue[tuple[str, Callable[..., Awaitable[Any]], tuple[Any, ...], dict[str, Any]]]:
-    global _queue
-    if _queue is None:
+    global _queue, _queue_loop
+    try:
+        current_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        current_loop = None
+
+    if _queue is None or (current_loop is not None and _queue_loop is not current_loop):
         _queue = asyncio.Queue(maxsize=AUTH_SIDE_EFFECT_QUEUE_SIZE)
+        _queue_loop = current_loop
     return _queue
 
 
@@ -47,8 +54,10 @@ async def start_auth_side_effect_worker() -> None:
 
 
 async def stop_auth_side_effect_worker() -> None:
-    global _worker_task
+    global _worker_task, _queue, _queue_loop
     if _worker_task is None:
+        _queue = None
+        _queue_loop = None
         return
     _worker_task.cancel()
     try:
@@ -56,6 +65,8 @@ async def stop_auth_side_effect_worker() -> None:
     except asyncio.CancelledError:
         pass
     _worker_task = None
+    _queue = None
+    _queue_loop = None
 
 
 def enqueue_auth_side_effect(

@@ -424,9 +424,10 @@ class OrderManagementSystem:
         result = await db.execute(select(TradeLog).filter(TradeLog.id == trade.id))
         trade = result.scalars().first()
         
-        # 🔥 Snapshot: Update equity curve after closing a trade
-        asyncio.create_task(portfolio_service.save_portfolio_snapshot(user_id, trade.session_type or "REPLAY"))
-        
+        # Persist the post-close snapshot before returning so request/test lifecycles
+        # don't leave detached DB writers behind.
+        await portfolio_service.save_portfolio_snapshot(user_id, trade.session_type or "REPLAY")
+
         return trade
 
     async def close_all_trades(self, db: AsyncSession, user_id: int, exit_price_mapping: dict[str, float], session_type: str = "REPLAY", simulated_time: Optional[datetime] = None) -> list[TradeLog]:

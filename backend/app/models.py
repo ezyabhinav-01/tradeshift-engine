@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Date, Boolean, ForeignKey, Text, JSON, ForeignKeyConstraint, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, DateTime, Date, Boolean, ForeignKey, Text, JSON, ForeignKeyConstraint, UniqueConstraint, Index
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.database import Base  # Import Base from database.py
@@ -10,6 +10,11 @@ class TradeLog(Base):
     Model representing a record of a completed trade.
     """
     __tablename__ = "trade_logs"
+    __table_args__ = (
+        Index("ix_trade_logs_user_session_entry_time", "user_id", "session_type", "entry_time"),
+        Index("ix_trade_logs_user_session_status_parent", "user_id", "session_type", "status", "parent_trade_id"),
+        Index("ix_trade_logs_symbol_session_status_user", "symbol", "session_type", "status", "user_id"),
+    )
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     entry_time = Column(DateTime, index=True, default=datetime.utcnow)
@@ -53,6 +58,9 @@ class PortfolioHolding(Base):
     Model representing an actively held position in the user's portfolio.
     """
     __tablename__ = "portfolio_holdings"
+    __table_args__ = (
+        UniqueConstraint("user_id", "session_type", "symbol", name="uq_portfolio_holdings_user_session_symbol"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, index=True) # Linking to User if needed
@@ -77,7 +85,7 @@ class User(Base):
     occupation = Column(String, nullable=True) # Student, Job, Retired
     city = Column(String, nullable=True)
     how_heard_about = Column(String, nullable=True)
-    security_pin = Column(String(4), nullable=True)
+    security_pin = Column(String(255), nullable=True)
     
     # --- Forgot Password Fields ---
     phone_number = Column(String, nullable=True)
@@ -434,6 +442,9 @@ class Notification(Base):
     Model for global and user-specific notifications.
     """
     __tablename__ = "notifications"
+    __table_args__ = (
+        Index("ix_notifications_user_created_at", "user_id", "created_at"),
+    )
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -506,6 +517,9 @@ class BroadcastRead(Base):
     Broadcast notifications have user_id = NULL in the notifications table.
     """
     __tablename__ = "broadcast_reads"
+    __table_args__ = (
+        UniqueConstraint("user_id", "notification_id", name="uq_broadcast_reads_user_notification"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -520,6 +534,9 @@ class MarketCandle(Base):
     Maintains a rolling 7-day window.
     """
     __tablename__ = "market_candles"
+    __table_args__ = (
+        Index("ix_market_candles_symbol_timestamp", "symbol", "timestamp"),
+    )
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     timestamp = Column(DateTime, index=True)
@@ -553,6 +570,9 @@ class PortfolioSnapshot(Base):
     Partitioned monthly by timestamp.
     """
     __tablename__ = "portfolio_snapshots"
+    __table_args__ = (
+        Index("ix_portfolio_snapshots_user_session_timestamp", "user_id", "session_type", "timestamp"),
+    )
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     timestamp = Column(DateTime, index=True, default=datetime.utcnow)
     user_id = Column(Integer, index=True)

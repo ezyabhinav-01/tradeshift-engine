@@ -59,3 +59,8 @@ pyotp
 python-dotenv
 apscheduler
 feedparser
+aiosqlite
+
+# === Testing ===
+pytest
+pytest-asyncio

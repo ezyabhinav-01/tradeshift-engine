@@ -8,11 +8,13 @@ import OrderPanel from '../features/OrderPanel';
 import TradePanel from '../TradePanel/TradePanel';
 import PlaybackControls from '../features/PlaybackControls';
 import SettingsPage from '../../pages/SettingsPage';
-import { useGame } from '../../context/GameContext';
+import { useGameActions, useGameMarket, useGamePlayback } from '../../hooks/useGame';
 
 const MainLayout = () => {
   const [page] = useState<Page>('terminal');
-  const { speed, setSpeed, theme, placeOrder } = useGame();
+  const { speed } = useGamePlayback();
+  const { theme } = useGameMarket();
+  const { setSpeed, placeOrder } = useGameActions();
   const [selectedPrice, setSelectedPrice] = useState<number | null>(null);
 
   const handleExecuteOrder = (orderData: any) => {

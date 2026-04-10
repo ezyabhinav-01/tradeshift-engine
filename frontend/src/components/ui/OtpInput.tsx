@@ -90,7 +90,9 @@ const OtpInput = forwardRef<OtpInputRef, OtpInputProps>(({ length, onComplete, d
         <input
           key={index}
           type={type}
-          ref={(el) => (inputs.current[index] = el)}
+          ref={(el) => {
+            inputs.current[index] = el;
+          }}
           value={digit}
           disabled={disabled}
           onChange={(e) => handleChange(e.target, index)}

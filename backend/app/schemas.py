@@ -273,6 +273,10 @@ class TradeResponse(BaseModel):
     limit_price: Optional[float] = None
     stop_price: Optional[float] = None
     alert: bool = False
+    requested_quantity: Optional[int] = None
+    fill_ratio: Optional[float] = None
+    simulated_latency_ms: Optional[int] = None
+    simulated_slippage_bps: Optional[float] = None
     message: str
 
 
@@ -287,6 +291,10 @@ class OrderUpdatePayload(BaseModel):
     take_profit: Optional[float] = None
     quantity: int
     pnl: float = 0.0
+    requested_quantity: Optional[int] = None
+    fill_ratio: Optional[float] = None
+    simulated_latency_ms: Optional[int] = None
+    simulated_slippage_bps: Optional[float] = None
 
 
 class TradeExitRequest(BaseModel):

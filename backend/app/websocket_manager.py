@@ -10,8 +10,11 @@ from fastapi import WebSocket
 from typing import Dict, List, Any
 import json
 import logging
+import asyncio
 
 logger = logging.getLogger(__name__)
+WS_EMIT_TIMEOUT_SECONDS = 0.8
+WS_EMIT_CONCURRENCY = 32
 
 
 class ConnectionManager:
@@ -60,13 +63,24 @@ class ConnectionManager:
 
         message = {"type": event_type, "data": payload}
         disconnected = []
+        semaphore = asyncio.Semaphore(WS_EMIT_CONCURRENCY)
 
-        for ws in self.active_connections[room]:
+        async def send_one(ws: WebSocket):
+            async with semaphore:
+                try:
+                    await asyncio.wait_for(ws.send_json(message), timeout=WS_EMIT_TIMEOUT_SECONDS)
+                except Exception as e:
+                    logger.warning(f"Failed to send to {room}: {e}")
+                    disconnected.append(ws)
+
+        tasks = []
+        for ws in list(self.active_connections[room]):
             try:
-                await ws.send_json(message)
-            except Exception as e:
-                logger.warning(f"Failed to send to {room}: {e}")
+                tasks.append(asyncio.create_task(send_one(ws)))
+            except Exception:
                 disconnected.append(ws)
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
         # Clean up broken connections
         for ws in disconnected:
@@ -86,15 +100,21 @@ class ConnectionManager:
         you'd filter by users who are members of the channel.
         """
         message = {"type": event_type, "data": payload}
+        semaphore = asyncio.Semaphore(WS_EMIT_CONCURRENCY)
         
-        for room, connections in self.active_connections.items():
+        for room, connections in list(self.active_connections.items()):
             disconnected = []
-            for ws in connections:
-                try:
-                    await ws.send_json(message)
-                except Exception as e:
-                    logger.warning(f"Failed to send to {room} in channel {channel_id}: {e}")
-                    disconnected.append(ws)
+            async def send_one(ws: WebSocket):
+                async with semaphore:
+                    try:
+                        await asyncio.wait_for(ws.send_json(message), timeout=WS_EMIT_TIMEOUT_SECONDS)
+                    except Exception as e:
+                        logger.warning(f"Failed to send to {room} in channel {channel_id}: {e}")
+                        disconnected.append(ws)
+
+            tasks = [asyncio.create_task(send_one(ws)) for ws in list(connections)]
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
             
             # Clean up broken connections for this room
             if disconnected:

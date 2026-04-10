@@ -13,6 +13,10 @@ const DEFAULT_SUMMARY = {
   is_positive: true,
   equity_curve: [],
   cash_balance: 100000.0,
+  pending_order_count: 0,
+  pending_buy_value: 0,
+  pending_sell_value: 0,
+  effective_available_cash: 100000.0,
   total_value: 100000.0,
 };
 
@@ -25,6 +29,7 @@ interface PortfolioState {
   summary: any;
   holdings: any[];
   positions: any[];
+  activeOrders: any[];
   history: any[];
   monthlySummary: any[];
   sectors: any;
@@ -44,6 +49,7 @@ export const usePortfolioStore = create<PortfolioState>()(
       summary: null,
       holdings: [],
       positions: [],
+      activeOrders: [],
       history: [],
       monthlySummary: [],
       sectors: null,
@@ -59,6 +65,7 @@ export const usePortfolioStore = create<PortfolioState>()(
           !!state.summary ||
           state.holdings.length > 0 ||
           state.positions.length > 0 ||
+          state.activeOrders.length > 0 ||
           state.history.length > 0 ||
           !!state.sectors ||
           !!state.research;
@@ -81,13 +88,14 @@ export const usePortfolioStore = create<PortfolioState>()(
             api.get('/api/portfolio/summary', { params }),
             api.get('/api/portfolio/holdings', { params }),
             api.get('/api/portfolio/positions', { params }),
+            api.get('/api/trade/orders', { params }),
             api.get('/api/portfolio/sectors', { params }),
             api.get('/api/portfolio/research', { params }),
             api.get('/api/history/trades', { params: { ...params, limit: 100, sort_by: 'id', sort_order: 'desc' } }),
             api.get('/api/history/monthly-summary', { params }),
           ]);
 
-          const [sumR, holdR, posR, secR, resR, histR, monthR] = results;
+          const [sumR, holdR, posR, ordR, secR, resR, histR, monthR] = results;
           const successCount = results.filter((r) => r.status === 'fulfilled').length;
 
           set((prev) => ({
@@ -97,6 +105,8 @@ export const usePortfolioStore = create<PortfolioState>()(
               holdR.status === 'fulfilled' ? holdR.value.data.holdings || [] : prev.holdings,
             positions:
               posR.status === 'fulfilled' ? posR.value.data.positions || [] : prev.positions,
+            activeOrders:
+              ordR.status === 'fulfilled' ? ordR.value.data || [] : prev.activeOrders,
             sectors: secR.status === 'fulfilled' ? secR.value.data : prev.sectors,
             research: resR.status === 'fulfilled' ? resR.value.data : prev.research,
             history: histR.status === 'fulfilled' ? histR.value.data.trades || [] : prev.history,
@@ -125,6 +135,7 @@ export const usePortfolioStore = create<PortfolioState>()(
           summary: DEFAULT_SUMMARY,
           holdings: [],
           positions: [],
+          activeOrders: [],
           history: [],
           monthlySummary: [],
           sectors: null,
@@ -141,6 +152,7 @@ export const usePortfolioStore = create<PortfolioState>()(
         summary: state.summary,
         holdings: state.holdings,
         positions: state.positions,
+        activeOrders: state.activeOrders,
         history: state.history,
         monthlySummary: state.monthlySummary,
         sectors: state.sectors,

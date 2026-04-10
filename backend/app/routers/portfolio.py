@@ -53,14 +53,12 @@ async def get_optional_user(request: Request, db: AsyncSession = Depends(get_db)
 
 
 async def _get_user_id(request: Request, db: AsyncSession, session_type: str = 'REPLAY') -> int:
-    """Helper to extract user_id. Allows fallback to user 1 for REPLAY mode."""
+    """Helper to extract authenticated user_id."""
     session_type = (session_type or "REPLAY").upper()
     if session_type == "LIVE":
         session_type = "REPLAY"
     user = await get_optional_user(request, db)
     if not user:
-        if session_type == 'REPLAY':
-            return 1
         raise HTTPException(status_code=401, detail="Authentication required")
     return user.id
 

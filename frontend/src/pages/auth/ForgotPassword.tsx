@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Mail, Phone, Lock, KeyRound, ArrowLeft, AlertCircle, CheckCircle2, ShieldCheck, RefreshCw, Eye, EyeOff } from 'lucide-react';
+import { Mail, Phone, Lock, KeyRound, ArrowLeft, AlertCircle, ShieldCheck, RefreshCw, Eye, EyeOff } from 'lucide-react';
 import axios from 'axios';
-import { Toaster, toast } from 'sonner';
+import { toast } from 'sonner';
 
 const ForgotPassword: React.FC = () => {
   const [step, setStep] = useState(1); // 1: Email/Phone, 2: OTP, 3: New Password

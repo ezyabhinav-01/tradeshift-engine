@@ -1,8 +1,9 @@
 import { Play, Pause } from 'lucide-react';
-import { useGame } from '../../hooks/useGame';
+import { useGameActions, useGamePlayback } from '../../hooks/useGame';
 
 const PlaybackControls = () => {
-  const { isPlaying, togglePlay } = useGame();
+  const { isPlaying } = useGamePlayback();
+  const { togglePlay } = useGameActions();
 
   return (
     <div className="absolute bottom-6 left-1/2 -translate-x-1/2 px-6 py-2 rounded-full shadow-2xl flex items-center gap-4 border z-50 transition-all duration-300 hover:shadow-tv-primary/20 hover:-translate-y-1 bg-tv-bg-pane border-tv-border backdrop-blur-md">

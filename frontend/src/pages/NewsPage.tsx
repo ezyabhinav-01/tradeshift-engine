@@ -22,23 +22,17 @@ const NewsPage: React.FC = () => {
   const [activeCategory, setActiveCategory] = useState('all');
   const [loading, setLoading] = useState(true);
   const [explainingId, setExplainingId] = useState<string | null>(null);
-  const cacheRef = useRef<Record<string, { ts: number; items: NewsItem[] }>>({});
+  const hasLoadedRef = useRef(false);
 
   // AI Explanation Modal State
   const [explanation, setExplanation] = useState<string | null>(null);
   const [selectedNewsTitle, setSelectedNewsTitle] = useState<string | null>(null);
 
-  const fetchNews = useCallback(async (cat: string) => {
-    const cacheKey = `${cat}:36`;
-    const cached = cacheRef.current[cacheKey];
-    const now = Date.now();
-    if (cached && now - cached.ts < 120_000) {
-      setNews(cached.items);
-      setLoading(false);
-      return;
+  const fetchNews = useCallback(async (cat: string, opts?: { background?: boolean }) => {
+    const shouldBackgroundRefresh = opts?.background ?? false;
+    if (!shouldBackgroundRefresh || !hasLoadedRef.current) {
+      setLoading(true);
     }
-
-    setLoading(true);
     try {
       const parsePublishedAt = (value?: string): number | null => {
         if (!value) return null;
@@ -69,7 +63,7 @@ const NewsPage: React.FC = () => {
 
       const finalData = sortedData.map(({ item }) => item).slice(0, 100);
       setNews(finalData);
-      cacheRef.current[cacheKey] = { ts: now, items: finalData };
+      hasLoadedRef.current = true;
     } catch (error) {
       console.error('Failed to fetch news:', error);
       toast.error('Failed to load news. Please try again later.');
@@ -83,7 +77,7 @@ const NewsPage: React.FC = () => {
 
     // Auto-refresh every 20 minutes
     const interval = setInterval(() => {
-      fetchNews(activeCategory);
+      fetchNews(activeCategory, { background: true });
     }, 1200000);
 
     return () => clearInterval(interval);

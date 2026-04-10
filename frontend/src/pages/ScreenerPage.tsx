@@ -3,6 +3,7 @@ import axios from 'axios';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import '@/styles/ScreenerCard.css';
+import { getCachedOrFetch } from '@/utils/requestCache';
 import { useNavigate } from 'react-router-dom';
 import {
   TrendingUp,
@@ -141,12 +142,18 @@ const ScreenerPage: React.FC = () => {
     const fetchCandidates = async () => {
       setIsLoading(true);
       try {
-        const response = await axios.get(`/api/screener/multibagger`);
-        const responseCandidates = Array.isArray(response?.data?.candidates)
-          ? response.data.candidates
-          : Array.isArray(response?.data)
-            ? response.data
-            : [];
+        const responseCandidates = await getCachedOrFetch(
+          'screener:multibagger:candidates',
+          async () => {
+            const response = await axios.get(`/api/screener/multibagger`);
+            return Array.isArray(response?.data?.candidates)
+              ? response.data.candidates
+              : Array.isArray(response?.data)
+                ? response.data
+                : [];
+          },
+          { ttlMs: 120_000 }
+        );
         setCandidates(responseCandidates);
         setFilteredCandidates(responseCandidates);
       } catch (error) {

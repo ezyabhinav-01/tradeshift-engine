@@ -84,13 +84,13 @@ interface GameState {
     symbol?: string,
     limitPrice?: number,
     stopPrice?: number
-  ) => void;
+  ) => Promise<void> | void;
   closePosition: (
     tradeId: string | number,
     exitType?: 'MARKET' | 'LIMIT',
     limitPrice?: number,
     simulatedTime?: string | Date
-  ) => void;
+  ) => Promise<void> | void;
   closeAllPositions: () => Promise<void>;
   modifyOrder: (orderId: number | string, updates: any) => Promise<void>;
   resetSimulation: () => void;
@@ -99,10 +99,38 @@ interface GameState {
 }
 
 export const GameContext = createContext<GameState | null>(null);
+const GamePlaybackContext = createContext<Pick<GameState, 'isPlaying' | 'speed' | 'selectedDate' | 'availableDates' | 'isReplayActive' | 'currentTime'> | null>(null);
+const GameActionContext = createContext<Pick<GameState, 'togglePlay' | 'toggleReplay' | 'setSpeed' | 'setDate' | 'setSymbol' | 'toggleTheme' | 'placeOrder' | 'modifyOrder' | 'closePosition' | 'closeAllPositions' | 'resetSimulation' | 'clearHistoryForReplay' | 'askNewsQuestion' | 'updateUserSettings'> | null>(null);
+const GameMarketContext = createContext<Pick<GameState, 'currentPrice' | 'currentCandle' | 'historicalCandles' | 'replayTicks' | 'simulatedIndices' | 'selectedSymbol' | 'theme' | 'isLoadingHistory' | 'newsItems' | 'balance'> | null>(null);
+const GameTradeContext = createContext<Pick<GameState, 'trades' | 'userSettings' | 'sessionType'> | null>(null);
 
 export const useGame = (): GameState => {
   const ctx = useContext(GameContext);
   if (!ctx) throw new Error('useGame must be used within a GameProvider');
+  return ctx;
+};
+
+export const useGamePlayback = () => {
+  const ctx = useContext(GamePlaybackContext);
+  if (!ctx) throw new Error('useGamePlayback must be used within a GameProvider');
+  return ctx;
+};
+
+export const useGameActions = () => {
+  const ctx = useContext(GameActionContext);
+  if (!ctx) throw new Error('useGameActions must be used within a GameProvider');
+  return ctx;
+};
+
+export const useGameMarket = () => {
+  const ctx = useContext(GameMarketContext);
+  if (!ctx) throw new Error('useGameMarket must be used within a GameProvider');
+  return ctx;
+};
+
+export const useGameTrades = () => {
+  const ctx = useContext(GameTradeContext);
+  if (!ctx) throw new Error('useGameTrades must be used within a GameProvider');
   return ctx;
 };
 
@@ -140,6 +168,34 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
   const [availableDates, setAvailableDates] = useState<string[]>([]);
   const [sessionLockedDate, setSessionLockedDate] = useState(() => sessionStorage.getItem('replaySessionLockedDate') || '');
   const lastPortfolioSyncAtRef = useRef(0);
+  const historyRequestIdRef = useRef(0);
+  const selectedSymbolRef = useRef(selectedSymbol);
+  const currentCandleRef = useRef<CandleData | null>(currentCandle);
+  const replayTicksRef = useRef<Record<string, CandleData>>(replayTicks);
+  const marketFlushFrameRef = useRef<number | null>(null);
+  const queuedMarketRef = useRef<{
+    primaryPrice?: number;
+    primaryTimeIso?: string;
+    primaryCandle?: CandleData | null;
+    primaryHistoryCandle?: CandleData | null;
+    replayTickMap: Record<string, CandleData>;
+    indexUpdates: Record<string, IndexData>;
+  }>({
+    replayTickMap: {},
+    indexUpdates: {},
+  });
+
+  useEffect(() => {
+    selectedSymbolRef.current = selectedSymbol;
+  }, [selectedSymbol]);
+
+  useEffect(() => {
+    currentCandleRef.current = currentCandle;
+  }, [currentCandle]);
+
+  useEffect(() => {
+    replayTicksRef.current = replayTicks;
+  }, [replayTicks]);
 
   const syncPortfolioNow = useCallback(async (force: boolean = false) => {
     const now = Date.now();
@@ -178,11 +234,15 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
   // ── Load Available Dates & History ──────────────────────
   // ── Load Historical Candles ──────────────────────
   const loadHistory = useCallback(async (symbol: string, date: string, lookbackDays: number = 2): Promise<number> => {
+    const requestId = ++historyRequestIdRef.current;
     setIsLoadingHistory(true);
     // Don't clear immediately to avoid "1-second vanish" flicker. 
     // The previous historicalCandles will stay on chart until replaced.
     try {
       const candles = await fetchHistoricalCandles(symbol, 5000, date, '1min', lookbackDays);
+      if (historyRequestIdRef.current !== requestId) {
+        return candles.length;
+      }
       setHistoricalCandles(candles);
       if (candles.length > 0) {
         setCurrentPrice(candles[candles.length - 1].close);
@@ -209,12 +269,17 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
         return 0;
       }
     } catch (err) {
+      if (historyRequestIdRef.current !== requestId) {
+        return 0;
+      }
       console.error('Failed to load historical candles:', err);
       toast.error(`Data is not available for ${symbol} on ${date}`);
       setHistoricalCandles([]);
       return 0;
     } finally {
-      setIsLoadingHistory(false);
+      if (historyRequestIdRef.current === requestId) {
+        setIsLoadingHistory(false);
+      }
     }
   }, [isReplayActive, currentTime]);
 
@@ -340,7 +405,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
     return () => clearInterval(heartbeatInterval);
   }, []);
 
-  const updateUserSettings = async (updates: any) => {
+  const updateUserSettings = useCallback(async (updates: any) => {
     try {
       const response = await fetch(`/api/user/settings`, {
         method: 'PUT',
@@ -360,7 +425,63 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
       console.error('Update User Settings Error:', err);
       toast.error(err.message);
     }
-  };
+  }, []);
+
+  const flushQueuedMarketUpdates = useCallback(() => {
+    marketFlushFrameRef.current = null;
+    const queued = queuedMarketRef.current;
+    queuedMarketRef.current = { replayTickMap: {}, indexUpdates: {} };
+
+    if (queued.primaryCandle !== undefined) {
+      currentCandleRef.current = queued.primaryCandle ?? null;
+      setCurrentCandle(queued.primaryCandle ?? null);
+    }
+
+    if (Object.keys(queued.replayTickMap).length > 0) {
+      replayTicksRef.current = {
+        ...replayTicksRef.current,
+        ...queued.replayTickMap,
+      };
+      setReplayTicks(prev => ({ ...prev, ...queued.replayTickMap }));
+    }
+
+    if (queued.primaryHistoryCandle && queued.primaryHistoryCandle.symbol === selectedSymbolRef.current) {
+      setHistoricalCandles(prev => {
+        const next = [...prev, queued.primaryHistoryCandle as CandleData];
+        return next.length > 500 ? next.slice(next.length - 500) : next;
+      });
+    }
+
+    if (queued.primaryPrice !== undefined) {
+      setCurrentPrice(queued.primaryPrice);
+    }
+
+    if (queued.primaryTimeIso) {
+      setCurrentTime(new Date(queued.primaryTimeIso));
+    }
+
+    if (Object.keys(queued.indexUpdates).length > 0) {
+      setSimulatedIndices(prev => {
+        const updated = [...prev];
+        let changed = false;
+        Object.values(queued.indexUpdates).forEach((update) => {
+          const idx = updated.findIndex(i => i.name === update.name);
+          if (idx !== -1) {
+            updated[idx] = update;
+          } else {
+            updated.push(update);
+          }
+          changed = true;
+        });
+        return changed ? updated : prev;
+      });
+    }
+  }, []);
+
+  const scheduleQueuedMarketFlush = useCallback(() => {
+    if (marketFlushFrameRef.current !== null) return;
+    marketFlushFrameRef.current = requestAnimationFrame(flushQueuedMarketUpdates);
+  }, [flushQueuedMarketUpdates]);
 
   // ── WebSocket streaming ─────────────────────────────────────────────────
   useEffect(() => {
@@ -504,7 +625,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
         const d = payload.data;
         const isoStr = d.timestamp.endsWith('Z') ? d.timestamp : d.timestamp + 'Z';
         const timestamp = new Date(isoStr).getTime() / 1000;
-        const candleSymbol = d.symbol || selectedSymbol;
+        const candleSymbol = d.symbol || selectedSymbolRef.current;
 
         const newCandle: CandleData = {
           time: timestamp,
@@ -512,33 +633,27 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
           volume: d.volume || 0,
           symbol: candleSymbol
         };
-        setCurrentCandle(newCandle);
-        setReplayTicks(prev => ({ ...prev, [candleSymbol]: newCandle }));
+        const queued = queuedMarketRef.current;
+        queued.replayTickMap[candleSymbol] = newCandle;
 
-        // Only append to historicalCandles if it's the primary symbol
-        if (candleSymbol === selectedSymbol) {
-          setHistoricalCandles(prev => {
-            const next = [...prev, newCandle];
-            return next.length > 500 ? next.slice(next.length - 500) : next;
-          });
-          setCurrentPrice(d.close);
-          setCurrentTime(new Date(isoStr));
+        if (candleSymbol === selectedSymbolRef.current) {
+          queued.primaryCandle = newCandle;
+          queued.primaryHistoryCandle = newCandle;
+          queued.primaryPrice = d.close;
+          queued.primaryTimeIso = isoStr;
         }
+        scheduleQueuedMarketFlush();
       }
 
       if (payload.type === 'INDICES_TICK') {
         const indexUpdates = payload.data;
         if (!indexUpdates || typeof indexUpdates !== 'object') return;
-        setSimulatedIndices(prev => {
-          const updated = [...prev];
-          let changed = false;
-          Object.values(indexUpdates).forEach((update: any) => {
-            const idx = updated.findIndex(i => i.name === update.name);
-            if (idx !== -1) { updated[idx] = update; changed = true; }
-            else { updated.push(update); changed = true; }
-          });
-          return changed ? updated : prev;
+        Object.values(indexUpdates).forEach((update: any) => {
+          if (update?.name) {
+            queuedMarketRef.current.indexUpdates[update.name] = update as IndexData;
+          }
         });
+        scheduleQueuedMarketFlush();
       }
 
       if (payload.type === 'order_update') {
@@ -588,15 +703,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
 
       if (payload.type === 'TICK') {
         const tick = payload.data;
-        const tickSymbol = tick.symbol || selectedSymbol;
+        const tickSymbol = tick.symbol || selectedSymbolRef.current;
         const isoStr = tick.timestamp.endsWith('Z') ? tick.timestamp : tick.timestamp + 'Z';
         const rawTime = new Date(isoStr).getTime() / 1000;
         const candleTime = Math.floor(rawTime / 60) * 60;
-
-        if (tickSymbol === selectedSymbol) {
-          setCurrentPrice(tick.price);
-          setCurrentTime(new Date(isoStr));
-        }
 
         const buildUpdatedCandle = (prevCandle: CandleData | null): CandleData => {
           if (!prevCandle || candleTime !== prevCandle.time) {
@@ -616,21 +726,33 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
           };
         };
 
-        if (tickSymbol === selectedSymbol) {
-          setCurrentCandle(prevCandle => buildUpdatedCandle(prevCandle));
+        const queued = queuedMarketRef.current;
+        const previousReplayCandle = queued.replayTickMap[tickSymbol] ?? replayTicksRef.current[tickSymbol] ?? null;
+        const updatedReplayCandle = buildUpdatedCandle(previousReplayCandle);
+        queued.replayTickMap[tickSymbol] = updatedReplayCandle;
+
+        if (tickSymbol === selectedSymbolRef.current) {
+          const previousPrimary = queued.primaryCandle ?? currentCandleRef.current;
+          queued.primaryCandle = buildUpdatedCandle(previousPrimary);
+          queued.primaryPrice = tick.price;
+          queued.primaryTimeIso = isoStr;
         }
-        // Always update per-symbol replayTicks for independent multi-chart updates
-        setReplayTicks(prev => ({ ...prev, [tickSymbol]: buildUpdatedCandle(prev[tickSymbol] || null) }));
+
+        scheduleQueuedMarketFlush();
       }
     });
 
     return () => {
+      if (marketFlushFrameRef.current !== null) {
+        cancelAnimationFrame(marketFlushFrameRef.current);
+        marketFlushFrameRef.current = null;
+      }
       marketDataService.disconnect();
     };
     // Note: `speed` is intentionally excluded from deps.
     // Speed changes are handled by the dedicated effect below via marketDataService.setSpeed()
     // to avoid full WebSocket reconnection (which destroys replay state, indicators, and drawings).
-  }, [isPlaying, selectedSymbol, selectedDate, allChartSymbolsStr]);
+  }, [isPlaying, selectedSymbol, selectedDate, allChartSymbolsStr, scheduleQueuedMarketFlush]);
 
   // Dynamic speed changes
   useEffect(() => {
@@ -639,8 +761,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
     }
   }, [speed, isPlaying]);
 
-  const togglePlay = () => setIsPlaying(prev => !prev);
-  const toggleReplay = () => {
+  const togglePlay = useCallback(() => setIsPlaying(prev => !prev), []);
+  const toggleReplay = useCallback(() => {
     setIsReplayActive(prev => {
       const nextReplayState = !prev;
       if (nextReplayState) {
@@ -678,16 +800,16 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
       }
       return nextReplayState;
     });
-  };
-  const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark');
+  }, [historicalCandles, selectedDate]);
+  const toggleTheme = useCallback(() => setTheme(theme === 'dark' ? 'light' : 'dark'), [setTheme, theme]);
 
-  const setSymbol = (symbol: string, _token: string) => {
+  const setSymbol = useCallback((symbol: string, _token: string) => {
     setSelectedSymbol(symbol);
     const enforcedDate = sessionLockedDate || selectedDate;
     loadAvailableDatesAndHistory(symbol, enforcedDate, Boolean(sessionLockedDate));
-  };
+  }, [loadAvailableDatesAndHistory, selectedDate, sessionLockedDate]);
 
-  const setDate = (dateStr: string) => {
+  const setDate = useCallback((dateStr: string) => {
     if (sessionLockedDate && dateStr !== sessionLockedDate) {
       toast.error(`Session locked to ${sessionLockedDate}. Exit replay to choose a different date.`);
       return;
@@ -695,22 +817,22 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
     setSelectedDate(dateStr);
     // Load exactly 2 days prior to the selected date (context for replay)
     loadHistory(selectedSymbol, dateStr, 2);
-  };
+  }, [loadHistory, selectedSymbol, sessionLockedDate]);
 
-  const clearHistoryForReplay = () => {
+  const clearHistoryForReplay = useCallback(() => {
     setHistoricalCandles([]);
     setCurrentCandle(null);
-  };
+  }, []);
 
-  const askNewsQuestion = (newsId: string | number, question: string) => {
+  const askNewsQuestion = useCallback((newsId: string | number, question: string) => {
     marketDataService.sendMessage({
       command: 'NEWS_QUESTION',
       news_id: newsId,
       question
     });
-  };
+  }, []);
 
-  const placeOrder = async (
+  const placeOrder = useCallback(async (
     type: 'BUY' | 'SELL',
     quantity: number,
     orderType: string = 'MARKET',
@@ -786,9 +908,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
       console.error('Trading Error:', err);
       toast.error(err.message);
     }
-  };
+  }, [currentPrice, currentTime, fetchActiveTrades, historicalCandles, isReplayActive, loadHistory, selectedDate, selectedSymbol, sessionLockedDate, syncPortfolioNow]);
 
-  const modifyOrder = async (orderId: number | string, updates: any) => {
+  const modifyOrder = useCallback(async (orderId: number | string, updates: any) => {
     try {
       const response = await fetch(`/api/trade/order/${orderId}`, {
         method: 'PATCH',
@@ -813,9 +935,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
       console.error('Modify Order Error:', err);
       toast.error(err.message);
     }
-  };
+  }, [currentTime, syncPortfolioNow]);
 
-  const closePosition = async (tradeId: string | number, exitType: 'MARKET' | 'LIMIT' = 'MARKET', limitPrice?: number, simulatedTime?: string | Date) => {
+  const closePosition = useCallback(async (tradeId: string | number, exitType: 'MARKET' | 'LIMIT' = 'MARKET', limitPrice?: number, simulatedTime?: string | Date) => {
     try {
       const activeTrade = trades.find(t => String(t.id) === String(tradeId));
       const tradeSymbol = activeTrade?.symbol;
@@ -850,9 +972,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
       console.error('Close Position Error:', err);
       toast.error(err.message);
     }
-  };
+  }, [currentPrice, currentTime, fetchActiveTrades, replayTicks, selectedSymbol, syncPortfolioNow, trades]);
 
-  const closeAllPositions = async () => {
+  const closeAllPositions = useCallback(async () => {
     try {
       const openTrades = trades.filter(t => t.status === 'OPEN' || t.status === 'TRIGGERED');
       const exitPriceMapping: Record<string, number> = {};
@@ -888,9 +1010,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
       console.error('Close All Positions Error:', err);
       toast.error(err.message);
     }
-  };
+  }, [currentTime, fetchActiveTrades, replayTicks, syncPortfolioNow, trades]);
 
-  const resetSimulation = () => {
+  const resetSimulation = useCallback(() => {
     setIsPlaying(false);
     setBalance(100000);
     setTrades([]);
@@ -900,7 +1022,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
     setSimulatedIndices([]);
     setCurrentCandle(null);
     setReplayTicks({});
-  };
+  }, []);
 
   const contextValue = React.useMemo(() => ({
     isPlaying, speed, balance, currentPrice, currentCandle, currentTime,
@@ -918,9 +1040,62 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
     placeOrder, modifyOrder, closePosition, closeAllPositions, resetSimulation, toggleReplay, clearHistoryForReplay, askNewsQuestion, updateUserSettings
   ]);
 
+  const playbackValue = React.useMemo(() => ({
+    isPlaying,
+    speed,
+    selectedDate,
+    availableDates: sessionLockedDate ? [sessionLockedDate] : availableDates,
+    isReplayActive,
+    currentTime,
+  }), [isPlaying, speed, selectedDate, availableDates, sessionLockedDate, isReplayActive, currentTime]);
+
+  const actionValue = React.useMemo(() => ({
+    togglePlay,
+    toggleReplay,
+    setSpeed,
+    setDate,
+    setSymbol,
+    toggleTheme,
+    placeOrder,
+    modifyOrder,
+    closePosition,
+    closeAllPositions,
+    resetSimulation,
+    clearHistoryForReplay,
+    askNewsQuestion,
+    updateUserSettings,
+  }), [togglePlay, toggleReplay, setSpeed, setDate, setSymbol, toggleTheme, placeOrder, modifyOrder, closePosition, closeAllPositions, resetSimulation, clearHistoryForReplay, askNewsQuestion, updateUserSettings]);
+
+  const marketValue = React.useMemo(() => ({
+    currentPrice,
+    currentCandle,
+    historicalCandles,
+    replayTicks,
+    simulatedIndices,
+    selectedSymbol,
+    theme,
+    isLoadingHistory,
+    newsItems,
+    balance,
+  }), [currentPrice, currentCandle, historicalCandles, replayTicks, simulatedIndices, selectedSymbol, theme, isLoadingHistory, newsItems, balance]);
+
+  const tradeValue = React.useMemo(() => ({
+    trades,
+    userSettings,
+    sessionType,
+  }), [trades, userSettings, sessionType]);
+
   return (
     <GameContext.Provider value={contextValue}>
-      {children}
+      <GamePlaybackContext.Provider value={playbackValue}>
+        <GameActionContext.Provider value={actionValue}>
+          <GameMarketContext.Provider value={marketValue}>
+            <GameTradeContext.Provider value={tradeValue}>
+              {children}
+            </GameTradeContext.Provider>
+          </GameMarketContext.Provider>
+        </GameActionContext.Provider>
+      </GamePlaybackContext.Provider>
     </GameContext.Provider>
   );
 };

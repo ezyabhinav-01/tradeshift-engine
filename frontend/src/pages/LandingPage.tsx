@@ -9,7 +9,7 @@ import { useGame } from '../context/GameContext';
 import { useTheme } from '../context/ThemeContext';
 import { useMultiChartStore } from '../store/useMultiChartStore';
 import { SymbolSearch } from '../components/features/SymbolSearch';
-import { LogOut, ChevronLeft, ChevronRight, ChevronDown, UserCircle, BarChart3, BarChart2, Globe, Search, PieChart, BookOpen, Activity, MoreHorizontal, CheckCircle2, Newspaper, HelpCircle, LayoutDashboard, Sun, Moon } from 'lucide-react';
+import { LogOut, ChevronLeft, ChevronRight, ChevronDown, UserCircle, BarChart2, Globe, Search, PieChart, BookOpen, Activity, MoreHorizontal, CheckCircle2, Newspaper, HelpCircle, LayoutDashboard, Sun, Moon } from 'lucide-react';
 import './LandingPage.css';
 
 gsap.registerPlugin(ScrollTrigger);

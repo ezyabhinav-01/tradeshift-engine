@@ -5,6 +5,7 @@ from sqlalchemy import select
 from app.database import get_session
 from app.models import Lesson, Module, Track
 from chatbot.navigation_map import update_navigation_cache
+from app.runtime_guards import ProcessFileLock
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +14,11 @@ async def sync_chatbot_navigation():
     Extract Academy topics (Lessons, Modules, Tracks) and update the Chatbot's dynamic navigation cache.
     This replaces the old Inngest Cron job.
     """
+    lock = ProcessFileLock("chatbot_nav_sync_job")
+    if not lock.acquire():
+        logger.info("⏭️ [SCHEDULER] chatbot_nav_sync skipped (lock held by another instance).")
+        return
+
     logger.info("🚀 [SCHEDULER] Fetching Academy resources for Chatbot sync...")
     db = await get_session()
     try:
@@ -42,6 +48,7 @@ async def sync_chatbot_navigation():
         logger.error(f"❌ [SCHEDULER] Chatbot Sync failed: {e}")
     finally:
         await db.close()
+        lock.release()
 
 def setup_scheduler():
     """
@@ -51,14 +58,26 @@ def setup_scheduler():
         logger.info("⏸️ Async scheduler disabled via RUN_ASYNC_SCHEDULER=false")
         return None
 
-    scheduler = AsyncIOScheduler()
+    scheduler = AsyncIOScheduler(
+        job_defaults={
+            "coalesce": True,
+            "max_instances": 1,
+            "misfire_grace_time": 120,
+        }
+    )
     
     # Add the sync job - run every 6 hours
-    scheduler.add_job(sync_chatbot_navigation, 'interval', hours=6, id='chatbot_nav_sync')
+    scheduler.add_job(
+        sync_chatbot_navigation,
+        'interval',
+        hours=6,
+        id='chatbot_nav_sync',
+        replace_existing=True,
+    )
     
     # Optional startup sync (disabled by default to reduce startup DB pressure)
     if os.getenv("RUN_ASYNC_STARTUP_SYNC", "false").lower() in ("1", "true", "yes", "on"):
-        scheduler.add_job(sync_chatbot_navigation, 'date', id='startup_sync')
+        scheduler.add_job(sync_chatbot_navigation, 'date', id='startup_sync', replace_existing=True)
     
     scheduler.start()
     logger.info("🛠️ APScheduler initialized with 6-hour Chatbot Sync job.")

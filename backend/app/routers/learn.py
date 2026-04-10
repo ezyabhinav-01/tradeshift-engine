@@ -123,7 +123,7 @@ async def get_learning_stats(current_user: User = Depends(get_current_user), db:
             ],
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch stats: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch stats")
 
 
 @router.post("/progress")
@@ -173,7 +173,7 @@ async def complete_lesson(
         return {"status": "completed", "xp_earned": actual_xp}
     except Exception as e:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to complete lesson: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to complete lesson")
 
 @router.post("/time")
 async def add_learning_time(request: AddTimeRequest, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
@@ -195,7 +195,7 @@ async def add_learning_time(request: AddTimeRequest, current_user: User = Depend
         }
     except Exception as e:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to log learning time: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to log learning time")
 
 
 @router.post("/streak")
@@ -213,7 +213,7 @@ async def update_user_streak(current_user: User = Depends(get_current_user), db:
         }
     except Exception as e:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to update streak: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update streak")
 
 
 @router.post("/badge")
@@ -244,7 +244,7 @@ async def award_badge(request: BadgeAwardRequest, current_user: User = Depends(g
         return {"status": "awarded", "badge_id": request.badge_id}
     except Exception as e:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to award badge: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to award badge")
 
 
 @router.get("/tracks")
@@ -354,7 +354,7 @@ async def get_tracks(db: AsyncSession = Depends(get_db)):
         return tracks_data
             
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch tracks: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch tracks")
 
 # ═══════════════════════════════════════════
 # TOPIC TAGS (#TopicRef Knowledge Graph)
@@ -380,7 +380,7 @@ async def get_all_tags(db: AsyncSession = Depends(get_db)):
             for t in tags
         ]
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch tags: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch tags")
 
 
 @router.get("/tags/{tag_name}")
@@ -448,7 +448,7 @@ async def get_tag_detail(tag_name: str, db: AsyncSession = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to resolve tag: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to resolve tag")
 
 
 @router.post("/tags/{tag_id}/click")
@@ -634,7 +634,7 @@ async def get_module_detail(module_id: int, db: AsyncSession = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch module: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch module")
 
 
 def _get_lesson_preview(lesson) -> str:
@@ -735,7 +735,7 @@ async def get_sub_module_detail(sub_module_id: int, db: AsyncSession = Depends(g
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch chapter: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch chapter")
 
 
 @router.get("/lessons/{lesson_id}")
@@ -802,7 +802,7 @@ async def get_lesson(lesson_id: int, db: AsyncSession = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch lesson: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch lesson")
 
 # ═══════════════════════════════════════════
 # CHAPTER COMMENTS (DISCUSSIONS)
@@ -972,7 +972,7 @@ async def get_secrets(current_user: User = Depends(get_current_user), db: AsyncS
 
         return {"secrets": secrets_data}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch secrets: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch secrets")
 
 
 @router.get("/secrets/stats")
@@ -999,7 +999,7 @@ async def get_secrets_stats(current_user: User = Depends(get_current_user), db: 
             "xpFromSecrets": sum(r.xp_earned for r in reveals)
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch secrets stats: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch secrets stats")
 
 
 @router.post("/secrets/{secret_id}/reveal")
@@ -1094,7 +1094,7 @@ async def reveal_secret(
         raise
     except Exception as e:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to reveal secret: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to reveal secret")
 
 
 @router.post("/secrets/{secret_id}/quiz")
@@ -1202,4 +1202,4 @@ async def submit_secret_quiz(
         raise
     except Exception as e:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to submit quiz: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to submit quiz")

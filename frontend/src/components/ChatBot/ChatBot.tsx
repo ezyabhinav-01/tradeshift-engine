@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MessageCircle, X, Send, Maximize2, Minimize2, ExternalLink, Bot, User } from 'lucide-react';
-import { sendChatQuery, fetchSuggestedTopics } from '../../services/chatApi';
+import { sendChatQuery, fetchSuggestedTopics, checkBotHealth } from '../../services/chatApi';
 import type { ChatMessage } from '../../services/chatApi';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -15,7 +15,7 @@ export const ChatBot: React.FC = () => {
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [isOnline, setIsOnline] = useState<boolean>(false);
-  const [isCheckingHealth, setIsCheckingHealth] = useState<boolean>(true);
+  const [isCheckingHealth, setIsCheckingHealth] = useState<boolean>(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -40,23 +40,40 @@ export const ChatBot: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, suggestions]);
 
-  // Initial welcome message and health check
+  // Health check lifecycle while bot is open.
   useEffect(() => {
+    if (!isOpen) return;
+    let isMounted = true;
+
     const checkHealth = async () => {
+      setIsCheckingHealth(true);
       try {
-        const { checkBotHealth } = await import('../../services/chatApi');
         const online = await checkBotHealth();
-        setIsOnline(online);
+        if (isMounted) {
+          setIsOnline(online);
+        }
       } catch (e) {
-        setIsOnline(false);
+        if (isMounted) {
+          setIsOnline(false);
+        }
       } finally {
-        setIsCheckingHealth(false);
+        if (isMounted) {
+          setIsCheckingHealth(false);
+        }
       }
     };
 
     checkHealth();
     const interval = setInterval(checkHealth, 30000);
 
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [isOpen]);
+
+  // Initial welcome message when opened for the first time.
+  useEffect(() => {
     if (isOpen && messages.length === 0) {
       setMessages([
         {
@@ -66,9 +83,7 @@ export const ChatBot: React.FC = () => {
       ]);
       loadInitialSuggestions();
     }
-
-    return () => clearInterval(interval);
-  }, [isOpen]);
+  }, [isOpen, messages.length]);
 
   const loadInitialSuggestions = async () => {
     const defaultSuggestions = await fetchSuggestedTopics('welcome');

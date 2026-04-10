@@ -104,6 +104,65 @@ class MarketService:
         
         return None
 
+    def _find_column_name(self, df: pd.DataFrame, candidates: List[str]) -> str:
+        """Find a column name case-insensitively from a list of candidates."""
+        if df is None or df.empty:
+            return ""
+        lowered_map = {str(col).lower(): col for col in df.columns}
+        for cand in candidates:
+            col = lowered_map.get(cand.lower())
+            if col is not None:
+                return col
+        return ""
+
+    def _extract_latest_metrics(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """
+        Extract latest price/change/volume from a symbol frame robustly.
+        Works even when only one recent candle is available.
+        """
+        if df is None or df.empty:
+            return {}
+
+        close_col = self._find_column_name(df, ["Close", "Adj Close", "close", "adj close"])
+        if not close_col:
+            return {}
+
+        close_series = pd.to_numeric(df[close_col], errors="coerce")
+        close_series = close_series[(~close_series.isna()) & (close_series > 0)]
+        if close_series.empty:
+            return {}
+
+        current_price = float(close_series.iloc[-1])
+
+        if len(close_series) >= 2:
+            prev_close = float(close_series.iloc[-2])
+        else:
+            open_col = self._find_column_name(df, ["Open", "open"])
+            if open_col:
+                open_series = pd.to_numeric(df[open_col], errors="coerce")
+                open_series = open_series[(~open_series.isna()) & (open_series > 0)]
+                prev_close = float(open_series.iloc[-1]) if not open_series.empty else current_price
+            else:
+                prev_close = current_price
+
+        volume_col = self._find_column_name(df, ["Volume", "volume"])
+        volume = 0
+        if volume_col:
+            volume_series = pd.to_numeric(df[volume_col], errors="coerce").fillna(0)
+            if not volume_series.empty:
+                volume = int(max(0, float(volume_series.iloc[-1])))
+
+        change = current_price - prev_close
+        change_percent = (change / prev_close) * 100 if prev_close else 0.0
+
+        return {
+            "price": round(float(current_price), 2),
+            "change": round(float(change), 2),
+            "change_percent": round(float(change_percent), 2),
+            "volume": volume,
+            "is_positive": bool(change >= 0),
+        }
+
     def get_indices(self) -> List[Dict[str, Any]]:
         """Fetch current data for major indices, using cache if available."""
         cache_key = "market:indices"
@@ -208,37 +267,31 @@ class MarketService:
         symbols = [
             "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "ICICIBANK.NS", "INFY.NS",
             "ITC.NS", "SBIN.NS", "BHARTIARTL.NS", "HINDUNILVR.NS", "BAJFINANCE.NS",
-            "L&T.NS", "KOTAKBANK.NS", "ASIANPAINT.NS", "MARUTI.NS", "SUNPHARMA.NS",
+            "LT.NS", "KOTAKBANK.NS", "ASIANPAINT.NS", "MARUTI.NS", "SUNPHARMA.NS",
             "TATASTEEL.NS", "WIPRO.NS", "TATAMOTORS.NS", "ULTRACEMCO.NS", "NTPC.NS"
         ]
         
         performance = []
         try:
-            # Batch download is faster
-            data = yf.download(symbols, period="2d", group_by="ticker", threads=True, progress=False)
+            # Wider window to avoid empty movers on weekends/holidays or sparse last sessions.
+            data = yf.download(
+                symbols,
+                period="7d",
+                group_by="ticker",
+                auto_adjust=False,
+                threads=True,
+                progress=False,
+            )
             
             for sym in symbols:
-                if sym in data and not data[sym].empty and len(data[sym]) >= 2:
-                    current_val = data[sym]['Close'].iloc[-1]
-                    prev_val = data[sym]['Close'].iloc[-2]
-                    
-                    if pd.isna(current_val) or pd.isna(prev_val):
-                        continue
-                        
-                    current_price = float(current_val)
-                    prev_close = float(prev_val)
-                    
-                    change = current_price - prev_close
-                    change_percent = (change / prev_close) * 100
-                    
-                    performance.append({
-                        "symbol": sym.replace(".NS", ""),
-                        "price": round(float(current_price), 2),
-                        "change": round(float(change), 2),
-                        "change_percent": round(float(change_percent), 2),
-                        "volume": int(data[sym]['Volume'].iloc[-1]),
-                        "is_positive": bool(change >= 0)
-                    })
+                sym_df = data[sym] if sym in data else None
+                metrics = self._extract_latest_metrics(sym_df)
+                if not metrics:
+                    continue
+                performance.append({
+                    "symbol": sym.replace(".NS", ""),
+                    **metrics,
+                })
         except Exception as e:
             logger.error(f"Failed to fetch batch movers: {e}")
             

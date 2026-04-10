@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Response, BackgroundTasks, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, List, Any, Union, Dict
-from sqlalchemy import select
+from sqlalchemy import select, delete, or_, func
 from .models import User, UserSession
 import uuid
 import random
@@ -9,6 +9,8 @@ import bcrypt
 import jwt
 import os
 import logging
+import hmac
+import asyncio
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -21,6 +23,7 @@ from .schemas import (
     UserProfileUpdate
 )
 from .config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
+from .auth_side_effects import enqueue_auth_side_effect
 from .services.email_service import (
     send_login_alert_email,
     send_pin_created_email,
@@ -33,6 +36,7 @@ from .services.email_service import (
     send_pin_reset_email
 )
 from .dependencies import get_current_user
+from .session_store import cache_session_identity, invalidate_session_identity
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -40,14 +44,48 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 # --- AUTH HELPER LOGIC ---
 
 def verify_password(plain_password, hashed_password):
+    if not hashed_password:
+        return False
     if isinstance(hashed_password, str):
         hashed_password = hashed_password.encode('utf-8')
-    return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password)
+    try:
+        return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password)
+    except ValueError:
+        # Invalid/legacy truncated bcrypt payload should never crash auth flow.
+        return False
 
 def get_password_hash(password):
     pwd_bytes = password.encode('utf-8')
     salt = bcrypt.gensalt()
     return bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
+
+def hash_pin(pin: str) -> str:
+    return get_password_hash(pin)
+
+
+async def verify_password_async(plain_password: str, hashed_password: str) -> bool:
+    return await asyncio.to_thread(verify_password, plain_password, hashed_password)
+
+
+async def get_password_hash_async(password: str) -> str:
+    return await asyncio.to_thread(get_password_hash, password)
+
+def verify_pin_value(plain_pin: str, stored_pin: Optional[str]) -> bool:
+    if not stored_pin:
+        return False
+    # Backward compatibility for legacy plain-text PIN rows.
+    if stored_pin.startswith("$2a$") or stored_pin.startswith("$2b$") or stored_pin.startswith("$2y$"):
+        return verify_password(plain_pin, stored_pin)
+    return hmac.compare_digest(stored_pin, plain_pin)
+
+def _cookie_secure() -> bool:
+    return os.getenv("COOKIE_SECURE", "false").lower() in ("1", "true", "yes", "on")
+
+def _cookie_samesite() -> str:
+    value = os.getenv("COOKIE_SAMESITE", "lax").strip().lower()
+    if value not in ("lax", "strict", "none"):
+        return "lax"
+    return value
 
 def normalize_phone(phone: Optional[str]) -> Optional[str]:
     """
@@ -74,14 +112,19 @@ async def create_session(db: AsyncSession, user_id: int, request: Request, respo
     )
     db.add(db_session)
     await db.commit()
+    user_email = None
+    if hasattr(request, "state"):
+        user_email = getattr(request.state, "session_user_email", None)
+    if user_email:
+        cache_session_identity(session_token, user_id=user_id, email=user_email, expires_at=expires_at)
     
     response.set_cookie(
         key="session_id",
         value=session_token,
         httponly=True,
         max_age=7 * 24 * 60 * 60, # 7 days
-        samesite="lax",
-        secure=False # Set to True in production
+        samesite=_cookie_samesite(),
+        secure=_cookie_secure(),
     )
     return session_token
 
@@ -140,7 +183,7 @@ async def register_request(
         if db_user.is_verified:
             raise HTTPException(status_code=400, detail="Email already registered")
         # Update existing unverified user
-        db_user.hashed_password = get_password_hash(user.password)
+        db_user.hashed_password = await get_password_hash_async(user.password)
         db_user.full_name = user.full_name
         db_user.dob = user.dob
         db_user.phone_number = normalize_phone(user.phone_number)
@@ -153,7 +196,7 @@ async def register_request(
         db_user.how_heard_about = user.how_heard_about
     else:
         # Create Pending User
-        hashed_password = get_password_hash(user.password)
+        hashed_password = await get_password_hash_async(user.password)
         db_user = User(
             email=user.email, 
             hashed_password=hashed_password, 
@@ -175,7 +218,7 @@ async def register_request(
         db.add(db_user)
     
     otp = await generate_and_set_otp(db, db_user)
-    background_tasks.add_task(send_signup_otp_email, db_user.email, otp)
+    enqueue_auth_side_effect("signup_otp", send_signup_otp_email, db_user.email, otp)
     return {"message": "Verification code sent to your email."}
 
 @router.post("/register/verify")
@@ -208,7 +251,7 @@ async def register_set_pin(
     if user.security_pin is not None:
          raise HTTPException(status_code=400, detail="Security PIN already set.")
 
-    user.security_pin = request_data.pin
+    user.security_pin = hash_pin(request_data.pin)
     
     refresh_token = create_access_token(
         data={"sub": user.email, "type": "refresh"}, 
@@ -218,15 +261,23 @@ async def register_set_pin(
     await db.commit()
     await db.refresh(user)
 
+    request.state.session_user_email = user.email
     await create_session(db, user.id, request, response)
     
-    # 3. Trigger Personalized Welcome Email (AI-Powered)
     profile_data = {
         "investment_goals": user.investment_goals,
         "risk_tolerance": user.risk_tolerance,
         "preferred_instruments": user.preferred_instruments
     }
-    background_tasks.add_task(send_personalized_welcome_email, user.email, user.full_name or "Trader", user.demat_id, profile_data)
+    enqueue_auth_side_effect(
+        "personalized_welcome_email",
+        send_personalized_welcome_email,
+        user.email,
+        user.full_name or "Trader",
+        user.demat_id,
+        profile_data,
+        ai_related=True,
+    )
     
     return user
 
@@ -238,15 +289,26 @@ async def login(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db)
 ):
-    result = await db.execute(select(User).filter(User.email == user.email))
+    identifier = (user.email or "").strip()
+    result = await db.execute(
+        select(User).filter(
+            or_(
+                func.lower(User.email) == identifier.lower(),
+                func.lower(User.demat_id) == identifier.lower(),
+            )
+        )
+    )
     db_user = result.scalars().first()
     
-    if not db_user or not verify_password(user.password, db_user.hashed_password):
+    if not db_user or not db_user.hashed_password:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password")
+
+    if not await verify_password_async(user.password, db_user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password")
     
     if not db_user.is_verified:
         otp = await generate_and_set_otp(db, db_user)
-        background_tasks.add_task(send_signup_otp_email, db_user.email, otp)
+        enqueue_auth_side_effect("signup_otp", send_signup_otp_email, db_user.email, otp)
         return {
             "status": "REQUIRES_VERIFICATION",
             "message": "Email not verified. A new code has been sent.",
@@ -260,6 +322,7 @@ async def login(
             "email": db_user.email
         }
     
+    request.state.session_user_email = db_user.email
     await create_session(db, db_user.id, request, response)
     # Trigger New Login Alert disabled per user request
     return db_user
@@ -283,7 +346,7 @@ async def forgot_password(
         raise HTTPException(status_code=404, detail="No matching account found with these details.")
     
     otp = await generate_and_set_otp(db, user)
-    background_tasks.add_task(send_otp_email, email=user.email, name=user.full_name, otp_code=otp)
+    enqueue_auth_side_effect("password_reset_otp", send_otp_email, email=user.email, name=user.full_name, otp_code=otp)
     return {"message": "Verification code sent to your email."}
 
 @router.post("/verify-otp")
@@ -298,10 +361,10 @@ async def reset_password(
     db: AsyncSession = Depends(get_db)
 ):
     user = await verify_otp_logic(db, request.email, request.otp_code)
-    user.hashed_password = get_password_hash(request.new_password)
+    user.hashed_password = await get_password_hash_async(request.new_password)
     await clear_otp(db, user)
     
-    background_tasks.add_task(send_password_reset_success_email, email=user.email, name=user.full_name)
+    enqueue_auth_side_effect("password_reset_success", send_password_reset_success_email, email=user.email, name=user.full_name)
     return {"message": "Password updated successfully."}
 
 @router.post("/logout")
@@ -310,6 +373,7 @@ async def logout(request: Request, response: Response, db: AsyncSession = Depend
     if session_token:
         await db.execute(delete(UserSession).where(UserSession.session_token == session_token))
         await db.commit()
+        invalidate_session_identity(session_token)
         
     response.delete_cookie("session_id")
     response.delete_cookie("access_token")
@@ -324,17 +388,35 @@ async def verify_pin(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db)
 ):
-    result = await db.execute(select(User).filter(User.email == request_data.email))
+    identifier = (request_data.email or "").strip()
+    result = await db.execute(
+        select(User).filter(
+            or_(
+                func.lower(User.email) == identifier.lower(),
+                func.lower(User.demat_id) == identifier.lower(),
+            )
+        )
+    )
     db_user = result.scalars().first()
     
     if not db_user:
         logger.warning(f"PIN Verification failed: User {request.email} not found")
         raise HTTPException(status_code=404, detail="User not found")
         
-    if db_user.security_pin != request_data.pin:
+    if not verify_pin_value(request_data.pin, db_user.security_pin):
         logger.warning(f"PIN Verification failed for {request_data.email}: Incorrect PIN")
         raise HTTPException(status_code=400, detail="Please enter correct security pin")
+
+    # Auto-migrate legacy plain-text PIN to bcrypt hash after successful verification.
+    if db_user.security_pin and not (
+        db_user.security_pin.startswith("$2a$")
+        or db_user.security_pin.startswith("$2b$")
+        or db_user.security_pin.startswith("$2y$")
+    ):
+        db_user.security_pin = hash_pin(request_data.pin)
+        await db.commit()
     
+    request.state.session_user_email = db_user.email
     await create_session(db, db_user.id, request, response)
     return {"message": "PIN verified successfully"}
 
@@ -368,8 +450,8 @@ async def refresh_session(request: Request, response: Response, db: AsyncSession
         key="access_token",
         value=new_access_token,
         httponly=True,
-        secure=False,
-        samesite="lax",
+        secure=_cookie_secure(),
+        samesite=_cookie_samesite(),
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
     )
     return {"status": "success"}
@@ -387,7 +469,7 @@ async def request_pin_reset_otp(
         raise HTTPException(status_code=404, detail="User not found.")
     
     otp = await generate_and_set_otp(db, user)
-    background_tasks.add_task(send_pin_reset_otp_email, email=user.email, name=user.full_name, otp_code=otp)
+    enqueue_auth_side_effect("pin_reset_otp", send_pin_reset_otp_email, email=user.email, name=user.full_name, otp_code=otp)
     return {"message": "Verification code sent to your email."}
 
 @router.post("/pin-reset/verify")
@@ -402,11 +484,11 @@ async def confirm_pin_reset(
     db: AsyncSession = Depends(get_db)
 ):
     user = await verify_otp_logic(db, request.email, request.otp_code)
-    user.security_pin = request.new_pin
+    user.security_pin = hash_pin(request.new_pin)
     await clear_otp(db, user)
     
     reset_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
-    background_tasks.add_task(send_pin_reset_email, email=user.email, name=user.full_name, reset_at=reset_at)
+    enqueue_auth_side_effect("pin_reset_success", send_pin_reset_email, email=user.email, name=user.full_name, reset_at=reset_at)
     return {"message": "Security PIN updated successfully."}
 
 @router.patch("/update-profile", response_model=UserSchema)

@@ -1,7 +1,7 @@
 import { useEffect, useState, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { useGame } from '../../hooks/useGame';
+import { useGameActions, useGameMarket, useGamePlayback } from '../../hooks/useGame';
 import { useMultiChartStore } from '../../store/useMultiChartStore';
 import { Separator } from '@/components/ui/separator';
 
@@ -16,7 +16,9 @@ export interface IndexData {
 export const GlobalTicker = () => {
   const navigate = useNavigate();
   const [liveIndices, setLiveIndices] = useState<IndexData[]>([]);
-  const { isPlaying, isReplayActive, simulatedIndices, setSymbol } = useGame();
+  const { isPlaying, isReplayActive } = useGamePlayback();
+  const { simulatedIndices } = useGameMarket();
+  const { setSymbol } = useGameActions();
   const { activeChartId, updateChart } = useMultiChartStore();
 
   useEffect(() => {

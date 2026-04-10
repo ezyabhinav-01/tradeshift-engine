@@ -9,9 +9,11 @@ WebSocket event payloads for order lifecycle notifications.
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import TradeLog, User
-from app.schemas import TradeExecuteRequest, OrderType, TradeDirection
+from app.schemas import TradeExecuteRequest, TradeDirection
 from sqlalchemy import update
 from app.utils.portfolio_utils import sync_portfolio_holding
+from app.utils.money import money_float
+from app.services.execution_simulator import execution_simulator
 import logging
 
 logger = logging.getLogger(__name__)
@@ -59,13 +61,38 @@ class TradeEngine:
 
         # Determine status and effective prices - MARKET orders are OPEN immediately
         status = "OPEN" if is_market else "PENDING"
-        entry_price = request.price
+        entry_price = money_float(request.price)
+        filled_quantity = request.quantity
+        execution_meta = {
+            "requested_quantity": request.quantity,
+            "fill_ratio": 1.0,
+            "simulated_latency_ms": 0,
+            "simulated_slippage_bps": 0.0,
+        }
         
         # If MARKET order and price is missing/0, try to get from live market service
         if is_market and (not entry_price or entry_price == 0):
             from app.live_market import live_market_service
             entry_price = live_market_service.get_last_price(request.symbol)
             logger.info(f"Fallbacked to market price for {request.symbol}: {entry_price}")
+
+        # Apply realistic execution effects for marketable entry flow.
+        if is_market and entry_price:
+            execution = execution_simulator.simulate_fill(
+                side=request.direction.value,
+                quantity=request.quantity,
+                reference_price=entry_price,
+                simulated_time=request.simulated_time,
+            )
+            entry_price = money_float(execution.fill_price)
+            filled_quantity = execution.fill_quantity
+            entry_time = TradeEngine._normalize_db_timestamp(execution.execution_time) or entry_time
+            execution_meta = {
+                "requested_quantity": execution.requested_quantity,
+                "fill_ratio": execution.fill_ratio,
+                "simulated_latency_ms": execution.latency_ms,
+                "simulated_slippage_bps": execution.slippage_bps,
+            }
 
         # For MARKET orders, ignore limit_price/stop_price
         limit_price = None if is_market else request.limit_price
@@ -76,7 +103,7 @@ class TradeEngine:
             symbol=request.symbol,
             direction=request.direction.value,
             entry_price=entry_price if is_market else None,
-            quantity=request.quantity,
+            quantity=filled_quantity if is_market else request.quantity,
             pnl=0.0,
             entry_time=entry_time if is_market else None,
             exit_time=None,
@@ -102,7 +129,7 @@ class TradeEngine:
                 sl_order = TradeLog(
                     symbol=request.symbol,
                     direction="SELL" if request.direction.value == "BUY" else "BUY",
-                    quantity=request.quantity,
+                    quantity=filled_quantity,
                     entry_time=None,
                     exit_time=None,
                     holding_time=None,
@@ -120,7 +147,7 @@ class TradeEngine:
                 tp_order = TradeLog(
                     symbol=request.symbol,
                     direction="SELL" if request.direction.value == "BUY" else "BUY",
-                    quantity=request.quantity,
+                    quantity=filled_quantity,
                     entry_time=None,
                     exit_time=None,
                     holding_time=None,
@@ -139,7 +166,7 @@ class TradeEngine:
             
             # --- UPDATE CASH BALANCE ---
             multiplier = -1 if request.direction == TradeDirection.BUY else 1
-            transaction_value = request.quantity * entry_price
+            transaction_value = money_float(filled_quantity * entry_price)
             
             await db.execute(
                 update(User)
@@ -152,7 +179,7 @@ class TradeEngine:
                 db=db,
                 user_id=user_id,
                 symbol=request.symbol,
-                quantity_delta=request.quantity,
+                quantity_delta=filled_quantity,
                 price=entry_price,
                 direction=request.direction.value,
                 session_type=request.session_type
@@ -163,7 +190,8 @@ class TradeEngine:
         from app.services.order_management import oms_service
         oms_service.invalidate_pending_cache(request.symbol, request.session_type, user_id)
 
-        status_label = "filled" if is_market else "placed as pending"
+        is_partial_fill = is_market and execution_meta["fill_ratio"] < 1.0
+        status_label = "partially filled" if is_partial_fill else ("filled" if is_market else "placed as pending")
         logger.info(
             f"📈 Trade {status_label}: {request.direction.value} {request.quantity}x "
             f"{request.symbol} @ {entry_price} ({order_type}) | ID: {trade.id}"
@@ -179,6 +207,10 @@ class TradeEngine:
             "order_type": order_type,
             "stop_loss": trade.stop_loss,
             "take_profit": trade.take_profit,
+            "requested_quantity": execution_meta["requested_quantity"],
+            "fill_ratio": execution_meta["fill_ratio"],
+            "simulated_latency_ms": execution_meta["simulated_latency_ms"],
+            "simulated_slippage_bps": execution_meta["simulated_slippage_bps"],
             "message": f"Order {status_label} successfully",
         }
 
@@ -192,14 +224,15 @@ class TradeEngine:
             "status": trade.status or "OPEN",
             "symbol": trade.symbol,
             "direction": trade.direction,
-            "entry_price": trade.entry_price or 0.0,
-            "exit_price": trade.exit_price or 0.0,
+            "order_type": trade.order_type,
+            "entry_price": money_float(trade.entry_price or 0.0),
+            "exit_price": money_float(trade.exit_price or 0.0),
             "stop_loss": trade.stop_loss,
             "take_profit": trade.take_profit,
             "limit_price": trade.limit_price,
             "stop_price": trade.stop_price,
             "quantity": trade.quantity or 0,
-            "pnl": trade.pnl or 0.0,
+            "pnl": money_float(trade.pnl or 0.0),
             "parent_trade_id": trade.parent_trade_id,
             "session_type": trade.session_type,
             "exit_reason": trade.exit_reason,
@@ -207,4 +240,8 @@ class TradeEngine:
             "exit_time": trade.exit_time.isoformat() if trade.exit_time else None,
             "holding_time_seconds": round(trade.holding_time or 0, 1),
             "holding_time_mins": round((trade.holding_time or 0) / 60.0, 2),
+            "requested_quantity": trade.quantity or 0,
+            "fill_ratio": 1.0,
+            "simulated_latency_ms": None,
+            "simulated_slippage_bps": None,
         }

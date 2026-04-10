@@ -5,7 +5,6 @@ import path from 'path'
 
 // Get backend URL from environment or default to localhost
 const targetUrl = process.env.VITE_API_URL || 'http://localhost:8000';
-const chatTargetUrl = process.env.VITE_CHAT_API_URL || 'http://localhost:8001';
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -23,13 +22,6 @@ export default defineConfig({
       '/auth': {
         target: targetUrl,
         changeOrigin: true,
-      },
-      '/api/chat': {
-        target: chatTargetUrl,
-        changeOrigin: true,
-        secure: false,
-        timeout: 30000,
-        proxyTimeout: 30000,
       },
       '/api': {
         target: targetUrl,

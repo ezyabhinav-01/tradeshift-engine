@@ -469,6 +469,9 @@ export default function LearnPage() {
 
   // Check streak and fetch tracks on mount
   useEffect(() => {
+    if (tracks.length > 0 || secrets.length > 0) {
+      setIsLoading(false);
+    }
     Promise.all([fetchUserStats(), fetchTracks(), fetchSecrets()]).finally(() => setIsLoading(false));
   }, []);
 

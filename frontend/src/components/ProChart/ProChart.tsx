@@ -100,7 +100,7 @@ export const ProChart: React.FC<ProChartProps> = ({
   const {
     currentPrice, currentCandle, isPlaying, 
     selectedSymbol, isReplayActive,
-    trades, modifyOrder, closeAllPositions,
+    trades, modifyOrder,
     currentTime, simulatedIndices,
     replayTicks
   } = (gameData || internalGame) as any;

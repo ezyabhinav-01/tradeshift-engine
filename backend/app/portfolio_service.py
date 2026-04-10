@@ -11,6 +11,20 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 
+
+def _parse_portfolio_timestamp(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+        try:
+            return datetime.strptime(value, fmt)
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
 def xirr(cash_flows: List[tuple]) -> float:
     """
     Calculate the Extended Internal Rate of Return.
@@ -92,6 +106,34 @@ class PortfolioService:
         res = await db.execute(select(User.balance).filter(User.id == user_id))
         balance = res.scalars().first() or 100000.0
 
+        # Pending primary orders (exclude SL/TP child orders) for instant "reserved/intent" visibility.
+        pending_res = await db.execute(
+            select(TradeLog).filter(
+                TradeLog.user_id == user_id,
+                TradeLog.session_type == session_type,
+                TradeLog.status == "PENDING",
+                TradeLog.parent_trade_id.is_(None),
+            )
+        )
+        pending_orders = pending_res.scalars().all()
+
+        def _pending_reference_price(order: TradeLog) -> float:
+            if order.order_type in ("LIMIT", "GTT"):
+                return float(order.limit_price or 0.0)
+            if order.order_type == "STOP":
+                return float(order.stop_price or 0.0)
+            return float(order.entry_price or 0.0)
+
+        pending_buy_value = 0.0
+        pending_sell_value = 0.0
+        for order in pending_orders:
+            ref_price = _pending_reference_price(order)
+            notional = (order.quantity or 0) * ref_price
+            if (order.direction or "").upper() == "BUY":
+                pending_buy_value += notional
+            else:
+                pending_sell_value += notional
+
         holdings = await self.get_holdings(db, user_id, session_type)
         positions = await self.get_positions(db, user_id, session_type)
         
@@ -136,7 +178,7 @@ class PortfolioService:
             date_obj = datetime.strptime(h["first_purchase_date"], "%Y-%m-%d") if h["first_purchase_date"] else now
             cash_flows.append((date_obj, -h["invested_value"]))
         for p in positions:
-            date_obj = datetime.strptime(p["entry_time"], "%Y-%m-%d %H:%M") if p["entry_time"] else now
+            date_obj = _parse_portfolio_timestamp(p["entry_time"]) or now
             cash_flows.append((date_obj, -p["entry_value"]))
             
         calculated_xirr = 0.0
@@ -156,6 +198,10 @@ class PortfolioService:
             "is_positive": total_pnl >= 0,
             "equity_curve": equity_curve,
             "cash_balance": round(balance, 2),
+            "pending_order_count": len(pending_orders),
+            "pending_buy_value": round(pending_buy_value, 2),
+            "pending_sell_value": round(pending_sell_value, 2),
+            "effective_available_cash": round(max(0.0, balance - pending_buy_value), 2),
             "total_value": round(total_value, 2)
         }
 

@@ -37,7 +37,7 @@ async def fetch_news_endpoint(
         news = await get_news(category, limit)
         return news
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch news: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch news")
 
 @router.post("/explain", response_model=ExplainResponse)
 async def explain_news_endpoint(request: ExplainRequest):

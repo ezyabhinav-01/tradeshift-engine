@@ -11,6 +11,8 @@ from app.websocket_manager import order_manager
 from app.trade_engine import TradeEngine
 from app.portfolio_service import portfolio_service
 from app.utils.portfolio_utils import sync_portfolio_holding
+from app.utils.money import money_float, pnl as calc_pnl
+from app.services.execution_simulator import execution_simulator
 
 logger = logging.getLogger(__name__)
 
@@ -194,9 +196,20 @@ class OrderManagementSystem:
 
     async def _execute_triggered_order(self, db: AsyncSession, order: TradeLog, fill_price: float, simulated_time: Optional[datetime] = None):
         """Transition order and notify (Async)."""
-        logger.info(f"🎯 ORDER TRIGGERED: {order.direction} {order.quantity} {order.symbol} @ {fill_price} (Session: {order.session_type})")
-        normalized_time = self._normalize_db_timestamp(simulated_time)
-        
+        execution = execution_simulator.simulate_fill(
+            side=order.direction,
+            quantity=order.quantity or 1,
+            reference_price=fill_price,
+            limit_price=order.limit_price if order.order_type == "LIMIT" else None,
+            simulated_time=simulated_time,
+        )
+        effective_fill_price = money_float(execution.fill_price)
+        normalized_time = self._normalize_db_timestamp(execution.execution_time)
+        logger.info(
+            f"🎯 ORDER TRIGGERED: {order.direction} {order.quantity} {order.symbol} @ {effective_fill_price} "
+            f"(Session: {order.session_type}, latency={execution.latency_ms}ms, slip={execution.slippage_bps}bps)"
+        )
+
         if order.parent_trade_id:
             # If it's a child order (SL/TP), it should close the parent trade
             order.status = "FILLED"
@@ -204,14 +217,15 @@ class OrderManagementSystem:
                 db, 
                 order.parent_trade_id, 
                 order.user_id, 
-                fill_price, 
+                effective_fill_price, 
                 exit_type=order.order_type,
                 simulated_time=normalized_time or order.entry_time
             )
         else:
             order.status = "OPEN"
+            order.quantity = execution.fill_quantity
             
-        order.entry_price = fill_price
+        order.entry_price = effective_fill_price
         if order.entry_time is None:
             order.entry_time = normalized_time or datetime.utcnow()
         order.exit_time = None
@@ -221,7 +235,7 @@ class OrderManagementSystem:
         # --- UPDATE CASH BALANCE (for triggered primary entries) ---
         if not order.parent_trade_id:
             multiplier = -1 if order.direction == "BUY" else 1
-            transaction_value = order.quantity * fill_price
+            transaction_value = money_float((order.quantity or 0) * effective_fill_price)
             
             await db.execute(
                 update(User)
@@ -239,7 +253,7 @@ class OrderManagementSystem:
                 user_id=order.user_id,
                 symbol=order.symbol,
                 quantity_delta=order.quantity,
-                price=fill_price,
+                price=effective_fill_price,
                 direction=order.direction,
                 session_type=order.session_type
             )
@@ -248,7 +262,11 @@ class OrderManagementSystem:
         
         # Prepare WS payload
         payload = TradeEngine.build_order_update_payload(order)
-        payload["message"] = f"Conditional order {order.order_type} triggered and filled at {fill_price}"
+        payload["requested_quantity"] = execution.requested_quantity
+        payload["fill_ratio"] = execution.fill_ratio
+        payload["simulated_latency_ms"] = execution.latency_ms
+        payload["simulated_slippage_bps"] = execution.slippage_bps
+        payload["message"] = f"Conditional order {order.order_type} triggered and filled at {effective_fill_price}"
         
         if order.user_id:
             await order_manager.emit_to_user(order.user_id, "order_update", payload)
@@ -329,6 +347,7 @@ class OrderManagementSystem:
     async def close_trade(self, db: AsyncSession, trade_id: int, user_id: int, exit_price: float, exit_type: str = "MARKET", simulated_time: Optional[datetime] = None) -> Optional[TradeLog]:
         """Close an open trade (Async)."""
         normalized_time = self._normalize_db_timestamp(simulated_time)
+        exit_price = money_float(exit_price)
         close_time = normalized_time or datetime.utcnow()
         result = await db.execute(
             select(TradeLog).filter(
@@ -350,7 +369,7 @@ class OrderManagementSystem:
 
         # Calculate PnL
         multiplier = 1 if trade.direction == "BUY" else -1
-        pnl = (exit_price - trade.entry_price) * trade.quantity * multiplier
+        pnl = calc_pnl(trade.entry_price, exit_price, trade.quantity or 0, multiplier)
         holding_time = None
         if trade.entry_time:
             holding_time = max(0.0, (close_time - trade.entry_time).total_seconds())
@@ -381,7 +400,7 @@ class OrderManagementSystem:
         # For a BUY trade, closing (SELLING) adds cash.
         # For a SELL trade, closing (BUYING) removes cash.
         multiplier = 1 if trade.direction == "BUY" else -1
-        exit_value = trade.quantity * exit_price
+        exit_value = money_float((trade.quantity or 0) * exit_price)
         await db.execute(
             update(User)
             .where(User.id == user_id)
@@ -428,6 +447,7 @@ class OrderManagementSystem:
             exit_price = exit_price_mapping.get(trade.symbol)
             if exit_price is None:
                 continue
+            exit_price = money_float(exit_price)
             if trade.entry_price is None:
                 logger.warning(f"Trade {trade.id} has no entry_price; skipping bulk close for safety.")
                 continue
@@ -437,7 +457,7 @@ class OrderManagementSystem:
             
             # Calculate PnL
             multiplier = 1 if trade.direction == "BUY" else -1
-            pnl = (exit_price - trade.entry_price) * trade.quantity * multiplier
+            pnl = calc_pnl(trade.entry_price, exit_price, trade.quantity or 0, multiplier)
             holding_time = None
             if trade.entry_time:
                 holding_time = max(0.0, (trade_close_time - trade.entry_time).total_seconds())
@@ -466,7 +486,7 @@ class OrderManagementSystem:
             
             # Update Cash Balance for each trade
             multiplier = 1 if trade.direction == "BUY" else -1
-            exit_value = trade.quantity * exit_price
+            exit_value = money_float((trade.quantity or 0) * exit_price)
             await db.execute(
                 update(User)
                 .where(User.id == user_id)

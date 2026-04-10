@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getCachedOrFetch } from '../utils/requestCache';
 
 const API_BASE = '/api/news';
 
@@ -23,16 +24,23 @@ export interface ExplainResponse {
 const explainCache: Record<string, { ts: number; explanation: string }> = {};
 
 export const fetchNews = async (category: string = 'all', limit: number = 50): Promise<NewsItem[]> => {
-  try {
-    const response = await axios.get(`${API_BASE}/`, {
-      params: { category, limit },
-      timeout: 8000,
-    });
-    return response.data;
-  } catch (error) {
-    console.error('Error fetching news:', error);
-    throw error;
-  }
+  const cacheKey = `news:list:${category}:${limit}`;
+  return getCachedOrFetch(
+    cacheKey,
+    async () => {
+      try {
+        const response = await axios.get(`${API_BASE}/`, {
+          params: { category, limit },
+          timeout: 8000,
+        });
+        return response.data;
+      } catch (error) {
+        console.error('Error fetching news:', error);
+        throw error;
+      }
+    },
+    { ttlMs: 120_000 }
+  );
 };
 
 export const explainNews = async (

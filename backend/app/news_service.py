@@ -7,25 +7,18 @@ import hashlib
 import urllib.parse
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
-from redis import Redis
 import html
 import feedparser
 from typing import Any
 from .nlp_engine import generate_news_explanation
+from .redis_utils import get_redis_client
 
 # Environment Variables
 NEWSAPI_KEY = os.getenv("NEWSAPI_KEY", "")
 ALPHA_VANTAGE_KEY = os.getenv("ALPHA_VANTAGE_KEY", "")
 NEWSDATA_API_KEY = os.getenv("NEWSDATA_API_KEY", "")
 USE_NEWSAPI_FALLBACK = os.getenv("USE_NEWSAPI_FALLBACK", "false").lower() == "true"
-REDIS_HOST = os.getenv("REDIS_HOST", "redis")
-
-# Redis Setup
-try:
-    redis_client = Redis(host=REDIS_HOST, port=6379, decode_responses=True)
-except Exception:
-    redis_client = None
-    print("⚠️ Redis not connected for news_service, using in-memory fallback pending.")
+redis_client = get_redis_client(log_prefix="Redis for news_service")
 
 # Fallback Cache
 _IN_MEMORY_CACHE = {}

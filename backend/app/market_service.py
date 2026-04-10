@@ -7,20 +7,13 @@ import os
 import glob
 import logging
 from typing import List, Dict, Any
+from app.redis_utils import get_redis_client
 
 logger = logging.getLogger(__name__)
 
 class MarketService:
     def __init__(self):
-        redis_host = os.getenv("REDIS_HOST", "localhost")
-        redis_port = int(os.getenv("REDIS_PORT", 6379))
-        try:
-            client = redis.Redis(host=redis_host, port=redis_port, decode_responses=True)
-            client.ping()
-            self.redis_client = client
-        except Exception as e:
-            logger.warning(f"Redis unavailable for MarketService: {e}. Continuing without cache.")
-            self.redis_client = None
+        self.redis_client = get_redis_client(log_prefix="Redis for MarketService")
         self.cache_ttl = 300  # 5 minutes
         
         # Mapping of common names to Yahoo Finance symbols for Indian Indices

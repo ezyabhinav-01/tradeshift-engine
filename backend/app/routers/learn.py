@@ -10,13 +10,13 @@ from typing import Optional, List
 import json
 import os
 import asyncio
-from redis import Redis
 
 from sqlalchemy.orm import joinedload
 from app.database import get_db
 from app.models import LearningProgress, UserStreak, UserBadge, Track, Module, SubModule, Lesson, MarketSecret, UserSecretReveal, User, ChapterComment
 from app.dependencies import get_current_user, admin_or_internal
 from app.schemas import ChapterCommentCreate, ChapterCommentResponse
+from app.redis_utils import get_redis_client
 
 router = APIRouter(prefix="/api/learn", tags=["learn"])
 
@@ -41,7 +41,7 @@ async def manual_rolling_market_sync(
     }
 
 # Initialize Redis Client
-redis_client = Redis(host=os.getenv("REDIS_HOST", "localhost"), port=6379, decode_responses=True)
+redis_client = get_redis_client(log_prefix="Redis for learn router")
 CACHE_EXPIRATION = 600  # 10 minutes
 
 

@@ -1,7 +1,7 @@
 from fastapi import Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from .database import get_db
+from .database import get_db, get_session
 from .models import User, UserSession
 from .config import SECRET_KEY, ALGORITHM
 from .session_store import get_cached_session_identity, cache_session_identity
@@ -84,9 +84,13 @@ async def admin_required(current_user: User = Depends(get_current_user)):
     return current_user
 
 
-async def admin_or_internal(request: Request, db: AsyncSession = Depends(get_db)):
+async def admin_or_internal(request: Request):
     if has_internal_admin_key(request):
         return None
 
-    current_user = await get_current_user(request, db)
-    return await admin_required(current_user)
+    db = await get_session()
+    try:
+        current_user = await get_current_user(request, db)
+        return await admin_required(current_user)
+    finally:
+        await db.close()

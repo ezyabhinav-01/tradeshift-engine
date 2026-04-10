@@ -67,9 +67,14 @@ def _assert_runtime_database_ready_for_beta() -> None:
     app_env = (os.getenv("APP_ENV") or "development").strip().lower()
     if app_env != "beta":
         return
-    db_url = (os.getenv("DATABASE_URL") or "").strip().lower()
+    raw_db_url = (os.getenv("DATABASE_URL") or "").strip()
+    db_url = raw_db_url.lower()
     enforce_beta_postgres = os.getenv("ENFORCE_BETA_POSTGRES", "true").lower() in ("1", "true", "yes", "on")
-    if enforce_beta_postgres and db_url.startswith("sqlite"):
+    if not enforce_beta_postgres:
+        return
+    if not raw_db_url:
+        raise RuntimeError("DATABASE_URL must be set when APP_ENV=beta.")
+    if db_url.startswith("sqlite"):
         raise RuntimeError("Beta runtime must use PostgreSQL/TimescaleDB. SQLite is blocked for APP_ENV=beta.")
 
 # --- DB INITIALIZATION ---
@@ -180,6 +185,7 @@ DEFAULT_CORS_ORIGINS = [
     "http://localhost:5174",
     "http://127.0.0.1:5174",
     "http://0.0.0.0:5173",
+    "https://tradeshift-india.netlify.app",
 ]
 ALLOWED_CORS_ORIGINS = parse_cors_origins(os.getenv("CORS_ALLOWED_ORIGINS"), DEFAULT_CORS_ORIGINS)
 

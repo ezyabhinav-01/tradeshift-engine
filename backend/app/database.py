@@ -45,11 +45,17 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return str(val).strip().lower() in ("1", "true", "yes", "on")
 
 def get_database_url():
-    # Default to localhost for local dev, 'db' for docker
-    # Using +asyncpg for async operations
-    default_url = "postgresql+asyncpg://user:password@localhost:5432/tradeshift_db" 
-    url = os.getenv("DATABASE_URL", default_url)
-    return url
+    # Enforce explicit DATABASE_URL for non-development runtimes.
+    url = (os.getenv("DATABASE_URL") or "").strip()
+    if url:
+        return url
+
+    app_env = (os.getenv("APP_ENV") or "development").strip().lower()
+    if app_env in {"production", "staging", "beta"}:
+        raise RuntimeError("DATABASE_URL must be set for production/staging/beta environments.")
+
+    # Local development fallback only.
+    return "postgresql+asyncpg://user:password@localhost:5432/tradeshift_db"
 
 def is_local_database_url(url: str | None = None) -> bool:
     """

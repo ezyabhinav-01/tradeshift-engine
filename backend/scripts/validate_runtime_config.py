@@ -31,6 +31,10 @@ def validate() -> tuple[list[str], list[str]]:
     replay_max_sessions = int(os.getenv("REPLAY_MAX_CONCURRENT_SESSIONS", "2"))
     replay_start_threshold = float(os.getenv("REPLAY_START_SUCCESS_THRESHOLD", "0.95"))
     db_url = (os.getenv("DATABASE_URL") or "").strip()
+    cors_origins_raw = (os.getenv("CORS_ALLOWED_ORIGINS") or "").strip()
+    cors_origins = [o.strip() for o in cors_origins_raw.split(",") if o.strip()]
+    admin_service_key = (os.getenv("ADMIN_SERVICE_KEY") or "").strip()
+    chatbot_api_key = (os.getenv("CHATBOT_API_KEY") or "").strip()
 
     if app_env in {"production", "staging", "beta"}:
         if len(secret_key) < 32 or secret_key in {"dev-insecure-secret-key", "supersecretkey"}:
@@ -45,6 +49,15 @@ def validate() -> tuple[list[str], list[str]]:
             errors.append("REPLAY_START_SUCCESS_THRESHOLD must be at least 0.95 for beta launch gating.")
         if db_url.startswith("sqlite"):
             errors.append("DATABASE_URL must point to PostgreSQL/TimescaleDB for beta. SQLite is not allowed.")
+        if not cors_origins:
+            errors.append("CORS_ALLOWED_ORIGINS must be set explicitly outside development.")
+        localhost_origins = [origin for origin in cors_origins if "localhost" in origin or "127.0.0.1" in origin]
+        if localhost_origins:
+            warnings.append("CORS_ALLOWED_ORIGINS contains localhost entries in non-development runtime.")
+        if len(admin_service_key) < 24 or admin_service_key == "tradeshift-local-admin":
+            errors.append("ADMIN_SERVICE_KEY must be set explicitly to a strong non-default value for beta/prod admin endpoints.")
+        if chatbot_api_key == "tradeshift-local-key":
+            warnings.append("CHATBOT_API_KEY is using the local default; chatbot calls should be disabled or configured explicitly in beta.")
 
     for name, blocked_values in PLACEHOLDERS.items():
         value = (os.getenv(name) or "").strip()

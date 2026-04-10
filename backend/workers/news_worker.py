@@ -4,6 +4,7 @@ import requests
 from bs4 import BeautifulSoup
 import time
 import sys
+import os
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -13,7 +14,11 @@ from datetime import datetime
 analyzer = SentimentIntensityAnalyzer()
 
 # Database Setup
-DATABASE_URL = "postgresql://user:password@db:5432/tradeshift"
+DATABASE_URL = (os.getenv("DATABASE_URL") or "").strip()
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL is required for news_worker.")
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()

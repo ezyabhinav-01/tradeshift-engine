@@ -159,7 +159,7 @@ npm run dev
 
 We welcome contributions from the community! Whether you're fixing a bug, adding a new feature, or improving documentation, please feel free to open a Pull Request.
 
-Please read our [CONTRIBUTING.md](project_docs_archive/root_docs/CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
+Please open a pull request with a clear summary, reproduction steps, and test evidence for review.
 
 ---
 

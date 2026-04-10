@@ -59,3 +59,12 @@ design-system
 output.md
 skills-main/
 *.log
+
+# Runtime-local artifacts (do not commit)
+backend/chatbot/analytics.db
+backend/chatbot/chroma_db/*
+!backend/chatbot/chroma_db/.gitkeep
+backend/chatbot/logs/*
+!backend/chatbot/logs/.gitkeep
+frontend/public/__MACOSX/
+project_docs_archive/

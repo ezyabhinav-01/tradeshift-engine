@@ -77,6 +77,21 @@ def _assert_runtime_database_ready_for_beta() -> None:
     if db_url.startswith("sqlite"):
         raise RuntimeError("Beta runtime must use PostgreSQL/TimescaleDB. SQLite is blocked for APP_ENV=beta.")
 
+
+def _is_beta_runtime() -> bool:
+    return (os.getenv("APP_ENV") or "development").strip().lower() == "beta"
+
+
+def _has_shoonya_credentials() -> bool:
+    required = [
+        "SHOONYA_USER_ID",
+        "SHOONYA_PASSWORD",
+        "SHOONYA_VENDOR_CODE",
+        "SHOONYA_API_SECRET",
+        "SHOONYA_TOTP_SECRET",
+    ]
+    return all((os.getenv(name) or "").strip() for name in required)
+
 # --- DB INITIALIZATION ---
 # Explicitly import models to ensure they are registered with Base.metadata
 import app.models
@@ -633,6 +648,13 @@ async def startup_event():
     await start_auth_side_effect_worker()
     REPLAY_START_SUCCESS_RATIO.set(1.0)
     app_env = (os.getenv("APP_ENV") or "development").strip().lower()
+    if app_env == "beta":
+        try:
+            await connect_to_database()
+            logger.info("✅ Beta startup database check passed.")
+        except Exception as e:
+            logger.critical(f"🛑 Beta startup aborted: database unavailable: {e}")
+            raise RuntimeError("Database unavailable for beta startup.") from e
     async_scheduler_enabled = not (app_env == "test" and "RUN_ASYNC_SCHEDULER" not in os.environ)
     if async_scheduler is None and async_scheduler_enabled:
         try:
@@ -643,10 +665,13 @@ async def startup_event():
         logger.info("⏭️ Async scheduler skipped for test runtime.")
     # Attempt to connect to Shoonya Live WS in the background
     if ENABLE_SHOONYA_BACKGROUND_CONNECT:
-        try:
-            asyncio.create_task(shoonya_live.connect())
-        except Exception as e:
-            logger.warning(f"⚠️ Shoonya background connect skipped: {e}")
+        if _has_shoonya_credentials():
+            try:
+                asyncio.create_task(shoonya_live.connect())
+            except Exception as e:
+                logger.warning(f"⚠️ Shoonya background connect skipped: {e}")
+        else:
+            logger.info("⏭️ Shoonya background connect skipped: credentials not configured.")
     else:
         logger.info("⏭️ Shoonya background connect disabled by environment.")
     
@@ -918,18 +943,23 @@ MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9000").replace("http://"
 MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
 MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
 MINIO_BUCKET = os.getenv("MINIO_BUCKET", "market-data")
+MINIO_CONFIGURED = "MINIO_ENDPOINT" in os.environ
 
-try:
-    minio_client = Minio(
-        MINIO_ENDPOINT,
-        access_key=MINIO_ACCESS_KEY,
-        secret_key=MINIO_SECRET_KEY,
-        secure=os.getenv("MINIO_SECURE", "False").lower() == "true"
-    )
-    logger.info(f"✅ MinIO client initialized for endpoint {MINIO_ENDPOINT}")
-except Exception as e:
-    logger.error(f"❌ MinIO initialization failed: {e}")
+if _is_beta_runtime() and not MINIO_CONFIGURED:
+    logger.warning("⚠️ MinIO disabled in beta: MINIO_ENDPOINT is not set explicitly.")
     minio_client = None
+else:
+    try:
+        minio_client = Minio(
+            MINIO_ENDPOINT,
+            access_key=MINIO_ACCESS_KEY,
+            secret_key=MINIO_SECRET_KEY,
+            secure=os.getenv("MINIO_SECURE", "False").lower() == "true"
+        )
+        logger.info(f"✅ MinIO client initialized for endpoint {MINIO_ENDPOINT}")
+    except Exception as e:
+        logger.error(f"❌ MinIO initialization failed: {e}")
+        minio_client = None
 
 # Redis Configuration
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
@@ -938,21 +968,26 @@ REDIS_URL = os.getenv("REDIS_URL", f"redis://{REDIS_HOST}:{REDIS_PORT}/0")
 REDIS_SOCKET_TIMEOUT_SECONDS = max(float(os.getenv("REDIS_SOCKET_TIMEOUT_SECONDS", "1.5")), 0.1)
 REDIS_CONNECT_TIMEOUT_SECONDS = max(float(os.getenv("REDIS_CONNECT_TIMEOUT_SECONDS", "1.5")), 0.1)
 REDIS_HEALTH_CHECK_INTERVAL_SECONDS = max(int(os.getenv("REDIS_HEALTH_CHECK_INTERVAL_SECONDS", "30")), 5)
+REDIS_CONFIGURED = "REDIS_URL" in os.environ or "REDIS_HOST" in os.environ
 
-try:
-    redis_client = Redis.from_url(
-        REDIS_URL,
-        decode_responses=True,
-        socket_timeout=REDIS_SOCKET_TIMEOUT_SECONDS,
-        socket_connect_timeout=REDIS_CONNECT_TIMEOUT_SECONDS,
-        health_check_interval=REDIS_HEALTH_CHECK_INTERVAL_SECONDS,
-        retry_on_timeout=True,
-    )
-    redis_client.ping() # Verify connection
-    logger.info(f"✅ Redis connected via {REDIS_HOST}")
-except Exception as e:
-    logger.error(f"❌ Redis connection failed: {e}")
+if _is_beta_runtime() and not REDIS_CONFIGURED:
+    logger.warning("⚠️ Redis disabled in beta: REDIS_URL/REDIS_HOST not set explicitly.")
     redis_client = None
+else:
+    try:
+        redis_client = Redis.from_url(
+            REDIS_URL,
+            decode_responses=True,
+            socket_timeout=REDIS_SOCKET_TIMEOUT_SECONDS,
+            socket_connect_timeout=REDIS_CONNECT_TIMEOUT_SECONDS,
+            health_check_interval=REDIS_HEALTH_CHECK_INTERVAL_SECONDS,
+            retry_on_timeout=True,
+        )
+        redis_client.ping() # Verify connection
+        logger.info(f"✅ Redis connected via {REDIS_URL}")
+    except Exception as e:
+        logger.error(f"❌ Redis connection failed: {e}")
+        redis_client = None
 
 # --- 4. HELPER FUNCTION: Load Parquet by Symbol ---
 def load_market_data_tiered(symbol: str, target_date: str = None, allow_fallback: bool = True):

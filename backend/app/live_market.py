@@ -165,8 +165,8 @@ class ShoonyaLiveService:
         
         if not all([user_id, password, vendor_code, api_secret, totp_secret]):
             missing = [k for k,v in {'user_id': user_id, 'password': password, 'vendor_code': vendor_code, 'api_secret': api_secret, 'totp_secret': totp_secret}.items() if not v]
-            logger.error(f"Missing Shoonya credentials in .env: {missing}")
-            self.status = "error"
+            logger.info(f"Shoonya live feed disabled: missing credentials {missing}")
+            self.status = "disabled"
             self.error_message = f"Missing credentials: {missing}"
             return
             

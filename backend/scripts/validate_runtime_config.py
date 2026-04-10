@@ -35,6 +35,9 @@ def validate() -> tuple[list[str], list[str]]:
     cors_origins = [o.strip() for o in cors_origins_raw.split(",") if o.strip()]
     admin_service_key = (os.getenv("ADMIN_SERVICE_KEY") or "").strip()
     chatbot_api_key = (os.getenv("CHATBOT_API_KEY") or "").strip()
+    redis_url = (os.getenv("REDIS_URL") or "").strip()
+    redis_host = (os.getenv("REDIS_HOST") or "").strip().lower()
+    minio_endpoint = (os.getenv("MINIO_ENDPOINT") or "").strip().lower()
 
     if app_env in {"production", "staging", "beta"}:
         if len(secret_key) < 32 or secret_key in {"dev-insecure-secret-key", "supersecretkey"}:
@@ -58,6 +61,16 @@ def validate() -> tuple[list[str], list[str]]:
             errors.append("ADMIN_SERVICE_KEY must be set explicitly to a strong non-default value for beta/prod admin endpoints.")
         if chatbot_api_key == "tradeshift-local-key":
             warnings.append("CHATBOT_API_KEY is using the local default; chatbot calls should be disabled or configured explicitly in beta.")
+        if not redis_url and not redis_host:
+            warnings.append("REDIS_URL is not set explicitly; cache-backed features will run in degraded mode.")
+        if redis_url and "localhost" in redis_url:
+            errors.append("REDIS_URL points to localhost in beta/prod; use the managed Render Key Value URL.")
+        if redis_host in {"localhost", "127.0.0.1"}:
+            errors.append("REDIS_HOST points to localhost in beta/prod; use the managed Render Key Value host.")
+        if not minio_endpoint:
+            warnings.append("MINIO_ENDPOINT is not set explicitly; replay/object-storage features may be unavailable.")
+        elif "localhost" in minio_endpoint or "127.0.0.1" in minio_endpoint:
+            errors.append("MINIO_ENDPOINT points to localhost in beta/prod; use the reachable object storage endpoint.")
 
     for name, blocked_values in PLACEHOLDERS.items():
         value = (os.getenv(name) or "").strip()

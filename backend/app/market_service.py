@@ -291,7 +291,7 @@ class MarketService:
             "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "ICICIBANK.NS", "INFY.NS",
             "ITC.NS", "SBIN.NS", "BHARTIARTL.NS", "HINDUNILVR.NS", "BAJFINANCE.NS",
             "LT.NS", "KOTAKBANK.NS", "ASIANPAINT.NS", "MARUTI.NS", "SUNPHARMA.NS",
-            "TATASTEEL.NS", "WIPRO.NS", "TATAMOTORS.NS", "ULTRACEMCO.NS", "NTPC.NS"
+            "TATASTEEL.NS", "WIPRO.NS", "ULTRACEMCO.NS", "NTPC.NS"
         ]
         
         performance = []

@@ -85,12 +85,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
-      // Explicitly reset the store before redirecting
       useLearnStore.getState().resetStore();
-      
-      // Explicitly redirect to home page on logout
-      // We don't call setUser(null) here to avoid React re-rendering the current protected page 
-      // which might trigger a sub-redirect to /login before the browser can reload the home page.
+      // Clear user state immediately so no stale session is in memory
+      setUser(null);
       window.location.href = '/';
     }
   };

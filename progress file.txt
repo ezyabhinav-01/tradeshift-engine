@@ -1,0 +1,44 @@
+# Tradeshift Engine - Project Progress Tracker
+
+## 1. Authentication & Community Page
+- **Status:** In Progress / Maturing
+- **Completed:** 
+  - Implementation of Community page UI with WhatsApp-style chat interface.
+  - Basic Authentication flow layout.
+  - Direct message history fetching on mount.
+  - Adjusted message timestamps for IST timezone.
+- **Pending / Recent Tasks:**
+  - Securing the Community Page access for unauthenticated visitors.
+  - Fixing the PIN verification session state bug (hydration issues).
+  - Resolving duplicated messages in the frontend chat.
+  - Fixing logout flow to successfully revoke refresh tokens and delete DB records.
+
+## 2. Market Replay Engine & Charts
+- **Status:** In Progress
+- **Completed:** 
+  - Integration of Redis caching for data loading pipeline.
+  - Fallback logic to MinIO/Parquet for historical market data.
+  - Removal of Inngest dependencies, migrating background tasks to native FastAPI workflow.
+  - RabbitMQ pipeline integrated for news scraping.
+- **Pending / Recent Tasks:**
+  - Fixing "No data found" errors for Redis market data simulation caching.
+  - Replay system timing synchronization ensuring simulation reflects 9:15 AM to 3:30 PM IST.
+  - Showing 3-day static historical data on the frontend chart before replay starts.
+  - Correcting Parquet file UTC to IST timezone mismatches.
+
+## 3. Database & Infrastructure
+- **Status:** Stabilizing
+- **Completed:** 
+  - Supabase database schema cleaned and optimized (Removed deprecated `replay_scenes` and `portfolios` tables).
+  - PostgreSQL Native Partitioning created for high-growth tables (`trade_logs`, `market_candles`, `notifications`, `user_events`).
+- **Pending / Recent Tasks:**
+  - Fixing PostgreSQL foreign key constraint issues between `broadcast_reads` and `notifications` partitioned tables.
+  - Refining the 3-month data retention policy integration via partitioning.
+
+## 4. AI / Machine Learning Integrations
+- **Status:** In Progress
+- **Completed:**
+  - Initial setup of political bias classifier using BERT/RoBERTa architectures.
+- **Pending / Recent Tasks:**
+  - Optimizing the classifier to eliminate data leakage (removing the 'Stance' column metadata from training logic).
+  - Adjusting hyperparameters (dropout/learning rate) for better text generalization from news headlines and body content.

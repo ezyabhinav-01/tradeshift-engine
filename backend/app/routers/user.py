@@ -218,7 +218,7 @@ def send_help_email(user_id: str, message: str):
     msg = MIMEText(html, "html")
     msg["Subject"] = f"New User Help Request - {user_id}"
     msg["From"] = sender
-    msg["To"] = "stabilityincrease1@gmail.com"
+    msg["To"] = "mannat07kumar@gmail.com"
     
     try:
         logger.info(f"Attempting to send email via {smtp_server}:{port} for user {user_id}...")
@@ -227,7 +227,7 @@ def send_help_email(user_id: str, message: str):
         server.send_message(msg)
         server.quit()
         logger.info(f"Successfully sent help email for user {user_id} via SMTP_SSL (Port 465)")
-        print(f"✅ EMAIL SENT: Support request from {user_id} forwarded to stabilityincrease1@gmail.com")
+        print(f"✅ EMAIL SENT: Support request from {user_id} forwarded to mannat07kumar@gmail.com")
     except Exception as e:
         logger.error(f"Failed to send help email for user {user_id}: {str(e)}")
         print(f"❌ EMAIL FAILED: {str(e)}")

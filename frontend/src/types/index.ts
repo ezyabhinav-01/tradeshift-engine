@@ -19,6 +19,11 @@ export interface Trade {
     quantity: number;
     pnl?: number;
     exitPrice?: number;
+    exitReason?: string;
+    entryTime?: string | null;
+    exitTime?: string | null;
+    holdingTimeSeconds?: number;
+    holdingTimeMins?: number;
     timestamp: Date;
     status: 'OPEN' | 'CLOSED' | 'PENDING' | 'TRIGGERED' | 'FILLED' | 'CANCELLED';
     stopLoss?: number;

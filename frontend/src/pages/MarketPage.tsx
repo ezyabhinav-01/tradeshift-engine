@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+import { getCachedOrFetch } from '@/utils/requestCache';
 import {
   TrendingUp,
   TrendingDown,
@@ -15,7 +16,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, Cell } from 'recharts';
-import { useGame } from '../context/GameContext';
+import { useGameMarket, useGamePlayback } from '../hooks/useGame';
 import TradingViewWidget from '@/components/ui/TradingViewWidget';
 import { HEATMAP_WIDGET_CONFIG, MARKET_OVERVIEW_WIDGET_CONFIG } from '@/lib/constants';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -50,6 +51,7 @@ const MarketPage: React.FC = () => {
   const [optionsSymbol, setOptionsSymbol] = useState<'NIFTY' | 'BANKNIFTY'>('NIFTY');
   const [isOptionsAdvanced, setIsOptionsAdvanced] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
   const [isLiveWsConnected, setIsLiveWsConnected] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(true);
@@ -78,44 +80,127 @@ const MarketPage: React.FC = () => {
     }
   };
 
-  const { isPlaying, simulatedIndices, currentTime } = useGame();
+  const { isPlaying, currentTime } = useGamePlayback();
+  const { simulatedIndices } = useGameMarket();
 
   const navigate = useNavigate();
+  const hasInitialSnapshotRef = useRef(false);
 
-  const fetchMarketData = async () => {
-    setIsLoading(true);
+  const toNumber = (value: unknown) => {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : 0;
+  };
+
+  const extractArrayFromPayload = (payload: any, key?: string) => {
+    if (Array.isArray(payload)) return payload;
+    if (!payload || typeof payload !== 'object') return [];
+    if (key && Array.isArray(payload[key])) return payload[key];
+    if (Array.isArray(payload.data)) return payload.data;
+    if (key && Array.isArray(payload.data?.[key])) return payload.data[key];
+    if (key && Array.isArray(payload.result?.[key])) return payload.result[key];
+    if (Array.isArray(payload.result)) return payload.result;
+    if (payload.items && Array.isArray(payload.items)) return payload.items;
+    return [];
+  };
+
+  const extractFromSettled = (result: PromiseSettledResult<any>, key?: string) => {
+    if (result.status !== 'fulfilled') return [];
+    return extractArrayFromPayload(result.value?.data, key);
+  };
+
+  const normalizeMovers = (rows: any[]): MoverData[] =>
+    rows
+      .map((row) => {
+        const symbol = String(row?.symbol ?? row?.ticker ?? row?.name ?? '').trim();
+        const price = toNumber(row?.price ?? row?.ltp ?? row?.last_price ?? row?.close);
+        const change = toNumber(row?.change ?? row?.price_change);
+        const changePercent = toNumber(row?.change_percent ?? row?.changePercent ?? row?.percent_change);
+        const volume = toNumber(row?.volume ?? row?.vol);
+        return {
+          symbol,
+          price,
+          change,
+          change_percent: changePercent,
+          volume,
+          is_positive: row?.is_positive !== undefined ? Boolean(row.is_positive) : changePercent >= 0,
+        };
+      })
+      .filter((row) => row.symbol.length > 0)
+      .slice(0, 15);
+
+  const fetchMarketData = async (opts?: { forceRefresh?: boolean; background?: boolean }) => {
+    const forceRefresh = opts?.forceRefresh ?? false;
+    const background = opts?.background ?? false;
+    if (!background || !hasInitialSnapshotRef.current) {
+      setIsLoading(true);
+    } else {
+      setIsRefreshing(true);
+    }
     try {
-      const [indicesRes, gainersRes, losersRes, sectorsRes, optionsRes] = await Promise.all([
-        axios.get(`/api/market/indices`),
-        axios.get(`/api/market/gainers`),
-        axios.get(`/api/market/losers`),
-        axios.get(`/api/market/sectors`).catch(() => ({ data: [] })),
-        axios.get(`/api/market/options/${optionsSymbol}`).catch(() => ({ data: null }))
-      ]);
-      setIndices(indicesRes.data);
-      setGainers(gainersRes.data);
-      setLosers(losersRes.data);
-      setSectors(sectorsRes.data || []);
-      setOptionsData(optionsRes.data);
+      const snapshot = await getCachedOrFetch(
+        'market:snapshot',
+        async () => {
+          const [indicesRes, gainersRes, losersRes, sectorsRes, activeRes] = await Promise.allSettled([
+            axios.get(`/api/market/indices`),
+            axios.get(`/api/market/gainers`),
+            axios.get(`/api/market/losers`),
+            axios.get(`/api/market/sectors`),
+            axios.get(`/api/market/most-active`),
+          ]);
+
+          const parsedIndices = extractFromSettled(indicesRes);
+          const parsedSectors = extractFromSettled(sectorsRes);
+
+          let parsedGainers = normalizeMovers(extractFromSettled(gainersRes, 'gainers'));
+          let parsedLosers = normalizeMovers(extractFromSettled(losersRes, 'losers'));
+          const parsedActive = normalizeMovers(extractFromSettled(activeRes, 'active'));
+
+          if ((parsedGainers.length === 0 || parsedLosers.length === 0) && parsedActive.length > 0) {
+            const byPerformanceDesc = [...parsedActive].sort((a, b) => b.change_percent - a.change_percent);
+            if (parsedGainers.length === 0) parsedGainers = byPerformanceDesc.slice(0, 10);
+            if (parsedLosers.length === 0) parsedLosers = [...byPerformanceDesc].reverse().slice(0, 10);
+          }
+
+          return {
+            indices: parsedIndices,
+            gainers: parsedGainers,
+            losers: parsedLosers,
+            sectors: parsedSectors,
+          };
+        },
+        { ttlMs: 60_000, forceRefresh }
+      );
+      setIndices(snapshot.indices);
+      setGainers(snapshot.gainers);
+      setLosers(snapshot.losers);
+      setSectors(snapshot.sectors);
+      hasInitialSnapshotRef.current = true;
       setLastRefreshed(new Date());
     } catch (error) {
       console.error("Failed to fetch market data:", error);
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
   };
 
   useEffect(() => {
     const fetchOptions = async () => {
       try {
-        const res = await axios.get(`/api/market/options/${optionsSymbol}`);
-        setOptionsData(res.data);
+        const data = await getCachedOrFetch(
+          `market:options:${optionsSymbol}`,
+          async () => {
+            const res = await axios.get(`/api/market/options/${optionsSymbol}`);
+            return res.data;
+          },
+          { ttlMs: 60_000 }
+        );
+        setOptionsData(data);
       } catch (err) {
         console.error(err);
       }
     };
     if (activeTab === 'fno') {
-      setOptionsData(null);
       fetchOptions();
     }
   }, [optionsSymbol, activeTab]);
@@ -123,7 +208,7 @@ const MarketPage: React.FC = () => {
   useEffect(() => {
     fetchMarketData();
     // Auto refresh every 5 minutes (for sectors and movers)
-    const interval = setInterval(fetchMarketData, 5 * 60 * 1000);
+    const interval = setInterval(() => fetchMarketData({ background: true, forceRefresh: true }), 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -237,8 +322,8 @@ const MarketPage: React.FC = () => {
 
             <span className="text-slate-400 dark:text-gray-600">•</span>
             <span className="text-slate-500 dark:text-gray-500">Last REST sync: {lastRefreshed.toLocaleTimeString()}</span>
-            <button onClick={fetchMarketData} className="ml-2 text-slate-500 hover:text-slate-900 dark:text-gray-500 dark:hover:text-white transition-colors" title="Sync REST Data">
-              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-blue-600 dark:text-primary' : ''}`} />
+            <button onClick={() => fetchMarketData({ forceRefresh: true })} className="ml-2 text-slate-500 hover:text-slate-900 dark:text-gray-500 dark:hover:text-white transition-colors" title="Sync REST Data">
+              <RefreshCw className={`w-3.5 h-3.5 ${(isLoading || isRefreshing) ? 'animate-spin text-blue-600 dark:text-primary' : ''}`} />
             </button>
           </div>
         </div>

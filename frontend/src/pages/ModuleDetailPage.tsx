@@ -6,11 +6,11 @@ import { useAccessControl } from '../hooks/useAccessControl';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useNotifications } from '../context/NotificationContext';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
   ArrowLeft, BookOpen, ChevronRight, Lock, Sparkles, Trophy,
   Sun, Moon, Bell, LogOut, UserCircle, ChevronDown,
-  TrendingUp, Clock, Award, ShieldCheck, Brain,
+  Clock, Award, ShieldCheck,
   BarChart3, Target, Fingerprint
 } from 'lucide-react';
 

@@ -22,41 +22,48 @@ const NewsPage: React.FC = () => {
   const [activeCategory, setActiveCategory] = useState('all');
   const [loading, setLoading] = useState(true);
   const [explainingId, setExplainingId] = useState<string | null>(null);
-  const cacheRef = useRef<Record<string, { ts: number; items: NewsItem[] }>>({});
+  const hasLoadedRef = useRef(false);
 
   // AI Explanation Modal State
   const [explanation, setExplanation] = useState<string | null>(null);
   const [selectedNewsTitle, setSelectedNewsTitle] = useState<string | null>(null);
 
-  const fetchNews = useCallback(async (cat: string) => {
-    const cacheKey = `${cat}:36`;
-    const cached = cacheRef.current[cacheKey];
-    const now = Date.now();
-    if (cached && now - cached.ts < 120_000) {
-      setNews(cached.items);
-      setLoading(false);
-      return;
+  const fetchNews = useCallback(async (cat: string, opts?: { background?: boolean }) => {
+    const shouldBackgroundRefresh = opts?.background ?? false;
+    if (!shouldBackgroundRefresh || !hasLoadedRef.current) {
+      setLoading(true);
     }
-
-    setLoading(true);
     try {
-      const data = await fetchNewsApi(cat, 36);
-      
-      // 1. Expanded Temporal Filter (Current Time - 4 Days)
-      const cutoff = new Date().getTime() - 96 * 60 * 60 * 1000;
-      const freshData = data.filter(item => {
-        const publishedAt = new Date(item.publishedAt).getTime();
-        return publishedAt >= cutoff;
-      });
+      const parsePublishedAt = (value?: string): number | null => {
+        if (!value) return null;
+        const direct = new Date(value).getTime();
+        if (!Number.isNaN(direct)) return direct;
 
-      // 2. Strict Chronological Sort: Absolute Recency First
-      const sortedData = freshData.sort((a, b) => {
-        return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
-      });
+        const compact = value.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})$/);
+        if (compact) {
+          const [, y, m, d, hh, mm, ss] = compact;
+          const asIso = `${y}-${m}-${d}T${hh}:${mm}:${ss}Z`;
+          const parsed = new Date(asIso).getTime();
+          if (!Number.isNaN(parsed)) return parsed;
+        }
+        return null;
+      };
 
-      const finalData = sortedData.slice(0, 100);
+      let data = await fetchNewsApi(cat, 36);
+      if (cat !== 'all' && data.length === 0) {
+        // Automatic fallback so category dead-ends don't blank the page.
+        data = await fetchNewsApi('all', 36);
+      }
+
+      const cutoff = Date.now() - 96 * 60 * 60 * 1000;
+      const withTs = data.map(item => ({ item, ts: parsePublishedAt(item.publishedAt) }));
+      const freshData = withTs.filter(({ ts }) => ts !== null && ts >= cutoff);
+      const sourceData = freshData.length > 0 ? freshData : withTs;
+      const sortedData = sourceData.sort((a, b) => (b.ts ?? 0) - (a.ts ?? 0));
+
+      const finalData = sortedData.map(({ item }) => item).slice(0, 100);
       setNews(finalData);
-      cacheRef.current[cacheKey] = { ts: now, items: finalData };
+      hasLoadedRef.current = true;
     } catch (error) {
       console.error('Failed to fetch news:', error);
       toast.error('Failed to load news. Please try again later.');
@@ -70,7 +77,7 @@ const NewsPage: React.FC = () => {
 
     // Auto-refresh every 20 minutes
     const interval = setInterval(() => {
-      fetchNews(activeCategory);
+      fetchNews(activeCategory, { background: true });
     }, 1200000);
 
     return () => clearInterval(interval);
@@ -84,7 +91,10 @@ const NewsPage: React.FC = () => {
       setExplanation(result);
     } catch (error) {
       console.error('AI Explanation failed:', error);
-      toast.error('AI explanation currently unavailable.');
+      setExplanation(
+        "AI explainer is temporarily under load. Key takeaway: focus on how this headline can affect earnings expectations, liquidity, and sector sentiment over the next session."
+      );
+      toast.error('AI explanation is running in fallback mode.');
     } finally {
       setExplainingId(null);
     }

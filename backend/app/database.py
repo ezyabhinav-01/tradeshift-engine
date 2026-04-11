@@ -45,23 +45,36 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return str(val).strip().lower() in ("1", "true", "yes", "on")
 
 def get_database_url():
-    # Default to localhost for local dev, 'db' for docker
-    # Using +asyncpg for async operations
-    default_url = "postgresql+asyncpg://user:password@localhost:5432/tradeshift_db" 
-    url = os.getenv("DATABASE_URL", default_url)
-    return url
+    # Enforce explicit DATABASE_URL for non-development runtimes.
+    url = (os.getenv("DATABASE_URL") or "").strip()
+    if url:
+        return url
+
+    app_env = (os.getenv("APP_ENV") or "development").strip().lower()
+    if app_env in {"production", "staging", "beta"}:
+        raise RuntimeError("DATABASE_URL must be set for production/staging/beta environments.")
+
+    # Local development fallback only.
+    return "postgresql+asyncpg://user:password@localhost:5432/tradeshift_db"
 
 def is_local_database_url(url: str | None = None) -> bool:
     """
     Treat Docker service names and localhost-style hosts as local databases.
     Remote managed databases should not block app boot on eager schema sync.
     """
-    parsed = urlparse(url or get_database_url())
+    candidate = url or get_database_url()
+    if candidate.startswith("sqlite"):
+        return True
+    parsed = urlparse(candidate)
     host = (parsed.hostname or "").lower()
     return host in {"localhost", "127.0.0.1", "db"}
 
 def get_database_url_async():
     url = get_database_url()
+    if url.startswith("sqlite:///"):
+        return url.replace("sqlite:///", "sqlite+aiosqlite:///", 1)
+    if url.startswith("sqlite+aiosqlite:///"):
+        return url
     # Supabase might provide postgres://, but SQLAlchemy 1.4+ and asyncpg need postgresql+asyncpg://
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql+asyncpg://", 1)
@@ -74,6 +87,10 @@ def get_database_url_async():
     elif "&sslmode=require" in url:
         url = url.replace("&sslmode=require", "")
         
+    # SQLite does not accept asyncpg-specific parameters.
+    if url.startswith("sqlite"):
+        return url
+
     # 🔥 Fix for Supabase Transaction Pooler (PgBouncer)
     # Prepared statements are NOT supported in Transaction Mode.
     if "?" in url:
@@ -99,6 +116,19 @@ async def connect_to_database():
     logger.info("🔄 Establishing new async database connection...")
     try:
         db_url = get_database_url_async()
+        if db_url.startswith("sqlite+aiosqlite:///"):
+            engine = create_async_engine(db_url, future=True)
+            async with engine.connect() as connection:
+                logger.info("✅ Async SQLite database connected successfully.")
+            _db_cache["engine"] = engine
+            _db_cache["session_maker"] = async_sessionmaker(
+                bind=engine,
+                class_=AsyncSession,
+                expire_on_commit=False,
+                autocommit=False,
+                autoflush=False
+            )
+            return engine
         
         # Determine if SSL is needed (skip for local Docker/localhost)
         is_local = "localhost" in db_url or "@db:" in db_url or "127.0.0.1" in db_url
@@ -207,6 +237,17 @@ def connect_to_database_sync():
         return _db_cache["engine_sync"]
         
     url = get_database_url()
+    if url.startswith("sqlite+aiosqlite:///"):
+        url = url.replace("sqlite+aiosqlite:///", "sqlite:///", 1)
+    elif url.startswith("sqlite:///"):
+        url = url
+
+    if url.startswith("sqlite:///"):
+        engine = create_engine(url, connect_args={"check_same_thread": False})
+        _db_cache["engine_sync"] = engine
+        _db_cache["session_maker_sync"] = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        return engine
+
     # 1. Strip async dialect
     if "postgresql+asyncpg://" in url:
         url = url.replace("postgresql+asyncpg://", "postgresql://")
@@ -277,16 +318,17 @@ async def get_session():
     return _db_cache["session_maker"]()
 
 
-def sync_schema_hotpatch(engine):
+def get_schema_gaps(engine) -> list[str]:
     """
-    Checks the database for missing columns in the 'users' table and adds them if found.
-    This ensures remote Supabase DB stays in sync with SQLAlchemy models without manual migrations.
+    Report legacy schema gaps without mutating the database at startup.
     """
     inspector = inspect(engine)
+    if "users" not in inspector.get_table_names():
+        return ["missing table: users"]
+
     columns_info = inspector.get_columns("users")
     existing_columns = [col["name"] for col in columns_info]
-    
-    # List of columns that might be missing in older schemas
+
     required_columns = [
         ("full_name", "VARCHAR"),
         ("dob", "VARCHAR"),
@@ -308,25 +350,69 @@ def sync_schema_hotpatch(engine):
         ("last_active_at", "TIMESTAMP"),
         ("created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     ]
-    
+
+    gaps: list[str] = []
+    for col_name, _ in required_columns:
+        if col_name not in existing_columns:
+            gaps.append(f"users.{col_name}")
+
+    indexes = inspector.get_indexes("users")
+    index_names = [idx["name"] for idx in indexes]
+    if "ix_users_demat_id" not in index_names:
+        gaps.append("index:ix_users_demat_id")
+
+    return gaps
+
+
+def sync_schema_hotpatch(engine):
+    """
+    Legacy explicit repair path. Startup should prefer migrations plus gap checks.
+    """
+    gaps = get_schema_gaps(engine)
+    if not gaps:
+        return
+
+    if not _env_bool("ENABLE_LEGACY_SCHEMA_HOTPATCH", default=False):
+        logger.warning(
+            "⚠️ Schema gaps detected (%s). Skipping startup mutation; apply the Phase 3 migration or set ENABLE_LEGACY_SCHEMA_HOTPATCH=1 explicitly.",
+            ", ".join(gaps),
+        )
+        return
+
+    inspector = inspect(engine)
+    columns_info = inspector.get_columns("users")
+    existing_columns = [col["name"] for col in columns_info]
+    required_columns = [
+        ("full_name", "VARCHAR"),
+        ("dob", "VARCHAR"),
+        ("experience_level", "VARCHAR"),
+        ("investment_goals", "VARCHAR"),
+        ("preferred_instruments", "VARCHAR"),
+        ("risk_tolerance", "VARCHAR"),
+        ("occupation", "VARCHAR"),
+        ("city", "VARCHAR"),
+        ("how_heard_about", "VARCHAR"),
+        ("security_pin", "VARCHAR(4)"),
+        ("phone_number", "VARCHAR"),
+        ("otp_code", "VARCHAR(6)"),
+        ("otp_expiry", "TIMESTAMP"),
+        ("demat_id", "VARCHAR(50)"),
+        ("refresh_token", "VARCHAR"),
+        ("is_verified", "BOOLEAN DEFAULT FALSE"),
+        ("balance", "FLOAT DEFAULT 100000.0"),
+        ("last_active_at", "TIMESTAMP"),
+        ("created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
+    ]
+
     with engine.connect() as conn:
         for col_name, col_type in required_columns:
             if col_name not in existing_columns:
-                logger.info(f"🛠️  Hot-patching DB: Adding missing column '{col_name}' to 'users' table...")
-                try:
-                    conn.execute(text(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}"))
-                    conn.commit()
-                    logger.info(f"✅ Column '{col_name}' added successfully.")
-                except Exception as e:
-                    logger.error(f"❌ Failed to add column '{col_name}': {e}")
-        
-        # Verify index for demat_id if column was added or exists
-        try:
-            indexes = inspector.get_indexes("users")
-            index_names = [idx["name"] for idx in indexes]
-            if "ix_users_demat_id" not in index_names:
-                 logger.info("🛠️  Hot-patching DB: Adding unique index for 'demat_id'...")
-                 conn.execute(text("CREATE UNIQUE INDEX ix_users_demat_id ON users (demat_id) WHERE demat_id IS NOT NULL"))
-                 conn.commit()
-        except Exception as e:
-             logger.error(f"❌ Failed to create demat_id index: {e}")
+                logger.info("🛠️  Legacy hot-patching users.%s", col_name)
+                conn.execute(text(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}"))
+                conn.commit()
+
+        indexes = inspector.get_indexes("users")
+        index_names = [idx["name"] for idx in indexes]
+        if "ix_users_demat_id" not in index_names:
+            conn.execute(text("CREATE UNIQUE INDEX ix_users_demat_id ON users (demat_id) WHERE demat_id IS NOT NULL"))
+            conn.commit()

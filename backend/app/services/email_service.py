@@ -4,6 +4,7 @@ Sends transactional emails for: signup, login, PIN events, trade events.
 All functions are designed to be called via BackgroundTasks (non-blocking).
 """
 import logging
+import os
 from fastapi_mail import FastMail, MessageSchema, MessageType
 from app.config import conf
 
@@ -89,6 +90,9 @@ def _cta_button(text: str, href: str = "http://localhost:5173") -> str:
 
 # ── Async email sender ──────────────────────────────────────────────────────
 async def _send(to_email: str, subject: str, html: str):
+    if os.getenv("DISABLE_EMAIL_DELIVERY", "false").strip().lower() in {"1", "true", "yes", "on"}:
+        logger.info(f"📭 Email delivery disabled, skipped {subject} -> {to_email}")
+        return
     try:
         message = MessageSchema(
             subject=subject,
@@ -536,6 +540,10 @@ async def send_personalized_welcome_email(email: str, first_name: str, demat_id:
     """
     Combines Gemini AI generation with the standard welcome email template.
     """
+    if os.getenv("DISABLE_EMAIL_DELIVERY", "false").strip().lower() in {"1", "true", "yes", "on"}:
+        logger.info(f"📭 Email delivery disabled, skipped personalized welcome pipeline -> {email}")
+        return
+
     from app.utils.gemini_pool import gemini_pool
     
     # 1. Generate the AI Intro

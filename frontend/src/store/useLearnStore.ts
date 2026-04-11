@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { getCachedOrFetch, invalidateCache } from '../utils/requestCache';
 
 // ═══════════════════════════════════════════
 // TYPES
@@ -155,6 +156,7 @@ interface LearnState {
   completeLesson: (lessonId: string, trackId: string) => Promise<void>;
   setActiveTrack: (trackId: string | null) => void;
   setActiveModule: (moduleId: string | null) => void;
+  getTrackProgress: (trackId: string) => number;
   getModuleProgress: (moduleId: string) => number;
   logLearningTime: (minutes: number) => Promise<void>;
   resetStore: () => void;
@@ -191,32 +193,40 @@ export const useLearnStore = create<LearnState>((set, get) => ({
   // Actions
   fetchUserStats: async () => {
     try {
-      const res = await fetch('/api/learn/stats', { credentials: 'include' });
-      if (res.ok) {
-        const data = await res.json();
-        
-        // Merge backend badges with our UI defaults
-        const backendBadgeIds = data.badges.map((b: any) => b.badge_id);
-        const mergedBadges = DEFAULT_BADGES.map(defaultBadge => {
-          const backendBadge = data.badges.find((b: any) => b.badge_id === defaultBadge.id);
-          return {
-            ...defaultBadge,
-            unlocked: backendBadgeIds.includes(defaultBadge.id),
-            unlockedAt: backendBadge ? backendBadge.earned_at : undefined,
-          };
-        });
+      const data = await getCachedOrFetch<any>(
+        'learn:stats',
+        async () => {
+          const res = await fetch('/api/learn/stats', { credentials: 'include' });
+          if (!res.ok) {
+            throw new Error(`Failed to fetch learn stats: ${res.status}`);
+          }
+          return res.json();
+        },
+        { ttlMs: 60_000 }
+      );
 
-        set({
-          totalXP: data.total_xp,
-          level: data.level,
-          currentStreak: data.current_streak,
-          longestStreak: data.longest_streak,
-          lastActiveDate: data.last_active_date,
-          completedLessons: data.completed_lessons,
-          badges: mergedBadges,
-          learningMinutes: data.learning_minutes,
-        });
-      }
+      // Merge backend badges with our UI defaults
+      const backendBadges = Array.isArray(data.badges) ? data.badges : [];
+      const backendBadgeIds = backendBadges.map((b: any) => b.badge_id);
+      const mergedBadges = DEFAULT_BADGES.map(defaultBadge => {
+        const backendBadge = backendBadges.find((b: any) => b.badge_id === defaultBadge.id);
+        return {
+          ...defaultBadge,
+          unlocked: backendBadgeIds.includes(defaultBadge.id),
+          unlockedAt: backendBadge ? backendBadge.earned_at : undefined,
+        };
+      });
+
+      set({
+        totalXP: data.total_xp ?? 0,
+        level: data.level ?? 1,
+        currentStreak: data.current_streak ?? 0,
+        longestStreak: data.longest_streak ?? 0,
+        lastActiveDate: data.last_active_date ?? null,
+        completedLessons: Array.isArray(data.completed_lessons) ? data.completed_lessons : [],
+        badges: mergedBadges,
+        learningMinutes: data.learning_minutes ?? 0,
+      });
     } catch (e) {
       console.error("Failed to fetch user stats", e);
     }
@@ -241,8 +251,17 @@ export const useLearnStore = create<LearnState>((set, get) => ({
 
   fetchTracks: async () => {
     try {
-      const res = await fetch('/api/learn/tracks', { credentials: 'include' });
-      const data = await res.json();
+      const data = await getCachedOrFetch<any[]>(
+        'learn:tracks',
+        async () => {
+          const res = await fetch('/api/learn/tracks', { credentials: 'include' });
+          if (!res.ok) {
+            throw new Error(`Failed to fetch learn tracks: ${res.status}`);
+          }
+          return res.json();
+        },
+        { ttlMs: 5 * 60_000 }
+      );
       if (Array.isArray(data)) {
         // Map aesthetics dynamically based on index to keep the CMS clean
         const stylizedTracks = data.map((track, i) => {
@@ -261,16 +280,23 @@ export const useLearnStore = create<LearnState>((set, get) => ({
 
   fetchSecrets: async () => {
     try {
-      const res = await fetch('/api/learn/secrets', { credentials: 'include' });
-      if (res.ok) {
-        const data = await res.json();
-        const secrets = data.secrets || [];
-        set({
-          secrets,
-          secretsTotal: secrets.length,
-          secretsRevealed: secrets.filter((s: MarketSecret) => s.isRevealed).length,
-        });
-      }
+      const data = await getCachedOrFetch<any>(
+        'learn:secrets',
+        async () => {
+          const res = await fetch('/api/learn/secrets', { credentials: 'include' });
+          if (!res.ok) {
+            throw new Error(`Failed to fetch learn secrets: ${res.status}`);
+          }
+          return res.json();
+        },
+        { ttlMs: 60_000 }
+      );
+      const secrets = data.secrets || [];
+      set({
+        secrets,
+        secretsTotal: secrets.length,
+        secretsRevealed: secrets.filter((s: MarketSecret) => s.isRevealed).length,
+      });
     } catch (e) {
       console.error("Failed to fetch secrets", e);
     }
@@ -285,6 +311,8 @@ export const useLearnStore = create<LearnState>((set, get) => ({
       });
       if (res.ok) {
         const data = await res.json();
+        invalidateCache('learn:secrets');
+        invalidateCache('learn:stats');
         // Update the secret in local state
         set(state => ({
           secrets: state.secrets.map(s =>
@@ -320,6 +348,8 @@ export const useLearnStore = create<LearnState>((set, get) => ({
       });
       if (res.ok) {
         const data = await res.json();
+        invalidateCache('learn:stats');
+        invalidateCache('learn:secrets');
         // Update secret in local state
         set(state => ({
           secrets: state.secrets.map(s =>
@@ -373,6 +403,7 @@ export const useLearnStore = create<LearnState>((set, get) => ({
     }
 
     // Refresh all stats cleanly from backend directly
+    invalidateCache('learn:stats');
     await get().fetchUserStats();
   },
 

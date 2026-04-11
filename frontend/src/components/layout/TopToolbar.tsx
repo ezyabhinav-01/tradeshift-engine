@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { SymbolSearch } from '../features/SymbolSearch';
-import { useGame } from '../../hooks/useGame';
+import { useGameActions, useGameMarket, useGamePlayback } from '../../hooks/useGame';
 import { useMultiChartStore } from '../../store/useMultiChartStore';
 import type { TimeframeId } from '../../store/useMultiChartStore';
 import { toast } from 'sonner';
@@ -42,7 +42,9 @@ const TopToolbar = ({
     onToggleIndicators, onOpenAlerts, activeIndicatorIds, onApplyIndicatorTemplate,
     isGuest
 }: TopToolbarProps) => {
-    const { selectedSymbol, isReplayActive, toggleReplay } = useGame();
+    const { selectedSymbol } = useGameMarket();
+    const { isReplayActive } = useGamePlayback();
+    const { toggleReplay } = useGameActions();
     const { activeChartId, charts, updateChart, activeTimeframe, setActiveTimeframe } = useMultiChartStore();
     const { checkAccess } = useAccessControl();
     const [isSearchOpen, setIsSearchOpen] = useState(false);

@@ -1,15 +1,13 @@
 import { Play, Pause, SkipForward, Calendar, X, ChevronRight, ChevronLeft, GripVertical, Columns } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useGame } from '../../hooks/useGame';
+import { useGameActions, useGamePlayback } from '../../hooks/useGame';
 import { marketDataService } from '../../services/MarketDataService';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 
 const ReplayToolbar = () => {
-    const { 
-        isReplayActive, toggleReplay, isPlaying, togglePlay, 
-        speed, setSpeed, selectedDate, setDate, availableDates 
-    } = useGame();
+    const { isReplayActive, isPlaying, speed, selectedDate, availableDates } = useGamePlayback();
+    const { toggleReplay, togglePlay, setSpeed, setDate } = useGameActions();
     
     // Collapsed state for the toolbar
     const [isCollapsed, setIsCollapsed] = useState(false);

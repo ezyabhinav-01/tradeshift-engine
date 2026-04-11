@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { Wallet, Sun, Moon } from 'lucide-react';
-import { useGame } from '../../context/GameContext';
+import { useGameActions, useGameMarket, useGamePlayback } from '../../hooks/useGame';
 import SimpleSearchModal from '../ui/SimpleSearchModal';
 
 const Topbar = () => {
-  const { balance, isPlaying, theme, toggleTheme, setSymbol, selectedSymbol } = useGame();
+  const { isPlaying } = useGamePlayback();
+  const { balance, theme, selectedSymbol } = useGameMarket();
+  const { toggleTheme, setSymbol } = useGameActions();
   const [searchOpen, setSearchOpen] = useState(false);
 
   return (

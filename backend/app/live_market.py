@@ -49,7 +49,7 @@ class ShoonyaLiveService:
         # 🔥 Trigger OMS Price Monitoring
         from app.services.order_management import oms_service
         if "price" in data and "name" in data:
-            asyncio.create_task(oms_service.on_price_update(data["name"], data["price"]))
+            oms_service.queue_price_update(data["name"], data["price"], session_type="REPLAY")
 
         for cb in self.callbacks:
             try:
@@ -165,8 +165,8 @@ class ShoonyaLiveService:
         
         if not all([user_id, password, vendor_code, api_secret, totp_secret]):
             missing = [k for k,v in {'user_id': user_id, 'password': password, 'vendor_code': vendor_code, 'api_secret': api_secret, 'totp_secret': totp_secret}.items() if not v]
-            logger.error(f"Missing Shoonya credentials in .env: {missing}")
-            self.status = "error"
+            logger.info(f"Shoonya live feed disabled: missing credentials {missing}")
+            self.status = "disabled"
             self.error_message = f"Missing credentials: {missing}"
             return
             

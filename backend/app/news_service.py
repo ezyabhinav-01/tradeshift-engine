@@ -5,26 +5,20 @@ import asyncio
 import aiohttp
 import hashlib
 import urllib.parse
-from datetime import datetime
-from redis import Redis
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 import html
 import feedparser
 from typing import Any
 from .nlp_engine import generate_news_explanation
+from .redis_utils import get_redis_client
 
 # Environment Variables
 NEWSAPI_KEY = os.getenv("NEWSAPI_KEY", "")
 ALPHA_VANTAGE_KEY = os.getenv("ALPHA_VANTAGE_KEY", "")
 NEWSDATA_API_KEY = os.getenv("NEWSDATA_API_KEY", "")
 USE_NEWSAPI_FALLBACK = os.getenv("USE_NEWSAPI_FALLBACK", "false").lower() == "true"
-REDIS_HOST = os.getenv("REDIS_HOST", "redis")
-
-# Redis Setup
-try:
-    redis_client = Redis(host=REDIS_HOST, port=6379, decode_responses=True)
-except Exception:
-    redis_client = None
-    print("⚠️ Redis not connected for news_service, using in-memory fallback pending.")
+redis_client = get_redis_client(log_prefix="Redis for news_service")
 
 # Fallback Cache
 _IN_MEMORY_CACHE = {}
@@ -184,16 +178,35 @@ def _parse_datetime(value: str | None) -> datetime:
         return datetime.min
     raw = value.strip()
     try:
-        # Handles ISO with trailing Z.
-        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return dt
+    except Exception:
+        pass
+    try:
+        dt = parsedate_to_datetime(raw)
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return dt
     except Exception:
         pass
     for fmt in ("%Y%m%dT%H%M%S", "%a, %d %b %Y %H:%M:%S %z", "%Y-%m-%d %H:%M:%S"):
         try:
-            return datetime.strptime(raw, fmt)
+            dt = datetime.strptime(raw, fmt)
+            if dt.tzinfo is not None:
+                dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+            return dt
         except Exception:
             continue
     return datetime.min
+
+
+def _normalize_published_at(value: str | None) -> str | None:
+    dt = _parse_datetime(value)
+    if dt == datetime.min:
+        return None
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _safe_text(item: dict) -> str:
@@ -447,6 +460,8 @@ async def get_news(category: str = "all", limit: int = 50) -> list[dict]:
     if USE_NEWSAPI_FALLBACK and NEWSAPI_KEY:
         if category == "global":
             tasks.append(fetch_newsapi("global", fetch_limit))
+        elif category == "indian":
+            tasks.append(fetch_newsapi("indian", fetch_limit))
         else:
             tasks.append(fetch_newsapi("all", fetch_limit))
     
@@ -481,8 +496,27 @@ async def get_news(category: str = "all", limit: int = 50) -> list[dict]:
         if not item.get("imageUrl"):
             item["imageUrl"] = _default_image_for(item)
         item["sourceTrust"] = _source_trust_level(item)
+        normalized_published_at = _normalize_published_at(item.get("publishedAt"))
+        if normalized_published_at:
+            item["publishedAt"] = normalized_published_at
 
         filtered.append(item)
+
+    # Graceful fallback: if strict filters return nothing, still surface relevant feed
+    # instead of hard empty state.
+    if not filtered and merged:
+        for item in merged:
+            if not item.get("title") or not item.get("url"):
+                continue
+            if not _is_source_reliable(item):
+                continue
+            if not item.get("imageUrl"):
+                item["imageUrl"] = _default_image_for(item)
+            item["sourceTrust"] = _source_trust_level(item)
+            normalized_published_at = _normalize_published_at(item.get("publishedAt"))
+            if normalized_published_at:
+                item["publishedAt"] = normalized_published_at
+            filtered.append(item)
 
     filtered.sort(key=lambda x: _parse_datetime(x.get("publishedAt")), reverse=True)
     final_news = filtered[:limit]
@@ -492,6 +526,11 @@ async def get_news(category: str = "all", limit: int = 50) -> list[dict]:
 
 async def explain_news(news_id: str, user_level: str = "Beginner", title: str = None, description: str = None) -> str:
     """Calls FinGPT logic for news explanation."""
+    cache_key = f"news_explain_{news_id}_{user_level}".lower()
+    cached_explanation = _get_cache(cache_key)
+    if cached_explanation:
+        return cached_explanation
+
     # 1. Try to find the news item from cache or fetch list
     news_item = None
     if news_id:
@@ -515,10 +554,21 @@ async def explain_news(news_id: str, user_level: str = "Beginner", title: str = 
 
     # 3. DIRECTLY CALL NLP ENGINE - NO EXTERNAL HTTP CALLS TO FAILING SERVICES
     try:
-        return await generate_news_explanation(final_title, final_desc or "", user_level)
+        explanation = await generate_news_explanation(final_title, final_desc or "", user_level)
+        if explanation:
+            _set_cache(cache_key, explanation, expire=600)
+            return explanation
+        fallback = "Explanation is temporarily unavailable. Please retry in a few seconds."
+        _set_cache(cache_key, fallback, expire=60)
+        return fallback
     except Exception as e:
         print(f"⚠️ explain_news Error: {e}")
-        return f"AI Explanation engine failed: {str(e)}"
+        fallback = (
+            "The AI explanation service is under load right now. "
+            "Use the headline and source context for now, and retry shortly for a full breakdown."
+        )
+        _set_cache(cache_key, fallback, expire=60)
+        return fallback
 
 # Enhanced simulation helper with Timestamp Shifting
 async def fetch_news_for_date(symbol: str, target_date: str) -> list[dict]:

@@ -1,9 +1,10 @@
 from fastapi import Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from .database import get_db
+from .database import get_db, get_session
 from .models import User, UserSession
 from .config import SECRET_KEY, ALGORITHM
+from .session_store import get_cached_session_identity, cache_session_identity
 import jwt
 from datetime import datetime
 import hmac
@@ -13,19 +14,26 @@ async def get_current_user(request: Request, db: AsyncSession = Depends(get_db))
     session_token = request.cookies.get("session_id")
     
     if session_token:
-        # 1. Try Session-based auth
-        result = await db.execute(
-            select(UserSession)
-            .filter(UserSession.session_token == session_token)
-            .filter(UserSession.expires_at > datetime.utcnow())
-        )
-        session = result.scalars().first()
-        
-        if session:
-            result = await db.execute(select(User).filter(User.id == session.user_id))
+        cached_identity = get_cached_session_identity(session_token)
+        if cached_identity:
+            result = await db.execute(select(User).filter(User.id == cached_identity.user_id))
             user = result.scalars().first()
             if user:
                 return user
+            # Stale cache entry if the user row is gone.
+
+        result = await db.execute(
+            select(User, UserSession)
+            .join(UserSession, UserSession.user_id == User.id)
+            .filter(UserSession.session_token == session_token)
+            .filter(UserSession.expires_at > datetime.utcnow())
+            .limit(1)
+        )
+        row = result.first()
+        if row:
+            user, session = row
+            cache_session_identity(session.session_token, user.id, user.email, session.expires_at)
+            return user
     
     # 2. Fallback: JWT Access Token (for backward compatibility / internal tools)
     token = request.cookies.get("access_token")
@@ -76,9 +84,13 @@ async def admin_required(current_user: User = Depends(get_current_user)):
     return current_user
 
 
-async def admin_or_internal(request: Request, db: AsyncSession = Depends(get_db)):
+async def admin_or_internal(request: Request):
     if has_internal_admin_key(request):
         return None
 
-    current_user = await get_current_user(request, db)
-    return await admin_required(current_user)
+    db = await get_session()
+    try:
+        current_user = await get_current_user(request, db)
+        return await admin_required(current_user)
+    finally:
+        await db.close()

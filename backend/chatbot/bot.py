@@ -36,6 +36,9 @@ class TradeGuideBot:
         
         self.client = chromadb.PersistentClient(path=db_path)
         self.collection = self.client.get_or_create_collection(name="trade_knowledge")
+        # Reliability-first default: disable RAG retrieval unless explicitly enabled.
+        # Current deployed Chroma snapshots may carry legacy embedding dimensions.
+        self.rag_enabled = os.getenv("CHATBOT_ENABLE_RAG", "false").lower() in {"1", "true", "yes"}
         
         print("TradeGuideBot: Using Gemini Cloud Embeddings (text-embedding-004)...")
         # No local embedder needed anymore.
@@ -103,6 +106,12 @@ class TradeGuideBot:
                 "valuation sanity. Opening a stock from there takes you into the Research Hub, where the AI thesis "
                 "and follow-up explanation tools break down the business in more detail."
             )
+        if "scalping" in query:
+            return (
+                "Scalping is a very short-term trading style where traders take multiple quick trades to capture "
+                "small price moves, often in seconds to minutes. It needs strict risk control, low transaction "
+                "costs, and disciplined execution because one oversized loss can wipe out many small wins."
+            )
 
         return (
             "TradeGuide is available, but the cloud model is under pressure right now. I can still help with platform "
@@ -110,6 +119,8 @@ class TradeGuideBot:
         )
 
     async def _retrieve_context(self, query: str, top_k: int = 2) -> Tuple[str, List[Dict[str, str]]]:
+        if not self.rag_enabled:
+            return None, []
         try:
             embeddings = await gemini_pool.get_embeddings_async([query])
             query_embedding = embeddings[0]

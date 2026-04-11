@@ -1,12 +1,14 @@
 # === Core Framework ===
 fastapi
 uvicorn[standard]
+gunicorn
 pydantic
 
 # === Database ===
 sqlalchemy
 psycopg2-binary
 asyncpg
+greenlet
 
 # === Data Processing ===
 pandas
@@ -59,3 +61,9 @@ pyotp
 python-dotenv
 apscheduler
 feedparser
+aiosqlite
+
+# === Testing ===
+pytest
+pytest-asyncio
+httpx

@@ -11,6 +11,20 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 
+
+def _parse_portfolio_timestamp(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+        try:
+            return datetime.strptime(value, fmt)
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
 def xirr(cash_flows: List[tuple]) -> float:
     """
     Calculate the Extended Internal Rate of Return.
@@ -92,6 +106,34 @@ class PortfolioService:
         res = await db.execute(select(User.balance).filter(User.id == user_id))
         balance = res.scalars().first() or 100000.0
 
+        # Pending primary orders (exclude SL/TP child orders) for instant "reserved/intent" visibility.
+        pending_res = await db.execute(
+            select(TradeLog).filter(
+                TradeLog.user_id == user_id,
+                TradeLog.session_type == session_type,
+                TradeLog.status == "PENDING",
+                TradeLog.parent_trade_id.is_(None),
+            )
+        )
+        pending_orders = pending_res.scalars().all()
+
+        def _pending_reference_price(order: TradeLog) -> float:
+            if order.order_type in ("LIMIT", "GTT"):
+                return float(order.limit_price or 0.0)
+            if order.order_type == "STOP":
+                return float(order.stop_price or 0.0)
+            return float(order.entry_price or 0.0)
+
+        pending_buy_value = 0.0
+        pending_sell_value = 0.0
+        for order in pending_orders:
+            ref_price = _pending_reference_price(order)
+            notional = (order.quantity or 0) * ref_price
+            if (order.direction or "").upper() == "BUY":
+                pending_buy_value += notional
+            else:
+                pending_sell_value += notional
+
         holdings = await self.get_holdings(db, user_id, session_type)
         positions = await self.get_positions(db, user_id, session_type)
         
@@ -136,7 +178,7 @@ class PortfolioService:
             date_obj = datetime.strptime(h["first_purchase_date"], "%Y-%m-%d") if h["first_purchase_date"] else now
             cash_flows.append((date_obj, -h["invested_value"]))
         for p in positions:
-            date_obj = datetime.strptime(p["entry_time"], "%Y-%m-%d %H:%M") if p["entry_time"] else now
+            date_obj = _parse_portfolio_timestamp(p["entry_time"]) or now
             cash_flows.append((date_obj, -p["entry_value"]))
             
         calculated_xirr = 0.0
@@ -156,6 +198,10 @@ class PortfolioService:
             "is_positive": total_pnl >= 0,
             "equity_curve": equity_curve,
             "cash_balance": round(balance, 2),
+            "pending_order_count": len(pending_orders),
+            "pending_buy_value": round(pending_buy_value, 2),
+            "pending_sell_value": round(pending_sell_value, 2),
+            "effective_available_cash": round(max(0.0, balance - pending_buy_value), 2),
             "total_value": round(total_value, 2)
         }
 
@@ -202,7 +248,8 @@ class PortfolioService:
                 "unrealized_pnl": round(unrealized_pnl, 2),
                 "pnl_percent": round(pnl_pct, 2),
                 "is_positive": unrealized_pnl >= 0,
-                "entry_time": t.entry_time.strftime("%Y-%m-%d %H:%M") if t.entry_time else None,
+                "entry_time": t.entry_time.strftime("%Y-%m-%d %H:%M:%S") if t.entry_time else None,
+                "entry_time_iso": t.entry_time.isoformat() if t.entry_time else None,
                 "holding_minutes": round(holding_mins, 1),
                 "stop_loss": t.stop_loss,
                 "take_profit": t.take_profit,
@@ -275,7 +322,16 @@ class PortfolioService:
             TradeLog.exit_price.isnot(None),
             TradeLog.exit_price != 0
         ))
-        all_trades = result.scalars().all()
+        raw_trades = result.scalars().all()
+        all_trades = []
+        for t in raw_trades:
+            if (t.status or "").upper() != "CLOSED":
+                continue
+            if not t.entry_time or not t.exit_time:
+                continue
+            if t.exit_time < t.entry_time:
+                continue
+            all_trades.append(t)
 
         if not all_trades:
             return {
@@ -294,7 +350,8 @@ class PortfolioService:
         losses = [t for t in all_trades if (t.pnl or 0) <= 0]
         win_rate = (len(wins) / len(all_trades) * 100) if all_trades else 0
 
-        avg_holding = sum((t.holding_time or 0) for t in all_trades) / len(all_trades) if all_trades else 0
+        avg_holding_seconds = sum((t.holding_time or 0) for t in all_trades) / len(all_trades) if all_trades else 0
+        avg_holding_minutes = avg_holding_seconds / 60.0
         avg_pnl = sum((t.pnl or 0) for t in all_trades) / len(all_trades) if all_trades else 0
         total_pnl = sum((t.pnl or 0) for t in all_trades)
 
@@ -311,7 +368,10 @@ class PortfolioService:
                 "entry_price": round(t.entry_price or 0, 2),
                 "exit_price": round(t.exit_price or 0, 2),
                 "quantity": t.quantity,
-                "holding_time": round(t.holding_time or 0, 1),
+                "entry_time": t.entry_time.strftime("%Y-%m-%d %H:%M:%S") if t.entry_time else None,
+                "exit_time": t.exit_time.strftime("%Y-%m-%d %H:%M:%S") if t.exit_time else None,
+                "holding_time_seconds": round(t.holding_time or 0, 1),
+                "holding_time": round((t.holding_time or 0) / 60.0, 2),
                 "exit_reason": t.exit_reason,
             }
 
@@ -332,8 +392,8 @@ class PortfolioService:
         elif win_rate >= 40: insights.append(f"⚡ Your win rate is {win_rate:.1f}%.")
         else: insights.append(f"⚠️ Win rate is {win_rate:.1f}%.")
 
-        if avg_holding > 60: insights.append(f"📊 Avg holding time is {avg_holding:.0f} mins.")
-        else: insights.append(f"⚡ Avg holding time is {avg_holding:.0f} mins.")
+        if avg_holding_minutes > 60: insights.append(f"📊 Avg holding time is {avg_holding_minutes:.1f} mins.")
+        else: insights.append(f"⚡ Avg holding time is {avg_holding_minutes:.1f} mins.")
 
         avg_win = sum((t.pnl or 0) for t in wins) / len(wins) if wins else 0
         avg_loss = abs(sum((t.pnl or 0) for t in losses) / len(losses)) if losses else 0
@@ -347,7 +407,7 @@ class PortfolioService:
             "loss_rate": round(100 - win_rate, 1),
             "wins": len(wins),
             "losses": len(losses),
-            "avg_holding_time_mins": round(avg_holding, 1),
+            "avg_holding_time_mins": round(avg_holding_minutes, 2),
             "avg_pnl": round(avg_pnl, 2),
             "total_pnl": round(total_pnl, 2),
             "best_trade": trade_summary(best),

@@ -28,6 +28,8 @@ class GeminiPool:
         
         self.current_index = 0
         self.models = {} # Cache for (key_index, model_name) -> model instance
+        self.per_model_timeout_seconds = float(os.getenv("GEMINI_PER_MODEL_TIMEOUT_SECONDS", "7"))
+        self.max_keys_per_request = int(os.getenv("GEMINI_MAX_KEYS_PER_REQUEST", "3"))
         
         if not self.keys:
             print("⚠️ [GeminiPool] No API keys found! Gemini features will be disabled.")
@@ -68,7 +70,10 @@ class GeminiPool:
             or "connection reset" in error_msg
         )
 
-    async def generate_content(self, prompt: str, model_name: str = "models/gemini-2.0-flash-lite-001", is_async: bool = False):
+    def _is_rate_limited_error(self, error_msg: str) -> bool:
+        return "429" in error_msg or "resource_exhausted" in error_msg or "quota" in error_msg
+
+    async def generate_content(self, prompt: str, model_name: str = "models/gemini-2.5-flash", is_async: bool = False):
         """
         Generates content using one of the available keys.
         If a key fails with 429 (Resource Exhausted), it automatically tries the next one.
@@ -79,14 +84,15 @@ class GeminiPool:
         # Try up to N times (once for each key), and allow model fallbacks to reduce outages.
         num_keys = len(self.keys)
         start_index = self.current_index
-        model_candidates = [
+        model_candidates = list(dict.fromkeys([
             model_name,
-            "models/gemini-2.0-flash-001",
-            "models/gemini-1.5-flash",
-            "gemini-1.5-flash",
-        ]
+            "models/gemini-2.5-flash",
+            "models/gemini-2.0-flash",
+            "models/gemini-flash-latest",
+        ]))
+        max_key_attempts = max(1, min(num_keys, self.max_keys_per_request))
         
-        for attempt in range(num_keys):
+        for attempt in range(max_key_attempts):
             idx = (start_index + attempt) % num_keys
             last_error = None
 
@@ -97,7 +103,10 @@ class GeminiPool:
 
                 try:
                     if is_async:
-                        response = await model.generate_content_async(prompt)
+                        response = await asyncio.wait_for(
+                            model.generate_content_async(prompt),
+                            timeout=self.per_model_timeout_seconds,
+                        )
                     else:
                         # For sync calls, we still wrap in executor if needed by caller,
                         # but here we just call the method.
@@ -106,6 +115,13 @@ class GeminiPool:
                     # If we succeeded, update the pool index to the next one for next time (Round Robin)
                     self.current_index = (idx + 1) % num_keys
                     return response
+                except asyncio.TimeoutError as e:
+                    last_error = e
+                    print(
+                        f"⚠️ [GeminiPool] Timeout on key {idx+1}, model {candidate_model} "
+                        f"after {self.per_model_timeout_seconds}s. Trying next model/key..."
+                    )
+                    continue
                 except Exception as e:
                     last_error = e
                     error_msg = str(e).lower()
@@ -114,12 +130,19 @@ class GeminiPool:
                         print(f"❌ [GeminiPool] Key {idx+1} is invalid or unauthorized. Rotating...")
                         break
 
+                    if self._is_rate_limited_error(error_msg):
+                        print(f"⚠️ [GeminiPool] Key {idx+1} is rate limited/quota exhausted. Rotating key...")
+                        break
+
                     if "not found" in error_msg or "unsupported" in error_msg:
                         print(f"⚠️ [GeminiPool] Model {candidate_model} unavailable for key {idx+1}. Trying fallback model...")
                         continue
 
                     if self._is_retryable_generation_error(error_msg):
-                        print(f"⚠️ [GeminiPool] Temporary failure on key {idx+1}, model {candidate_model}. Trying next model/key...")
+                        print(
+                            f"⚠️ [GeminiPool] Temporary failure on key {idx+1}, model {candidate_model}: "
+                            f"{str(e)[:160]}. Trying next model/key..."
+                        )
                         continue
 
                     # Non-retryable error

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Newspaper, Loader2, TrendingUp, TrendingDown, Minus, MessageSquare, Send, Activity, Sparkles, Lightbulb, Zap, Clock, ExternalLink } from 'lucide-react';
 import { useGame } from '../../hooks/useGame';
 

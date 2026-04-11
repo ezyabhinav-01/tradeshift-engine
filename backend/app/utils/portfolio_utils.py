@@ -3,8 +3,9 @@
 import logging
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
+from sqlalchemy import select
 from app.models import PortfolioHolding
+from app.utils.money import money_float, to_decimal
 
 logger = logging.getLogger(__name__)
 
@@ -37,18 +38,21 @@ async def sync_portfolio_holding(
             if holding:
                 # Average Cost Calculation: (Old Qty * Old Cost + New Qty * New Price) / Total Qty
                 new_total_qty = holding.quantity + quantity_delta
-                new_avg_cost = ((holding.quantity * holding.average_cost) + (quantity_delta * price)) / new_total_qty
+                new_avg_cost = (
+                    (to_decimal(holding.quantity) * to_decimal(holding.average_cost))
+                    + (to_decimal(quantity_delta) * to_decimal(price))
+                ) / to_decimal(new_total_qty)
                 
                 holding.quantity = new_total_qty
-                holding.average_cost = new_avg_cost
-                logger.info(f"Updated holding for {symbol}: Qty={new_total_qty}, AvgCost={new_avg_cost:.2f}")
+                holding.average_cost = money_float(new_avg_cost)
+                logger.info(f"Updated holding for {symbol}: Qty={new_total_qty}, AvgCost={holding.average_cost:.2f}")
             else:
                 # Create new holding
                 new_holding = PortfolioHolding(
                     user_id=user_id,
                     symbol=symbol,
                     quantity=quantity_delta,
-                    average_cost=price,
+                    average_cost=money_float(price),
                     session_type=session_type,
                     first_purchase_date=datetime.utcnow()
                 )
@@ -72,7 +76,7 @@ async def sync_portfolio_holding(
                     user_id=user_id,
                     symbol=symbol,
                     quantity=-quantity_delta,
-                    average_cost=price,
+                    average_cost=money_float(price),
                     session_type=session_type,
                     first_purchase_date=datetime.utcnow()
                 )

@@ -14,6 +14,7 @@ import logging
 from datetime import datetime
 from app.live_market import live_market_service
 from app.portfolio_service import portfolio_service
+from app.services.execution_simulator import execution_simulator
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,7 @@ async def get_optional_user(request: Request, db: AsyncSession = Depends(get_db)
 
 
 async def _get_user_id(request: Request, db: AsyncSession, session_type_arg: str = None) -> int:
-    """Helper to extract user_id. Allows fallback to user 1 for REPLAY mode."""
+    """Helper to extract authenticated user_id."""
     # Check session_type from query, headers, or passed argument
     session_type = (session_type_arg or request.query_params.get("session_type") or request.headers.get("X-Session-Type") or "REPLAY").upper()
     if session_type == "LIVE":
@@ -69,8 +70,6 @@ async def _get_user_id(request: Request, db: AsyncSession, session_type_arg: str
     
     user = await get_optional_user(request, db)
     if not user:
-        if session_type == 'REPLAY':
-            return 1  # Default simulation user
         raise HTTPException(status_code=401, detail="Authentication required")
     return user.id
 
@@ -93,13 +92,18 @@ async def execute_trade(
         trade = res_trade.scalars().first()
         if trade:
             ws_payload = TradeEngine.build_order_update_payload(trade)
+            ws_payload["requested_quantity"] = result.get("requested_quantity")
+            ws_payload["fill_ratio"] = result.get("fill_ratio")
+            ws_payload["simulated_latency_ms"] = result.get("simulated_latency_ms")
+            ws_payload["simulated_slippage_bps"] = result.get("simulated_slippage_bps")
             await order_manager.emit_to_user(user_id, "order_update", ws_payload)
 
         # Send trade confirmation email in background
         user_result = await db.execute(select(User).filter(User.id == user_id))
         user = user_result.scalars().first()
         if user and user.email:
-            executed_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+            executed_at_dt = trade.entry_time or datetime.utcnow()
+            executed_at = executed_at_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
             background_tasks.add_task(
                 send_trade_confirmation_email,
                 user.email,
@@ -107,7 +111,7 @@ async def execute_trade(
                 result["trade_id"],
                 trade_request.symbol,
                 trade_request.direction,
-                trade_request.quantity,
+                result.get("quantity", trade_request.quantity),
                 result.get("entry_price", 0.0),
                 trade_request.order_type,
                 executed_at,
@@ -124,7 +128,7 @@ async def execute_trade(
         notification = Notification(
             user_id=user_id,
             title="Order Executed",
-            content=f"Filled {trade_request.direction} for {trade_request.quantity}x {trade_request.symbol} at {notification_price}.",
+            content=f"Filled {trade_request.direction} for {result.get('quantity', trade_request.quantity)}x {trade_request.symbol} at {notification_price}.",
             type="success"
         )
         db.add(notification)
@@ -137,7 +141,11 @@ async def execute_trade(
                 event_data={
                     "symbol": trade_request.symbol,
                     "direction": trade_request.direction,
-                    "quantity": trade_request.quantity,
+                    "quantity": result.get("quantity", trade_request.quantity),
+                    "requested_quantity": result.get("requested_quantity", trade_request.quantity),
+                    "fill_ratio": result.get("fill_ratio"),
+                    "simulated_latency_ms": result.get("simulated_latency_ms"),
+                    "simulated_slippage_bps": result.get("simulated_slippage_bps"),
                     "order_type": trade_request.order_type,
                     "trade_id": result["trade_id"]
                 },
@@ -155,9 +163,8 @@ async def execute_trade(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         import traceback
-        error_details = traceback.format_exc()
-        logger.error(f"Error executing trade: {error_details}")
-        raise HTTPException(status_code=500, detail=error_details)
+        logger.error(f"Error executing trade: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail="Failed to execute trade")
 
 @router.get("/orders")
 async def get_active_orders(request: Request, db: AsyncSession = Depends(get_db)):
@@ -182,7 +189,7 @@ async def modify_order(
     """
     Modify a pending order (Async).
     """
-    user_id = await _get_user_id(request, db, modify_request.session_type)
+    user_id = await _get_user_id(request, db, request.query_params.get("session_type"))
     updates = modify_request.model_dump(exclude_unset=True)
     
     order = await oms_service.modify_order(db, order_id, user_id, updates)
@@ -256,12 +263,38 @@ async def close_trade(
     Close an open trade (Async).
     """
     user_id = await _get_user_id(request, db, exit_request.session_type)
-    
-    # Priority for simulation consistency: exit_price from request
+    trade_result = await db.execute(
+        select(TradeLog).filter(
+            TradeLog.id == trade_id,
+            TradeLog.user_id == user_id,
+            TradeLog.status.in_(["OPEN", "TRIGGERED"])
+        )
+    )
+    trade_row = trade_result.scalars().first()
+    if not trade_row:
+        raise HTTPException(status_code=404, detail="Open trade not found or not owned by user")
 
-    # Priority for simulation consistency: exit_price from request
-    current_market_price = live_market_service.get_last_price()
-    exit_price = exit_request.exit_price or (exit_request.limit_price if exit_request.exit_type == "LIMIT" else current_market_price)
+    # Prefer caller-provided simulation exit price.
+    # Otherwise resolve from symbol-specific live/replay price cache.
+    resolved_market_price = live_market_service.get_last_price(trade_row.symbol)
+    exit_price = exit_request.exit_price or (exit_request.limit_price if exit_request.exit_type == "LIMIT" else resolved_market_price)
+    close_meta = {
+        "simulated_latency_ms": 0,
+        "simulated_slippage_bps": 0.0,
+    }
+
+    if exit_request.exit_type == "MARKET":
+        close_exec = execution_simulator.simulate_fill(
+            side="SELL" if trade_row.direction == "BUY" else "BUY",
+            quantity=trade_row.quantity or 1,
+            reference_price=exit_price,
+            simulated_time=exit_request.simulated_time,
+        )
+        exit_price = close_exec.fill_price
+        close_meta = {
+            "simulated_latency_ms": close_exec.latency_ms,
+            "simulated_slippage_bps": close_exec.slippage_bps,
+        }
 
     trade = await oms_service.close_trade(
         db,
@@ -276,6 +309,8 @@ async def close_trade(
     
     # Emit update
     ws_payload = TradeEngine.build_order_update_payload(trade)
+    ws_payload["simulated_latency_ms"] = close_meta["simulated_latency_ms"]
+    ws_payload["simulated_slippage_bps"] = close_meta["simulated_slippage_bps"]
     await order_manager.emit_to_user(user_id, "order_update", ws_payload)
 
     # Send trade closed email in background
@@ -286,7 +321,8 @@ async def close_trade(
         if trade.entry_price and exit_price:
             multiplier = 1 if trade.direction.upper() == "BUY" else -1
             pnl = round((exit_price - trade.entry_price) * (trade.quantity or 1) * multiplier, 2)
-        closed_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+        closed_at_dt = trade.exit_time or datetime.utcnow()
+        closed_at = closed_at_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
         background_tasks.add_task(
             send_trade_closed_email,
             user.email,
@@ -310,6 +346,8 @@ async def close_trade(
             event_data={
                 "trade_id": trade.id,
                 "exit_price": exit_price,
+                "simulated_latency_ms": close_meta["simulated_latency_ms"],
+                "simulated_slippage_bps": close_meta["simulated_slippage_bps"],
                 "pnl": pnl if 'pnl' in locals() else None
             },
             created_at=text("CURRENT_TIMESTAMP")
@@ -327,6 +365,10 @@ async def close_trade(
         order_type=trade.order_type,
         stop_loss=trade.stop_loss,
         take_profit=trade.take_profit,
+        requested_quantity=trade.quantity,
+        fill_ratio=1.0,
+        simulated_latency_ms=close_meta["simulated_latency_ms"],
+        simulated_slippage_bps=close_meta["simulated_slippage_bps"],
         message=f"Trade closed successfully at {exit_price}"
     )
 
@@ -345,6 +387,7 @@ async def close_all_trades(
         body = {}
     
     exit_price_req = body.get("exit_price")
+    exit_price_mapping_req = body.get("exit_price_mapping") or {}
     session_type_val = (body.get("session_type", "REPLAY") or "REPLAY").upper()
     if session_type_val == "LIVE":
         session_type_val = "REPLAY"
@@ -370,8 +413,11 @@ async def close_all_trades(
 
     price_mapping = {}
     for sym in symbols:
-        # Priority for simulation consistency: exit_price from request body
-        price_mapping[sym] = exit_price_req or live_market_service.get_last_price(sym)
+        explicit_price = None
+        if isinstance(exit_price_mapping_req, dict):
+            explicit_price = exit_price_mapping_req.get(sym)
+        # Priority: per-symbol map > single explicit exit_price > symbol-specific market/replay price
+        price_mapping[sym] = explicit_price if explicit_price is not None else (exit_price_req or live_market_service.get_last_price(sym))
 
     closed_trades = await oms_service.close_all_trades(
         db,
@@ -397,7 +443,8 @@ async def close_all_trades(
             if trade.entry_price and exit_price:
                 multiplier = 1 if trade.direction.upper() == "BUY" else -1
                 pnl = round((exit_price - trade.entry_price) * (trade.quantity or 1) * multiplier, 2)
-            closed_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+            closed_at_dt = trade.exit_time or datetime.utcnow()
+            closed_at = closed_at_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
             background_tasks.add_task(
                 send_trade_closed_email,
                 user.email,

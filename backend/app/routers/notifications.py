@@ -1,10 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import or_
-from typing import List
-from pydantic import BaseModel
+from typing import List, Literal
+from pydantic import BaseModel, Field
 from app.database import get_db
 from app.models import Notification, User, BroadcastRead
 from app.schemas import NotificationResponse
@@ -18,15 +17,15 @@ router = APIRouter(
 
 
 class BroadcastRequest(BaseModel):
-    title: str
-    content: str
-    type: str = "info"  # info, warning, success, error
+    title: str = Field(..., min_length=3, max_length=140)
+    content: str = Field(..., min_length=1, max_length=2000)
+    type: Literal["info", "warning", "success", "error"] = "info"
 
 
 @router.get("/", response_model=List[NotificationResponse])
 async def get_user_notifications(
-    skip: int = 0, 
-    limit: int = 50, 
+    skip: int = Query(0, ge=0, le=5000),
+    limit: int = Query(50, ge=1, le=100),
     db: AsyncSession = Depends(get_db), 
     current_user: User = Depends(get_current_user)
 ):
@@ -79,7 +78,7 @@ async def get_user_notifications(
 
         return response
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to fetch notifications")
 
 
 @router.patch("/{notification_id}/read", response_model=NotificationResponse)
@@ -114,7 +113,6 @@ async def mark_notification_read(
                 db.add(BroadcastRead(
                     user_id=current_user.id,
                     notification_id=notification_id,
-                    notification_created_at=notification.created_at,
                     read_at=datetime.utcnow()
                 ))
                 await db.commit()
@@ -143,7 +141,7 @@ async def mark_notification_read(
         raise
     except Exception as e:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to update notification")
 
 
 @router.post("/mark-all-read")
@@ -186,7 +184,6 @@ async def mark_all_notifications_read(
             db.add(BroadcastRead(
                 user_id=current_user.id,
                 notification_id=bid,
-                notification_created_at=broadcast_map[bid],
                 read_at=datetime.utcnow()
             ))
         
@@ -195,7 +192,7 @@ async def mark_all_notifications_read(
         return {"message": "All notifications marked as read"}
     except Exception as e:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to mark notifications")
 
 
 @router.post("/broadcast")
@@ -232,4 +229,4 @@ async def send_broadcast(
         }
     except Exception as e:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to send broadcast: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to send broadcast")

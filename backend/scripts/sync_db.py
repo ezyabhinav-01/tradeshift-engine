@@ -5,7 +5,7 @@ import logging
 # Add backend to path
 sys.path.append(os.path.join(os.getcwd(), 'backend'))
 
-from app.database import Base, connect_to_database_sync, sync_schema_hotpatch
+from app.database import Base, connect_to_database_sync, get_schema_gaps, sync_schema_hotpatch
 import app.models # Ensure all models are registered
 
 # Configure Logging
@@ -21,9 +21,13 @@ def run_sync():
         Base.metadata.create_all(bind=engine)
         logger.info("✅ Core Tables Verified.")
         
-        logger.info("🛠️  Running Hot-Patch for Schema Sync...")
-        sync_schema_hotpatch(engine)
-        logger.info("✅ Hot-Patch Sync Complete.")
+        gaps = get_schema_gaps(engine)
+        if gaps:
+            logger.warning("⚠️ Legacy schema gaps detected: %s", ", ".join(gaps))
+            logger.warning("⚠️ Startup hot-patching is disabled by default. Run the Phase 3 SQL migration first, or set ENABLE_LEGACY_SCHEMA_HOTPATCH=1 for one-time legacy repair.")
+            sync_schema_hotpatch(engine)
+        else:
+            logger.info("✅ Schema matches expected columns.")
         
         logger.info("🎉 Database Synchronization Successful!")
         

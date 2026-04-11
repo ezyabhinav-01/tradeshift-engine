@@ -3,8 +3,7 @@ import json
 from typing import Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from redis import Redis
-import os
+from app.redis_utils import get_redis_client
 
 logger = logging.getLogger(__name__)
 
@@ -17,15 +16,11 @@ class RiskEngine:
     """
 
     def __init__(self, redis_host: Optional[str] = None, redis_port: int = 6379):
-        if redis_host is None:
-            redis_host = os.getenv("REDIS_HOST", "localhost")
-        try:
-            self.redis = Redis(host=redis_host, port=redis_port, decode_responses=True)
-            # Test connection
-            self.redis.ping()
-        except Exception as e:
-            logger.warning(f"⚠️ Redis connection failed for RiskEngine: {e}. Running in degraded mode.")
-            self.redis = None
+        self.redis = get_redis_client(
+            log_prefix="Redis for RiskEngine",
+            redis_host=redis_host,
+            redis_port=redis_port if redis_host is not None else None,
+        )
 
     async def get_user_settings(self, db: AsyncSession, user_id: int) -> Dict[str, Any]:
         """

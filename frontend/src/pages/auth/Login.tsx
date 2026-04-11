@@ -36,14 +36,15 @@ const Login: React.FC = () => {
 
     try {
       const data = await login({ email, password });
+      const authEmail = data?.email || email;
       
       if (data.status === 'REQUIRES_VERIFICATION') {
-        navigate('/signup', { state: { email, step: 2 } });
+        navigate('/signup', { state: { email: authEmail, step: 2 } });
         return;
       }
       
       if (data.status === 'REQUIRES_PIN_SETUP') {
-        navigate('/signup', { state: { email, step: 3 } });
+        navigate('/signup', { state: { email: authEmail, step: 3 } });
         return;
       }
 

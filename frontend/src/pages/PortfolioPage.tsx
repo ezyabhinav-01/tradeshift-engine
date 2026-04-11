@@ -1,5 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
-import axios from 'axios';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, BarChart, Bar
@@ -10,12 +9,11 @@ import {
   Shield, Target, Zap, Clock, Award, ArrowUpRight, ArrowDownRight,
 } from 'lucide-react';
 
-import { useGame } from '../context/GameContext';
+import { useGameActions, useGameMarket, useGameTrades } from '../hooks/useGame';
 import { useAuth } from '../context/AuthContext';
 import { useAccessControl } from '../hooks/useAccessControl';
+import { usePortfolioStore } from '../store/usePortfolioStore';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-
-const api = axios.create({ baseURL: '', withCredentials: true });
 
 const TABS = [
   { id: 'holdings', label: 'Holdings', icon: Briefcase },
@@ -30,64 +28,50 @@ type TabId = typeof TABS[number]['id'];
 // ─── Main Component ────────────────────────────────────────────
 export default function PortfolioPage() {
   const [activeTab, setActiveTab] = useState<TabId>('holdings');
-  const [summary, setSummary] = useState<any>(null);
-  const [holdings, setHoldings] = useState<any[]>([]);
-  const [positions, setPositions] = useState<any[]>([]);
-  const [history, setHistory] = useState<any[]>([]);
-  const [monthlySummary, setMonthlySummary] = useState<any[]>([]);
-  const [sectors, setSectors] = useState<any>(null);
-  const [research, setResearch] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const { closeAllPositions, currentPrice, balance: liveBalance, selectedSymbol, trades, replayTicks } = useGame();
+  const { closeAllPositions } = useGameActions();
+  const { currentPrice, balance: liveBalance, selectedSymbol, replayTicks } = useGameMarket();
+  const { trades } = useGameTrades();
   const { user } = useAuth();
   const { checkAccess } = useAccessControl();
+  const {
+    summary,
+    holdings,
+    positions,
+    activeOrders,
+    history,
+    monthlySummary,
+    sectors,
+    research,
+    isLoading,
+    isRefreshing,
+    refreshPortfolio,
+    setGuestFallback,
+  } = usePortfolioStore();
   const viewSessionType: 'REPLAY' = 'REPLAY';
   const isGuest = !user && viewSessionType !== 'REPLAY';
 
   const fallback = {
     current_value: 0, total_invested: 0, total_pnl: 0,
     pnl_percent: 0, xirr_percent: 0, is_positive: true, equity_curve: [],
-    cash_balance: 100000.0, total_value: 100000.0
+    cash_balance: 100000.0,
+    pending_order_count: 0,
+    pending_buy_value: 0,
+    pending_sell_value: 0,
+    effective_available_cash: 100000.0,
+    total_value: 100000.0
   };
 
-  const fetchAll = async () => {
+  const fetchAll = useCallback(async (force = false) => {
     if (isGuest) {
-      setLoading(false);
-      setSummary(fallback); // Reset to zeroes
-      setHoldings([]);
-      setPositions([]);
-      setHistory([]);
+      setGuestFallback();
       return;
     }
-    setLoading(true);
-    try {
-      const params = { session_type: 'REPLAY' };
-      const [sumR, holdR, posR, secR, resR, histR, monthR] = await Promise.all([
-        api.get('/api/portfolio/summary', { params }),
-        api.get('/api/portfolio/holdings', { params }),
-        api.get('/api/portfolio/positions', { params }),
-        api.get('/api/portfolio/sectors', { params }),
-        api.get('/api/portfolio/research', { params }),
-        api.get('/api/history/trades', { params: { ...params, limit: 100 } }),
-        api.get('/api/history/monthly-summary', { params }),
-      ]);
-      setSummary(sumR.data);
-      setHoldings(holdR.data.holdings || []);
-      setPositions(posR.data.positions || []);
-      setSectors(secR.data);
-      setResearch(resR.data);
-      setHistory(histR.data.trades || []);
-      setMonthlySummary(monthR.data.months || []);
-    } catch (err) {
-      console.error('Portfolio fetch failed:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+    await refreshPortfolio({ sessionType: 'REPLAY', force });
+  }, [isGuest, refreshPortfolio, setGuestFallback]);
 
   useEffect(() => {
-    fetchAll();
-  }, [viewSessionType, trades.length]); // Refresh on trades/session changes
+    void fetchAll(false);
+  }, [fetchAll, viewSessionType, trades.length]); // Refresh on trades/session changes
 
   // ─── Live Data Augmentation ──────────────────────────────────
   const liveSummary = useMemo(() => {
@@ -125,6 +109,7 @@ export default function PortfolioPage() {
     return {
       ...s,
       cash_balance: updatedCash,
+      effective_available_cash: Math.max(0, updatedCash - (s.pending_buy_value || 0)),
       current_value: dynamicCurrentValue,
       total_pnl: dynamicPnL,
       pnl_percent: dynamicPnLPct,
@@ -154,6 +139,33 @@ export default function PortfolioPage() {
     });
   }, [positions, currentPrice, replayTicks, selectedSymbol]);
 
+  const pendingBuyOrders = useMemo(() => {
+    return (activeOrders || [])
+      .filter((order: any) =>
+        (order?.status || '').toUpperCase() === 'PENDING' &&
+        !order?.parent_trade_id &&
+        (order?.direction || '').toUpperCase() === 'BUY'
+      )
+      .map((order: any) => {
+        const orderType = (order?.order_type || '').toUpperCase();
+        const triggerOrLimit =
+          orderType === 'LIMIT' || orderType === 'GTT'
+            ? Number(order?.limit_price || 0)
+            : orderType === 'STOP'
+              ? Number(order?.stop_price || 0)
+              : Number(order?.entry_price || 0);
+        const qty = Number(order?.quantity || 0);
+        return {
+          id: Number(order?.trade_id || order?.id || 0),
+          symbol: order?.symbol || '—',
+          qty,
+          triggerOrLimit,
+          blockedValue: qty * triggerOrLimit,
+        };
+      })
+      .sort((a: any, b: any) => b.blockedValue - a.blockedValue);
+  }, [activeOrders]);
+
   const s = liveSummary;
 
   return (
@@ -169,13 +181,13 @@ export default function PortfolioPage() {
         </div>
         <button
           onClick={() => {
-            if (checkAccess()) fetchAll();
+            if (checkAccess()) void fetchAll(true);
           }}
-          disabled={loading}
+          disabled={isLoading || isRefreshing}
           className="p-2.5 rounded-full bg-sidebar-accent/50 hover:bg-sidebar-accent text-sidebar-primary transition-colors disabled:opacity-50"
           title={isGuest ? "Sign in to refresh live data" : "Refresh Portfolio"}
         >
-          <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`w-5 h-5 ${(isLoading || isRefreshing) ? 'animate-spin' : ''}`} />
         </button>
         <div className="text-[11px] font-black tracking-wider text-sidebar-primary">REPLAY MODE</div>
       </div>
@@ -227,6 +239,16 @@ export default function PortfolioPage() {
               <span className="text-xs text-gray-500 dark:text-muted-foreground">Bonus Amount</span>
               <span className="font-bold text-slate-900 dark:text-white font-mono">₹100,000</span>
             </div>
+            <div className="flex justify-between items-end border-b border-sidebar-border/30 pb-3">
+              <span className="text-xs text-gray-500 dark:text-muted-foreground">Blocked (Pending Buy)</span>
+              <span className="font-bold text-amber-600 dark:text-amber-400 font-mono">
+                ₹{(s.pending_buy_value || 0).toLocaleString('en-IN')}
+              </span>
+            </div>
+            <div className="flex justify-between items-end">
+              <span className="text-xs text-gray-500 dark:text-muted-foreground">Effective Available</span>
+              <span className="font-black text-sidebar-primary font-mono text-lg">₹{s.effective_available_cash?.toLocaleString('en-IN') || '0'}</span>
+            </div>
             <div className="flex justify-between items-end">
               <span className="text-xs text-gray-500 dark:text-muted-foreground">Total Equity</span>
               <span className="font-black text-sidebar-primary font-mono text-lg">₹{s.total_value?.toLocaleString('en-IN') || '0'}</span>
@@ -267,6 +289,8 @@ export default function PortfolioPage() {
         </div>
       </div>
 
+      <PendingOrdersTable pendingOrders={pendingBuyOrders} />
+
       {/* ─── Detailed Tabs ─── */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabId)} className="w-full">
         <TabsList className="bg-sidebar-accent/50 p-1 space-x-1 mb-8 overflow-x-auto no-scrollbar flex-nowrap w-full justify-start rounded-xl">
@@ -285,7 +309,7 @@ export default function PortfolioPage() {
           />
         </TabsContent>
         <TabsContent value="positions">
-          <PositionsTab positions={livePositions} onCloseAll={closeAllPositions} refresh={fetchAll} />
+          <PositionsTab positions={livePositions} onCloseAll={closeAllPositions} refresh={() => void fetchAll(true)} />
         </TabsContent>
         <TabsContent value="history">
           <HistoryTab history={history} sessionType={viewSessionType} />
@@ -297,6 +321,57 @@ export default function PortfolioPage() {
           <ResearchTab research={research} monthlySummary={monthlySummary} />
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+function PendingOrdersTable({ pendingOrders }: { pendingOrders: any[] }) {
+  const totalBlocked = pendingOrders.reduce((sum, order) => sum + order.blockedValue, 0);
+
+  return (
+    <div className="border border-amber-200/70 dark:border-amber-500/20 bg-white dark:bg-[#121212] rounded-md overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div className="px-6 py-4 border-b border-amber-200/60 dark:border-amber-500/20 bg-amber-50/60 dark:bg-amber-500/5 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+          <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">Pending Orders (Funds Reserved)</h3>
+        </div>
+        <div className="text-right">
+          <p className="text-[10px] uppercase font-black tracking-widest text-gray-500 dark:text-muted-foreground">Total Blocked</p>
+          <p className="text-sm font-black font-mono text-amber-600 dark:text-amber-400">₹{totalBlocked.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse min-w-[760px]">
+          <thead className="bg-sidebar-accent/20 text-[10px] uppercase font-black tracking-widest text-gray-500 dark:text-muted-foreground">
+            <tr>
+              <th className="px-6 py-4">Symbol</th>
+              <th className="px-6 py-4">Qty</th>
+              <th className="px-6 py-4">Trigger / Limit</th>
+              <th className="px-6 py-4">Blocked Value</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100 dark:divide-white/5">
+            {pendingOrders.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="px-6 py-10 text-center text-sm text-gray-400">
+                  No pending buy orders are currently reserving funds.
+                </td>
+              </tr>
+            ) : pendingOrders.map((order) => (
+              <tr key={order.id || `${order.symbol}-${order.qty}-${order.triggerOrLimit}`} className="hover:bg-sidebar-accent/10 transition-colors">
+                <td className="px-6 py-4 text-sm font-bold text-slate-900 dark:text-white">{order.symbol}</td>
+                <td className="px-6 py-4 font-mono text-sm text-gray-500 dark:text-muted-foreground">{order.qty}</td>
+                <td className="px-6 py-4 font-mono text-sm text-gray-900 dark:text-white">
+                  ₹{order.triggerOrLimit.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                </td>
+                <td className="px-6 py-4 font-mono text-sm font-bold text-amber-600 dark:text-amber-400">
+                  ₹{order.blockedValue.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -434,6 +509,7 @@ function PositionsTab({ positions, onCloseAll, refresh }: { positions: any[], on
                       <div className="flex items-center gap-1">
                         <Clock size={12} />{p.holding_minutes > 60 ? `${(p.holding_minutes / 60).toFixed(1)}h` : `${p.holding_minutes}m`}
                       </div>
+                      <div className="mt-1 text-[10px] opacity-70">Opened: {p.entry_time || '—'}</div>
                     </td>
                     <td className="px-4 py-2.5"><span className="text-[10px] uppercase font-black tracking-widest bg-sidebar-accent/20 text-gray-500 dark:text-muted-foreground px-2 py-1 rounded">{p.sector}</span></td>
                   </tr>
@@ -461,6 +537,8 @@ function HistoryTab({ history, sessionType }: { history: any[], sessionType: str
     CANCELLED: 'bg-slate-500/10 text-slate-500',
   };
 
+  const sortedHistory = [...history].sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+
   return (
     <div className="space-y-4 animate-in fade-in duration-300">
       <div className="flex justify-between items-center px-1">
@@ -481,6 +559,7 @@ function HistoryTab({ history, sessionType }: { history: any[], sessionType: str
                 <th className="px-6 py-4">Type</th>
                 <th className="px-6 py-4">Order</th>
                 <th className="px-6 py-4">Status</th>
+                <th className="px-6 py-4">Buy / Exit Time</th>
                 <th className="px-6 py-4">Entry / Exit</th>
                 <th className="px-6 py-4">Qty</th>
                 <th className="px-6 py-4">P&L</th>
@@ -489,9 +568,9 @@ function HistoryTab({ history, sessionType }: { history: any[], sessionType: str
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-white/5">
-              {history.length === 0 ? (
-                <tr><td colSpan={9} className="px-6 py-12 text-center text-sm text-gray-400">No trades found for this session.</td></tr>
-              ) : history.map((t) => (
+              {sortedHistory.length === 0 ? (
+                <tr><td colSpan={10} className="px-6 py-12 text-center text-sm text-gray-400">No trades found for this session.</td></tr>
+              ) : sortedHistory.map((t) => (
                 <tr key={t.id} className="hover:bg-sidebar-accent/10 transition-colors">
                   <td className="px-6 py-4">
                     <div className="flex flex-col">
@@ -511,6 +590,10 @@ function HistoryTab({ history, sessionType }: { history: any[], sessionType: str
                       {t.status || 'UNKNOWN'}
                     </span>
                   </td>
+                  <td className="px-6 py-4 font-mono text-[11px] text-gray-500 dark:text-muted-foreground whitespace-nowrap">
+                    <div>Buy: {t.entry_time || '—'}</div>
+                    <div>Exit: {t.exit_time || '—'}</div>
+                  </td>
                   <td className="px-6 py-4 font-mono text-xs text-gray-500 dark:text-muted-foreground whitespace-nowrap">
                     <div>Entry: {t.entry_price ? `₹${t.entry_price}` : '—'}</div>
                     <div>Exit: {t.exit_price ? `₹${t.exit_price}` : '—'}</div>
@@ -522,7 +605,9 @@ function HistoryTab({ history, sessionType }: { history: any[], sessionType: str
                     </div>
                   </td>
                   <td className="px-6 py-4 text-xs text-gray-500 dark:text-muted-foreground">
-                    {t.holding_time > 60 ? `${(t.holding_time / 60).toFixed(1)}h` : `${t.holding_time}m`}
+                    {(t.holding_time_mins ?? t.holding_time ?? 0) > 60
+                      ? `${((t.holding_time_mins ?? t.holding_time ?? 0) / 60).toFixed(1)}h`
+                      : `${(t.holding_time_mins ?? t.holding_time ?? 0)}m`}
                   </td>
                   <td className="px-6 py-4 text-xs text-gray-500 dark:text-muted-foreground italic max-w-[150px] truncate">{t.exit_reason || (t.status === 'PENDING' ? 'Waiting for trigger' : 'Open/Manual')}</td>
                 </tr>

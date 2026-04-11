@@ -284,8 +284,6 @@ async def register_set_pin(
 @router.post("/login")
 async def login(
     user: UserLogin, 
-    response: Response,
-    request: Request,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db)
 ):
@@ -321,11 +319,15 @@ async def login(
             "message": "Security PIN not setup. Please set your PIN.",
             "email": db_user.email
         }
-    
-    request.state.session_user_email = db_user.email
-    await create_session(db, db_user.id, request, response)
-    # Trigger New Login Alert disabled per user request
-    return db_user
+
+    # Password verified — but do NOT create a session yet.
+    # The user must still pass PIN verification (/auth/verify-pin),
+    # which is the only endpoint that calls create_session.
+    return {
+        "status": "REQUIRES_PIN",
+        "message": "Please verify your security PIN to continue.",
+        "email": db_user.email
+    }
 
 # --- FORGOT PASSWORD FLOW ---
 
@@ -370,14 +372,35 @@ async def reset_password(
 @router.post("/logout")
 async def logout(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
     session_token = request.cookies.get("session_id")
+
     if session_token:
-        await db.execute(delete(UserSession).where(UserSession.session_token == session_token))
-        await db.commit()
-        invalidate_session_identity(session_token)
-        
-    response.delete_cookie("session_id")
-    response.delete_cookie("access_token")
-    response.delete_cookie("refresh_token")
+        # 1. Resolve user_id BEFORE deleting the session row
+        id_res = await db.execute(
+            select(UserSession.user_id).filter(UserSession.session_token == session_token)
+        )
+        user_id_row = id_res.first()
+
+        if user_id_row:
+            user_id = user_id_row[0]
+
+            # 2. Delete the session so it can never be replayed
+            await db.execute(
+                delete(UserSession).where(UserSession.session_token == session_token)
+            )
+
+            # 3. Nullify the refresh_token on the User row so /auth/refresh
+            #    cannot silently re-authenticate this user after logout
+            user_res = await db.execute(select(User).filter(User.id == user_id))
+            db_user = user_res.scalars().first()
+            if db_user:
+                db_user.refresh_token = None
+
+            await db.commit()
+
+    # Clear all auth-related cookies (match the same attributes set on creation)
+    response.delete_cookie("session_id", httponly=True, samesite="lax")
+    response.delete_cookie("access_token", httponly=True, samesite="lax")
+    response.delete_cookie("refresh_token", httponly=True, samesite="lax")
     return {"message": "Logged out successfully"}
 
 @router.post("/verify-pin")

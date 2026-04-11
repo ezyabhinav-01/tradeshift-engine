@@ -5,10 +5,12 @@ import { Shield, AlertCircle, ArrowLeft, Calendar, Mail, CheckCircle2, Eye, EyeO
 import { PremiumDatePicker } from '@/components/ui/PremiumDatePicker';
 import OtpInput from '@/components/ui/OtpInput';
 import type { OtpInputRef } from '@/components/ui/OtpInput';
+import { useAuth } from '@/context/AuthContext';
 
 const PinVerification: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { checkAuth } = useAuth();
   
   // Try to get email from Login redirect state
   const initialEmail = location.state?.email || '';
@@ -68,11 +70,9 @@ const PinVerification: React.FC = () => {
     setLoading(true);
     try {
       await axios.post('/auth/verify-pin', { email, pin: finalPin });
-      let from = location.state?.from || '/trade';
-      // If we came from home or landing, stay there
-      if (from === '/' || from === '/landing') {
-        from = from; 
-      }
+      // Sync user state from the session cookie the backend just set
+      await checkAuth();
+      const from = location.state?.from || '/trade';
       navigate(from, { replace: true });
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Please enter correct security pin');
@@ -220,8 +220,8 @@ const PinVerification: React.FC = () => {
                     disabled={loading}
                     onComplete={(code) => {
                       setPin(code);
-                      const submitEvent = { preventDefault: () => {} } as React.FormEvent;
-                      setTimeout(() => handleVerify(submitEvent, code), 100);
+                      const syntheticEvent = { preventDefault: () => {} } as React.FormEvent;
+                      handleVerify(syntheticEvent, code);
                     }} 
                   />
                 </div>

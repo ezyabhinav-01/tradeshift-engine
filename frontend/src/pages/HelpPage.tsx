@@ -153,7 +153,7 @@ const HelpPage = () => {
               </div>
               <div>
                 <h3 className="font-bold text-slate-900 dark:text-white text-lg">Email us</h3>
-                <p className="text-slate-500 dark:text-slate-400 text-sm">support@groww.in</p>
+                <p className="text-slate-500 dark:text-slate-400 text-sm">tradeshifthelp@gmail.com</p>
               </div>
             </div>
           </div>

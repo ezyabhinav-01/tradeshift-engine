@@ -48,14 +48,11 @@ const Login: React.FC = () => {
         return;
       }
 
-      let from = location.state?.from || '/trade';
-      // If we came from home or landing, stay there
-      if (from === '/' || from === '/landing') {
-        from = from; 
+      if (data.status === 'REQUIRES_PIN') {
+        const from = location.state?.from || '/trade';
+        navigate('/pin-verify', { state: { email, from } });
+        return;
       }
-      
-      // Redirect to PIN verification for normal login
-      navigate('/pin-verify', { state: { email: authEmail, from } });
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to login. Please check your credentials.');
     } finally {

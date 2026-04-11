@@ -1,18 +1,27 @@
-import { useState, useEffect, useRef } from 'react';
-import { 
-  Hash, 
-  Settings, 
-  Plus, 
-  Send, 
-  AtSign, 
-  Smile, 
+import { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  Hash,
+  Settings,
+  Plus,
+  Send,
+  AtSign,
+  Smile,
   Paperclip,
   ChevronDown,
-  Info
+  Info,
+  X,
+  Search,
+  MessageSquare,
+  Users,
+  Loader2,
+  UserCheck,
+  AlertCircle,
 } from 'lucide-react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Channel {
   id: number;
@@ -30,7 +39,6 @@ interface Message {
   timestamp: string;
   channel_id?: number;
   recipient_id?: number;
-  avatar?: string; // We can generate this based on name
 }
 
 interface CommunityUser {
@@ -40,63 +48,285 @@ interface CommunityUser {
   is_online: boolean;
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const getInitials = (name: string) =>
+  name
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+
+// Backend stores datetime.utcnow() with no 'Z' suffix.
+// Appending 'Z' forces the browser to parse it as UTC before converting to IST.
+const ensureUTC = (iso: string) =>
+  iso.endsWith('Z') || iso.includes('+') ? iso : `${iso}Z`;
+
+const formatTime = (iso: string) =>
+  new Date(ensureUTC(iso)).toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Asia/Kolkata',
+  });
+
+const formatDateGroup = (iso: string) => {
+  const d = new Date(ensureUTC(iso));
+  const opts: Intl.DateTimeFormatOptions = { timeZone: 'Asia/Kolkata' };
+  const toDate = (dt: Date) =>
+    new Intl.DateTimeFormat('en-IN', { ...opts, year: 'numeric', month: '2-digit', day: '2-digit' }).format(dt);
+  const today = toDate(new Date());
+  const yesterday = toDate(new Date(Date.now() - 86400000));
+  const msgDay = toDate(d);
+  if (msgDay === today) return 'Today';
+  if (msgDay === yesterday) return 'Yesterday';
+  return d.toLocaleDateString('en-IN', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'Asia/Kolkata' });
+};
+
+const AVATAR_COLORS = [
+  '#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b',
+  '#10b981', '#06b6d4', '#ef4444', '#84cc16',
+];
+const getAvatarColor = (id: number) => AVATAR_COLORS[id % AVATAR_COLORS.length];
+
+// ─── Login Prompt Modal ───────────────────────────────────────────────────────
+
+const LoginPromptModal = () => {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}
+    >
+      <div
+        className="w-full max-w-sm mx-4 rounded-2xl shadow-2xl border border-white/10 overflow-hidden"
+        style={{ background: 'linear-gradient(135deg, #1e2128 0%, #16181d 100%)' }}
+      >
+        {/* Icon */}
+        <div className="flex flex-col items-center px-8 pt-10 pb-6 text-center">
+          <div
+            className="w-16 h-16 rounded-2xl flex items-center justify-center mb-5"
+            style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.25)' }}
+          >
+            <Users size={30} className="text-indigo-400" />
+          </div>
+          <h2 className="text-xl font-black text-white mb-2">Join the Community</h2>
+          <p className="text-sm text-slate-400 leading-relaxed">
+            Please log in to access channels, direct messages, and connect with other traders.
+          </p>
+        </div>
+
+        {/* Actions */}
+        <div className="px-8 pb-8 flex flex-col gap-3">
+          <a
+            href="/login"
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white transition-all hover:opacity-90"
+            style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}
+          >
+            Log In to Continue
+          </a>
+          <a
+            href="/register"
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-slate-300 border border-white/10 hover:border-indigo-500/40 hover:text-indigo-400 transition-all"
+          >
+            Create an Account
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── New DM Modal ─────────────────────────────────────────────────────────────
+
+interface NewDMModalProps {
+  onClose: () => void;
+  onConfirm: (user: CommunityUser) => void;
+}
+
+const NewDMModal = ({ onClose, onConfirm }: NewDMModalProps) => {
+  const [query, setQuery] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [found, setFound] = useState<CommunityUser | null>(null);
+  const [error, setError] = useState('');
+
+  const handleSearch = async () => {
+    if (!query.trim()) return;
+    setLoading(true);
+    setFound(null);
+    setError('');
+    try {
+      const res = await axios.get(`/api/community/users/lookup?q=${encodeURIComponent(query.trim())}`);
+      setFound(res.data);
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || 'No user found with that email or Demat ID.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)' }}
+    >
+      <div
+        className="w-full max-w-md mx-4 rounded-2xl shadow-2xl border border-white/10 overflow-hidden"
+        style={{ background: 'linear-gradient(135deg, #1e2128 0%, #16181d 100%)' }}
+      >
+        {/* Modal header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/8">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'rgba(99,102,241,0.15)' }}>
+              <MessageSquare size={18} className="text-indigo-400" />
+            </div>
+            <div>
+              <h3 className="font-bold text-white text-sm">New Direct Message</h3>
+              <p className="text-xs text-slate-400">Enter recipient's Email or Demat ID</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/8 transition-colors cursor-pointer"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Modal body */}
+        <div className="p-6 space-y-4">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => { setQuery(e.target.value); setError(''); setFound(null); }}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              placeholder="user@gmail.com or DEMAT123456"
+              className="flex-1 bg-white/6 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/30 transition-all"
+              autoFocus
+            />
+            <button
+              onClick={handleSearch}
+              disabled={loading || !query.trim()}
+              className="px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}
+            >
+              {loading ? <Loader2 size={16} className="animate-spin text-white" /> : <Search size={16} className="text-white" />}
+              <span className="text-white">Find</span>
+            </button>
+          </div>
+
+          {/* Error state */}
+          {error && (
+            <div className="flex items-center gap-2.5 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20">
+              <AlertCircle size={15} className="text-red-400 shrink-0" />
+              <p className="text-sm text-red-300">{error}</p>
+            </div>
+          )}
+
+          {/* Found user */}
+          {found && (
+            <div className="rounded-xl border border-indigo-500/25 overflow-hidden" style={{ background: 'rgba(99,102,241,0.06)' }}>
+              <div className="flex items-center gap-4 px-4 py-3.5">
+                <div
+                  className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm shrink-0"
+                  style={{ background: getAvatarColor(found.id) }}
+                >
+                  {getInitials(found.full_name)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-white text-sm truncate">{found.full_name}</p>
+                  <p className="text-xs text-slate-400 truncate">{found.email}</p>
+                </div>
+                <div className={`w-2 h-2 rounded-full shrink-0 ${found.is_online ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+              </div>
+              <div className="border-t border-indigo-500/20 px-4 py-3 flex justify-end">
+                <button
+                  onClick={() => onConfirm(found)}
+                  className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold text-white cursor-pointer transition-all hover:opacity-90"
+                  style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}
+                >
+                  <UserCheck size={15} />
+                  Open Chat
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
 const CommunityPage = () => {
   const { user } = useAuth();
+
   const [channels, setChannels] = useState<Channel[]>([]);
   const [activeChannel, setActiveChannel] = useState<Channel | null>(null);
-  const [communityUsers, setCommunityUsers] = useState<CommunityUser[]>([]);
   const [activeDMUser, setActiveDMUser] = useState<CommunityUser | null>(null);
+  const [dmHistory, setDmHistory] = useState<CommunityUser[]>([]); // previously messaged users
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageText, setMessageText] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
-  
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [showNewDM, setShowNewDM] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+
   const ws = useRef<WebSocket | null>(null);
   const messageEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-
-  // Scroll to bottom when messages change
-  const scrollToBottom = () => {
-    messageEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
-    scrollToBottom();
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
+
+  // ── Scroll to bottom ────────────────────────────────────────────────────────
+  useEffect(() => {
+    messageEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Initial Data Fetch
+  // ── Initial data: channels + persisted DM contacts ────────────────────────
+  // Only fetch DM contacts when logged in — never expose other users' DMs to guests
   useEffect(() => {
     const fetchData = async () => {
       try {
-        setIsLoading(true);
-        const [channelsRes, usersRes] = await Promise.all([
-          axios.get('/api/community/channels'),
-          axios.get('/api/community/users')
-        ]);
-        
-        setChannels(channelsRes.data);
-        setCommunityUsers(usersRes.data);
-        
-        if (channelsRes.data.length > 0) {
-          setActiveChannel(channelsRes.data[0]);
+        setIsInitializing(true);
+        if (user) {
+          const [channelsRes, dmContactsRes] = await Promise.all([
+            axios.get('/api/community/channels'),
+            axios.get('/api/community/dm-contacts'),
+          ]);
+          if (!isMountedRef.current) return;
+          setChannels(channelsRes.data);
+          if (channelsRes.data.length > 0) setActiveChannel(channelsRes.data[0]);
+          if (dmContactsRes.data.length > 0) setDmHistory(dmContactsRes.data);
+        } else {
+          // Guest: clear any stale DM history and channels
+          setDmHistory([]);
+          setChannels([]);
+          setActiveChannel(null);
+          setActiveDMUser(null);
         }
-      } catch (error) {
-        console.error('Error fetching community data:', error);
+      } catch {
         toast.error('Failed to load community data');
       } finally {
-        setIsLoading(false);
+        if (isMountedRef.current) setIsInitializing(false);
       }
     };
-
     fetchData();
-  }, []);
+  }, [user]);
 
-  // Fetch messages when active target changes
+  // ── Fetch messages whenever active target changes ────────────────────────────
   useEffect(() => {
+    if (!activeChannel && !activeDMUser) return;
+
     const fetchMessages = async () => {
-      if (!activeChannel && !activeDMUser) return;
-      
+      setIsLoadingMessages(true);
+      setMessages([]);
       try {
         let res;
         if (activeChannel) {
@@ -104,368 +334,572 @@ const CommunityPage = () => {
         } else if (activeDMUser) {
           res = await axios.get(`/api/community/direct-messages/${activeDMUser.id}`);
         }
-        
-        if (res) {
-          setMessages(res.data);
-        }
-      } catch (error) {
-        console.error('Error fetching messages:', error);
+        if (isMountedRef.current && res) setMessages(res.data);
+      } catch {
+        toast.error('Failed to load messages');
+      } finally {
+        if (isMountedRef.current) setIsLoadingMessages(false);
       }
     };
 
     fetchMessages();
   }, [activeChannel, activeDMUser]);
 
-  // WebSocket Connection
+  // ── WebSocket ────────────────────────────────────────────────────────────────
+  const activeChannelRef = useRef(activeChannel);
+  const activeDMUserRef = useRef(activeDMUser);
+  useEffect(() => { activeChannelRef.current = activeChannel; }, [activeChannel]);
+  useEffect(() => { activeDMUserRef.current = activeDMUser; }, [activeDMUser]);
+
+  const appendMessage = useCallback((msg: Message) => {
+    setMessages((prev) => {
+      if (prev.some((m) => m.id === msg.id)) return prev;
+      return [...prev, msg];
+    });
+  }, []);
+
   useEffect(() => {
     if (!user) return;
+    let reconnectTimer: ReturnType<typeof setTimeout>;
+    let isAlive = true;
 
-    // Use a simplified connection logic
-    const connectWS = () => {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/ws/orders`; // Reusing existing ws endpoint or could be community specific
-      const socket = new WebSocket(wsUrl);
+    const connect = () => {
+      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const socket = new WebSocket(`${proto}//${window.location.host}/ws/orders`);
 
       socket.onopen = () => {
-        socket.send(JSON.stringify({ user_id: user.id }));
+        if (isAlive) socket.send(JSON.stringify({ user_id: user.id }));
       };
 
       socket.onmessage = (event) => {
+        if (!isAlive) return;
         const payload = JSON.parse(event.data);
         if (payload.type === 'community_message' || payload.type === 'direct_message') {
-          const newMessage = payload.data;
-          
-          // Check if message belongs to current view
-          if (activeChannel && newMessage.channel_id === activeChannel.id) {
-            setMessages(prev => [...prev, newMessage]);
-          } else if (activeDMUser && (
-            (newMessage.sender_id === activeDMUser.id && newMessage.recipient_id === user.id) ||
-            (newMessage.sender_id === user.id && newMessage.recipient_id === activeDMUser.id)
-          )) {
-            setMessages(prev => [...prev, newMessage]);
-          } else {
-            // Logic for unread badges could go here
-            if (newMessage.channel_id) {
-                 setChannels(prev => prev.map(ch => 
-                    ch.id === newMessage.channel_id ? { ...ch, unread: (ch.unread || 0) + 1 } : ch
-                 ));
-            }
+          const msg: Message = payload.data;
+          const curChannel = activeChannelRef.current;
+          const curDM = activeDMUserRef.current;
+
+          if (curChannel && msg.channel_id === curChannel.id) {
+            appendMessage(msg);
+          } else if (
+            curDM &&
+            ((msg.sender_id === curDM.id && msg.recipient_id === user.id) ||
+              (msg.sender_id === user.id && msg.recipient_id === curDM.id))
+          ) {
+            appendMessage(msg);
+          } else if (msg.channel_id) {
+            setChannels((prev) =>
+              prev.map((ch) =>
+                ch.id === msg.channel_id ? { ...ch, unread: (ch.unread || 0) + 1 } : ch
+              )
+            );
           }
         }
       };
 
       socket.onclose = () => {
-        setTimeout(connectWS, 3000); // Reconnect
+        if (isAlive) reconnectTimer = setTimeout(connect, 3000);
       };
 
       ws.current = socket;
     };
 
-    connectWS();
-    return () => ws.current?.close();
-  }, [user, activeChannel, activeDMUser]);
+    connect();
 
+    return () => {
+      isAlive = false;
+      clearTimeout(reconnectTimer);
+      ws.current?.close();
+    };
+  }, [user, appendMessage]);
+
+  // ── Send message ─────────────────────────────────────────────────────────────
   const handleSendMessage = async () => {
     if (!messageText.trim() || !user) return;
 
+    const payload: any = { content: messageText.trim() };
+    if (activeChannel) payload.channel_id = activeChannel.id;
+    else if (activeDMUser) payload.recipient_id = activeDMUser.id;
+    else return;
+
+    setMessageText('');
     try {
-      const payload: any = {
-        content: messageText,
-      };
-
-      if (activeChannel) {
-        payload.channel_id = activeChannel.id;
-      } else if (activeDMUser) {
-        payload.recipient_id = activeDMUser.id;
-      }
-
       await axios.post('/api/community/messages', payload);
-      
-      // If WS is not broadcasting back to sender, we add it manually
-      // But our backend's emit_to_channel broadcasts to everyone including sender
-      // and emit_to_user for DMs sends to both sender and recipient.
-      // So the message will come back via WS. We just clear the input.
-      
-      setMessageText('');
-    } catch (error) {
-      console.error('Error sending message:', error);
+    } catch {
       toast.error('Failed to send message');
     }
   };
 
-  const getInitials = (name: string) => {
-    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  // ── Open DM with a user ──────────────────────────────────────────────────────
+  const openDM = (dmUser: CommunityUser) => {
+    setActiveDMUser(dmUser);
+    setActiveChannel(null);
+    setShowNewDM(false);
+    // maintain history of DM conversations
+    setDmHistory((prev) => {
+      if (prev.some((u) => u.id === dmUser.id)) return prev;
+      return [dmUser, ...prev];
+    });
   };
 
-  const formatDate = (isoString: string) => {
-    const date = new Date(isoString);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
+  // ── Group messages by date ───────────────────────────────────────────────────
+  const grouped: { label: string; items: Message[] }[] = [];
+  for (const msg of messages) {
+    const label = formatDateGroup(msg.timestamp);
+    const last = grouped[grouped.length - 1];
+    if (last && last.label === label) last.items.push(msg);
+    else grouped.push({ label, items: [msg] });
+  }
 
   return (
-    <div className="flex h-[calc(100vh-56px)] bg-white dark:bg-[#1a1d21] overflow-hidden">
-      {/* Workspace Sidebar (Narrow) */}
-      <div className="w-[64px] bg-slate-100 dark:bg-[#121417] border-r border-slate-200 dark:border-white/5 flex flex-col items-center py-4 gap-4 shrink-0">
-        <div className="w-12 h-12 bg-tv-primary rounded-xl flex items-center justify-center text-white font-bold text-xl cursor-pointer hover:rounded-md transition-all shadow-sm dark:shadow-none">
-          TS
-        </div>
-        <div className="w-8 h-[2px] bg-slate-300 dark:bg-white/10 rounded-full my-1" />
-        <div className="w-12 h-12 bg-white dark:bg-[#2a2d32] border border-slate-200 dark:border-transparent rounded-xl flex items-center justify-center text-slate-400 dark:text-white/60 hover:text-tv-primary dark:hover:text-white shadow-sm dark:shadow-none cursor-pointer hover:rounded-md transition-all group">
-          <Plus size={24} className="group-hover:scale-110 transition-transform" />
-        </div>
-      </div>
+    <div className="flex h-[calc(100vh-56px)] overflow-hidden" style={{ background: '#0f1117' }}>
+      {/* Show login gate for unauthenticated users */}
+      {!user && <LoginPromptModal />}
 
-      {/* Channels Sidebar (Wide) */}
-      <div className="w-[260px] bg-slate-50 dark:bg-[#191b1f] border-r border-slate-200 dark:border-white/5 flex flex-col shrink-0">
-        {/* Sidebar Header */}
-        <div className="h-12 border-b border-slate-200 dark:border-white/5 flex items-center justify-between px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-white/5 transition-colors">
-          <h2 className="text-slate-900 dark:text-white font-bold flex items-center gap-1">
-            Tradeshift Community <ChevronDown size={14} />
-          </h2>
-          <div className="w-8 h-8 rounded-full hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 flex items-center justify-center text-slate-500 dark:text-white/60">
-            <Settings size={16} />
-          </div>
-        </div>
+      {showNewDM && user && (
+        <NewDMModal
+          onClose={() => setShowNewDM(false)}
+          onConfirm={(u) => openDM(u)}
+        />
+      )}
 
-        {/* Sidebar Content */}
-        <div className="flex-1 overflow-y-auto py-4">
-          {/* Section: Channels */}
-          <div className="mb-4">
-            <div className="px-6 flex items-center justify-between group mb-1">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Channels</span>
-              <Plus size={14} className="text-slate-500 hover:text-slate-700 dark:hover:text-white cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity" />
+      {/* ── Sidebar ─────────────────────────────────────────────────────────── */}
+      <aside
+        className="w-[260px] flex flex-col shrink-0 border-r"
+        style={{ background: '#13151a', borderColor: 'rgba(255,255,255,0.06)' }}
+      >
+        {/* Workspace header */}
+        <div
+          className="h-13 flex items-center justify-between px-4 py-3 border-b cursor-pointer group"
+          style={{ borderColor: 'rgba(255,255,255,0.06)' }}
+        >
+          <div className="flex items-center gap-2.5">
+            <div
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-white font-black text-xs"
+              style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)' }}
+            >
+              TS
             </div>
-            <div className="flex flex-col gap-0.5 px-2">
-              {channels.map((ch) => (
-                <button
-                  key={ch.id}
-                  onClick={() => {
-                    setActiveChannel(ch);
-                    setActiveDMUser(null);
-                    // Clear unread
-                    setChannels(prev => prev.map(c => c.id === ch.id ? { ...c, unread: 0 } : c));
-                  }}
-                  className={`flex items-center gap-2 px-4 py-1.5 rounded-md transition-colors w-full text-left font-medium ${
-                    activeChannel?.id === ch.id 
-                      ? 'bg-tv-primary text-white' 
-                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  <Hash size={16} className={activeChannel?.id === ch.id ? 'text-white' : 'text-slate-400 dark:text-slate-500'} />
-                  <span className="text-sm flex-1 truncate">{ch.name}</span>
-                  {ch.unread ? (
-                    <span className="bg-red-500 text-[10px] h-4 w-4 rounded-full flex items-center justify-center text-white font-bold">
-                      {ch.unread}
-                    </span>
-                  ) : null}
-                </button>
-              ))}
-            </div>
+            <span className="text-white font-bold text-sm flex items-center gap-1">
+              Tradeshift <ChevronDown size={13} className="text-slate-500" />
+            </span>
           </div>
-
-          {/* Section: Direct Messages */}
-          <div className="mt-6">
-            <div className="px-6 flex items-center justify-between group mb-1">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Direct Messages</span>
-              <Plus size={14} className="text-slate-500 hover:text-slate-700 dark:hover:text-white cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity" />
-            </div>
-            <div className="flex flex-col gap-0.5 px-2">
-              {communityUsers.map((u) => (
-                <button 
-                  key={u.id}
-                  onClick={() => {
-                    setActiveDMUser(u);
-                    setActiveChannel(null);
-                  }}
-                  className={`flex items-center gap-2 px-4 py-1.5 rounded-md transition-colors w-full text-left font-medium ${
-                    activeDMUser?.id === u.id 
-                      ? 'bg-tv-primary text-white' 
-                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${u.is_online ? 'bg-green-500/20 text-green-500 dark:text-green-400' : 'bg-slate-500/20 text-slate-500 dark:text-slate-400'}`}>
-                    {getInitials(u.full_name)}
-                  </div>
-                  <span className="text-sm truncate flex-1">{u.full_name}</span>
-                  {u.is_online && <div className="w-1.5 h-1.5 rounded-full bg-green-500" />}
-                </button>
-              ))}
-            </div>
-          </div>
+          <Settings size={15} className="text-slate-500 group-hover:text-slate-300 transition-colors cursor-pointer" />
         </div>
 
-        {/* Bottom Profile */}
-        <div className="p-4 border-t border-slate-200 dark:border-white/5">
-          <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-200 dark:bg-white/5 cursor-pointer dark:hover:bg-white/10 transition-colors">
-            <div className="w-9 h-9 rounded-md bg-tv-primary flex items-center justify-center text-white font-bold relative">
-              {user?.full_name ? getInitials(user.full_name) : 'U'}
-              <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 border-2 border-slate-50 dark:border-[#191b1f] rounded-full" />
-            </div>
-            <div className="flex flex-col overflow-hidden">
-              <span className="text-xs font-bold text-slate-900 dark:text-white truncate">{user?.full_name || 'Loading...'}</span>
-              <span className="text-[10px] text-slate-500 truncate">Online</span>
-            </div>
-          </div>
-        </div>
-      </div>
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto py-3 space-y-5 scrollbar-thin">
 
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col bg-white dark:bg-[#1a1d21]">
-        {/* Chat Header */}
-        <div className="h-12 border-b border-slate-200 dark:border-white/5 flex items-center justify-between px-4 shrink-0 shadow-sm z-10">
-          <div className="flex items-center gap-2 overflow-hidden">
-            <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-1 cursor-pointer hover:bg-slate-100 dark:hover:bg-white/5 px-2 py-1 rounded transition-colors whitespace-nowrap">
-              {activeChannel ? <Hash size={18} className="text-slate-400" /> : <AtSign size={18} className="text-slate-400" />}
-              {activeChannel?.name || activeDMUser?.full_name || 'Select a channel'}
-              <ChevronDown size={14} className="text-slate-400" />
-            </h3>
-            <div className="w-[1px] h-4 bg-slate-200 dark:bg-white/10 mx-2 hidden sm:block" />
-            <div className="hidden sm:flex items-center gap-3">
-              <span className="text-xs text-slate-500 font-medium">{activeChannel ? 'Community Channel' : 'Direct Message'}</span>
+          {/* Channels section */}
+          <section className="px-3">
+            <div className="flex items-center justify-between px-2 mb-1.5 group">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Channels</span>
+              <Plus size={13} className="text-slate-500 hover:text-white cursor-pointer opacity-0 group-hover:opacity-100 transition-all" />
             </div>
-          </div>
-          <div className="flex items-center gap-1">
-            <button className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5 rounded transition-colors" title="View files">
-              <Paperclip size={20} />
-            </button>
-            <button className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5 rounded transition-colors" title="Details">
-              <Info size={20} />
-            </button>
-          </div>
-        </div>
 
-        {/* Message List */}
-        <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-6">
-          {/* Welcome Message */}
-          {(activeChannel || activeDMUser) && messages.length === 0 && !isLoading && (
-            <div className="mb-4">
-              <div className="w-12 h-12 rounded-lg bg-slate-100 dark:bg-white/5 flex items-center justify-center mb-2">
-                  {activeChannel ? <Hash size={24} className="text-slate-600 dark:text-slate-400" /> : <AtSign size={24} className="text-slate-600 dark:text-slate-400" />}
+            {isInitializing ? (
+              <div className="flex items-center gap-2 px-3 py-2">
+                <Loader2 size={14} className="animate-spin text-slate-500" />
+                <span className="text-xs text-slate-500">Loading…</span>
               </div>
-              <h1 className="text-2xl font-black text-slate-900 dark:text-white">
-                Welcome to {activeChannel ? `#${activeChannel.name}` : activeDMUser?.full_name}
+            ) : (
+              <div className="space-y-0.5">
+                {channels.map((ch) => (
+                  <button
+                    key={ch.id}
+                    onClick={() => {
+                      setActiveChannel(ch);
+                      setActiveDMUser(null);
+                      setChannels((prev) => prev.map((c) => (c.id === ch.id ? { ...c, unread: 0 } : c)));
+                    }}
+                    className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-left transition-all cursor-pointer text-sm font-medium group/ch ${
+                      activeChannel?.id === ch.id
+                        ? 'text-white'
+                        : 'text-slate-400 hover:text-white hover:bg-white/5'
+                    }`}
+                    style={activeChannel?.id === ch.id ? { background: 'rgba(99,102,241,0.18)' } : {}}
+                  >
+                    <Hash size={15} className={activeChannel?.id === ch.id ? 'text-indigo-400' : 'text-slate-500 group-hover/ch:text-slate-300'} />
+                    <span className="flex-1 truncate">{ch.name}</span>
+                    {ch.unread ? (
+                      <span className="bg-red-500 text-[9px] h-4 min-w-[16px] px-1 rounded-full flex items-center justify-center text-white font-bold">
+                        {ch.unread}
+                      </span>
+                    ) : null}
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* Direct Messages section – only visible when logged in */}
+          {user && (
+            <section className="px-3">
+              <div className="flex items-center justify-between px-2 mb-1.5 group">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Direct Messages</span>
+                <button
+                  onClick={() => setShowNewDM(true)}
+                  className="text-slate-500 hover:text-white cursor-pointer opacity-0 group-hover:opacity-100 transition-all"
+                  title="New Direct Message"
+                >
+                  <Plus size={13} />
+                </button>
+              </div>
+
+              {dmHistory.length === 0 ? (
+                <button
+                  onClick={() => setShowNewDM(true)}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg border border-dashed text-sm text-slate-500 hover:text-indigo-400 hover:border-indigo-500/40 transition-all cursor-pointer"
+                  style={{ borderColor: 'rgba(255,255,255,0.08)' }}
+                >
+                  <Plus size={14} />
+                  <span>New message</span>
+                </button>
+              ) : (
+                <div className="space-y-0.5">
+                  {dmHistory.map((u) => (
+                    <button
+                      key={u.id}
+                      onClick={() => openDM(u)}
+                      className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-left transition-all cursor-pointer text-sm font-medium ${
+                        activeDMUser?.id === u.id ? 'text-white' : 'text-slate-400 hover:text-white hover:bg-white/5'
+                      }`}
+                      style={activeDMUser?.id === u.id ? { background: 'rgba(99,102,241,0.18)' } : {}}
+                    >
+                      <div className="relative shrink-0">
+                        <div
+                          className="w-6 h-6 rounded-md flex items-center justify-center text-white font-bold text-[10px]"
+                          style={{ background: getAvatarColor(u.id) }}
+                        >
+                          {getInitials(u.full_name)}
+                        </div>
+                        <div className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-[#13151a] ${u.is_online ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+                      </div>
+                      <span className="flex-1 truncate">{u.full_name}</span>
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => setShowNewDM(true)}
+                    className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-sm text-slate-500 hover:text-indigo-400 transition-colors cursor-pointer"
+                  >
+                    <Plus size={14} />
+                    <span>New message</span>
+                  </button>
+                </div>
+              )}
+            </section>
+          )}
+        </div>
+
+        {/* Bottom profile */}
+        <div className="p-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+          <div
+            className="flex items-center gap-2.5 p-2 rounded-xl cursor-pointer transition-colors hover:bg-white/5"
+          >
+            <div
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-xs relative shrink-0"
+              style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)' }}
+            >
+              {user?.full_name ? getInitials(user.full_name) : 'U'}
+              <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 border-2 border-[#13151a] rounded-full" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold text-white truncate">{user?.full_name || 'You'}</p>
+              <p className="text-[10px] text-emerald-400">Online</p>
+            </div>
+            <Settings size={14} className="text-slate-500 hover:text-slate-300 transition-colors cursor-pointer shrink-0" />
+          </div>
+        </div>
+      </aside>
+
+      {/* ── Main Chat Area ───────────────────────────────────────────────────── */}
+      <main className="flex-1 flex flex-col min-w-0" style={{ background: '#0f1117' }}>
+        {/* Chat header */}
+        <div
+          className="h-13 flex items-center justify-between px-5 py-3 border-b shrink-0"
+          style={{ borderColor: 'rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            {activeChannel ? (
+              <>
+                <Hash size={18} className="text-indigo-400 shrink-0" />
+                <div className="overflow-hidden">
+                  <h2 className="font-bold text-white text-sm truncate">{activeChannel.name}</h2>
+                  <p className="text-xs text-slate-500 hidden sm:block truncate">
+                    {activeChannel.description || 'Community Channel'}
+                  </p>
+                </div>
+              </>
+            ) : activeDMUser ? (
+              <>
+                <div className="relative shrink-0">
+                  <div
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-xs"
+                    style={{ background: getAvatarColor(activeDMUser.id) }}
+                  >
+                    {getInitials(activeDMUser.full_name)}
+                  </div>
+                  <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#0f1117] ${activeDMUser.is_online ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+                </div>
+                <div className="overflow-hidden">
+                  <h2 className="font-bold text-white text-sm truncate">{activeDMUser.full_name}</h2>
+                  <p className="text-xs text-slate-500 truncate">{activeDMUser.is_online ? 'Online' : 'Offline'}</p>
+                </div>
+              </>
+            ) : (
+              <>
+                <Users size={18} className="text-slate-500 shrink-0" />
+                <h2 className="font-bold text-slate-500 text-sm">Select a channel</h2>
+              </>
+            )}
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <button className="p-2 text-slate-500 hover:text-slate-300 hover:bg-white/5 rounded-lg transition-colors cursor-pointer" title="Files">
+              <Paperclip size={17} />
+            </button>
+            <button className="p-2 text-slate-500 hover:text-slate-300 hover:bg-white/5 rounded-lg transition-colors cursor-pointer" title="Details">
+              <Info size={17} />
+            </button>
+          </div>
+        </div>
+
+        {/* Message list */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6 scrollbar-thin">
+          {/* Welcome message */}
+          {!isLoadingMessages && (activeChannel || activeDMUser) && messages.length === 0 && (
+            <div className="flex flex-col items-start pt-4">
+              <div
+                className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
+                style={{ background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.2)' }}
+              >
+                {activeChannel
+                  ? <Hash size={28} className="text-indigo-400" />
+                  : <AtSign size={28} className="text-indigo-400" />}
+              </div>
+              <h1 className="text-2xl font-black text-white mb-1">
+                {activeChannel ? `#${activeChannel.name}` : activeDMUser?.full_name}
               </h1>
-              <p className="text-slate-500 mt-1 max-w-2xl">
-                  This is the very beginning of your conversation with <span className="text-tv-primary font-bold">{activeChannel ? `#${activeChannel.name}` : activeDMUser?.full_name}</span>.
-                  Let's start collaborating!
+              <p className="text-slate-400 text-sm max-w-lg">
+                {activeChannel
+                  ? `This is the very beginning of #${activeChannel.name}. Start a conversation!`
+                  : `This is the beginning of your DM with ${activeDMUser?.full_name}. Say hello!`}
               </p>
             </div>
           )}
 
-          {isLoading ? (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-tv-primary"></div>
-            </div>
-          ) : (
-            messages.map((m) => (
-              <div key={m.id} className="flex gap-4 group">
-                <div className="w-9 h-9 rounded bg-tv-primary/10 text-tv-primary flex items-center justify-center font-bold text-sm shrink-0">
-                  {getInitials(m.sender_name || 'U')}
-                </div>
-                <div className="flex flex-col">
-                  <div className="flex items-center gap-2">
-                    <span className="font-black text-slate-900 dark:text-white text-[15px] hover:underline cursor-pointer">{m.sender_name}</span>
-                    <span className="text-xs text-slate-400 font-medium">{formatDate(m.timestamp)}</span>
-                  </div>
-                  <p className="text-slate-700 dark:text-slate-300 text-[15px] leading-relaxed mt-0.5">
-                    {m.content}
-                  </p>
-                </div>
+          {/* No channel selected */}
+          {!activeChannel && !activeDMUser && (
+            <div className="flex-1 flex flex-col items-center justify-center pt-24 text-center">
+              <div
+                className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
+                style={{ background: 'rgba(99,102,241,0.1)' }}
+              >
+                <Hash size={30} className="text-indigo-400" />
               </div>
-            ))
+              <p className="text-slate-400 font-semibold">Pick a channel or start a direct message</p>
+              <p className="text-slate-600 text-sm mt-1">Your conversations will appear here</p>
+            </div>
           )}
+
+          {/* Loading spinner */}
+          {isLoadingMessages && (
+            <div className="flex justify-center pt-16">
+              <Loader2 size={24} className="animate-spin text-indigo-400" />
+            </div>
+          )}
+
+          {/* Grouped messages – WhatsApp style bubbles */}
+          {!isLoadingMessages && grouped.map(({ label, items }) => (
+            <div key={label}>
+              {/* Date divider */}
+              <div className="flex items-center gap-3 my-5">
+                <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
+                <span
+                  className="text-[11px] font-semibold text-slate-400 px-3 py-1 rounded-full"
+                  style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.08)' }}
+                >
+                  {label}
+                </span>
+                <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
+              </div>
+
+              <div className="flex flex-col gap-[3px]">
+                {items.map((msg, idx) => {
+                  const prevMsg = idx > 0 ? items[idx - 1] : null;
+                  const isConsecutive = !!prevMsg && prevMsg.sender_id === msg.sender_id &&
+                    (new Date(ensureUTC(msg.timestamp)).getTime() - new Date(ensureUTC(prevMsg.timestamp)).getTime()) < 5 * 60 * 1000;
+                  const isMe = msg.sender_id === user?.id;
+                  const showAvatar = !isMe && !isConsecutive;
+
+                  return (
+                    <div
+                      key={msg.id}
+                      className={`flex items-end gap-2 ${
+                        isMe ? 'flex-row-reverse' : 'flex-row'
+                      } ${isConsecutive ? 'mt-[2px]' : 'mt-3'}`}
+                    >
+                      {/* Avatar placeholder (others only) */}
+                      {!isMe && (
+                        <div className="w-7 h-7 shrink-0">
+                          {showAvatar && (
+                            <div
+                              className="w-7 h-7 rounded-full flex items-center justify-center text-white font-bold text-[10px]"
+                              style={{ background: getAvatarColor(msg.sender_id) }}
+                            >
+                              {getInitials(msg.sender_name || 'U')}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Bubble */}
+                      <div
+                        className={`max-w-[68%] min-w-[60px] relative ${
+                          isMe
+                            ? 'rounded-t-2xl rounded-bl-2xl rounded-br-sm'
+                            : 'rounded-t-2xl rounded-br-2xl rounded-bl-sm'
+                        }`}
+                        style={isMe
+                          ? { background: 'linear-gradient(135deg, #5b5ef4 0%, #4338ca 100%)' }
+                          : { background: '#1e2330', border: '1px solid rgba(255,255,255,0.06)' }
+                        }
+                      >
+                        {/* Sender name (channel view, others, first in group) */}
+                        {!isMe && !isConsecutive && activeChannel && (
+                          <p
+                            className="text-[11px] font-bold px-3 pt-2 pb-0"
+                            style={{ color: getAvatarColor(msg.sender_id) }}
+                          >
+                            {msg.sender_name || 'Unknown'}
+                          </p>
+                        )}
+
+                        {/* Message text + time inline */}
+                        <div className="px-3 pt-2 pb-2">
+                          <p
+                            className={`text-[14.5px] leading-relaxed break-words ${
+                              isMe ? 'text-white' : 'text-slate-200'
+                            }`}
+                          >
+                            {msg.content}
+                            {/* Invisible spacer so time never overlaps text */}
+                            <span className="inline-block w-14">&nbsp;</span>
+                          </p>
+                        </div>
+
+                        {/* Time – absolute bottom-right inside bubble */}
+                        <span
+                          className="absolute bottom-[6px] right-[10px] text-[10.5px] font-medium select-none pointer-events-none"
+                          style={{ color: isMe ? 'rgba(255,255,255,0.55)' : 'rgba(148,163,184,0.8)' }}
+                        >
+                          {formatTime(msg.timestamp)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+
           <div ref={messageEndRef} />
         </div>
 
-        {/* Input Area */}
-        <div className="p-4 pt-0">
-          <div className="border-2 border-slate-200 dark:border-white/10 rounded-xl bg-white dark:bg-[#222529] focus-within:border-slate-300 dark:focus-within:border-white/20 transition-all shadow-sm">
-            
-            <textarea
-              ref={textareaRef}
-              value={messageText}
-              onChange={(e) => setMessageText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendMessage();
-                }
-              }}
-              placeholder={`Message ${activeChannel ? `#${activeChannel.name}` : activeDMUser?.full_name || ''}`}
-              className="w-full bg-transparent border-none focus:ring-0 p-3 text-[15px] text-slate-700 dark:text-slate-200 resize-none min-h-[80px]"
-            />
-            <div className="flex items-center justify-between p-2">
-              <div className="flex items-center gap-0.5 relative">
-                <input 
-                  type="file" 
-                  ref={fileInputRef} 
-                  className="hidden" 
-                  onChange={(e) => {
-                    if(e.target.files && e.target.files.length > 0) {
-                      toast.success(`Attached file: ${e.target.files[0].name}`);
-                    }
-                  }} 
-                />
-                <button 
-                  onClick={() => fileInputRef.current?.click()}
-                  className="p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5 rounded"
-                  title="Attach file"
-                >
-                  <Plus size={18} />
-                </button>
-                <div className="w-[1px] h-4 bg-slate-200 dark:bg-white/10 mx-1" />
-                <button 
-                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                  className="p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5 rounded"
-                  title="Add emoji"
-                >
-                  <Smile size={18} />
-                </button>
-                
-                {showEmojiPicker && (
-                  <div className="absolute bottom-10 left-8 bg-white dark:bg-[#2a2d32] border border-slate-200 dark:border-white/10 shadow-lg rounded-lg p-2 flex gap-2 z-50">
-                    {['😀', '😂', '🔥', '👍', '🚀', '👀'].map(emoji => (
-                      <button 
-                        key={emoji}
-                        className="hover:bg-slate-100 dark:hover:bg-white/5 p-1 rounded text-xl"
-                        onClick={() => {
-                          setMessageText(prev => prev + emoji);
-                          setShowEmojiPicker(false);
-                          textareaRef.current?.focus();
-                        }}
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </div>
-                )}
+        {/* Input area */}
+        {(activeChannel || activeDMUser) && (
+          <div className="px-4 pb-4 pt-2 shrink-0">
+            <div
+              className="rounded-xl border transition-all shadow-lg"
+              style={{ background: '#1a1d24', borderColor: 'rgba(255,255,255,0.08)' }}
+            >
+              <textarea
+                ref={textareaRef}
+                value={messageText}
+                onChange={(e) => setMessageText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
+                placeholder={`Message ${activeChannel ? `#${activeChannel.name}` : activeDMUser?.full_name || ''}`}
+                className="w-full bg-transparent border-none focus:outline-none focus:ring-0 px-4 pt-3.5 pb-1 text-[14.5px] text-slate-200 placeholder-slate-600 resize-none min-h-[64px] max-h-[180px]"
+              />
 
-                <button 
-                  onClick={() => {
-                    setMessageText(prev => prev + '@');
-                    textareaRef.current?.focus();
-                  }}
-                  className="p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5 rounded"
-                  title="Mention someone"
+              <div className="flex items-center justify-between px-3 pb-2.5 pt-1">
+                <div className="flex items-center gap-0.5 relative">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files.length > 0) {
+                        toast.success(`Attached: ${e.target.files[0].name}`);
+                      }
+                    }}
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="p-1.5 text-slate-500 hover:text-slate-300 hover:bg-white/8 rounded-lg transition-colors cursor-pointer"
+                  >
+                    <Plus size={17} />
+                  </button>
+                  <button
+                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                    className="p-1.5 text-slate-500 hover:text-slate-300 hover:bg-white/8 rounded-lg transition-colors cursor-pointer"
+                  >
+                    <Smile size={17} />
+                  </button>
+                  <button
+                    onClick={() => { setMessageText((prev) => prev + '@'); textareaRef.current?.focus(); }}
+                    className="p-1.5 text-slate-500 hover:text-slate-300 hover:bg-white/8 rounded-lg transition-colors cursor-pointer"
+                  >
+                    <AtSign size={17} />
+                  </button>
+
+                  {showEmojiPicker && (
+                    <div
+                      className="absolute bottom-10 left-0 rounded-xl border shadow-xl p-2 flex gap-1 z-50"
+                      style={{ background: '#1e2028', borderColor: 'rgba(255,255,255,0.1)' }}
+                    >
+                      {['😀', '😂', '🔥', '👍', '🚀', '👀', '💯', '🎯'].map((emoji) => (
+                        <button
+                          key={emoji}
+                          className="p-1.5 hover:bg-white/8 rounded-lg text-xl transition-colors cursor-pointer"
+                          onClick={() => {
+                            setMessageText((prev) => prev + emoji);
+                            setShowEmojiPicker(false);
+                            textareaRef.current?.focus();
+                          }}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={handleSendMessage}
+                  disabled={!messageText.trim()}
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+                    messageText.trim()
+                      ? 'text-white hover:opacity-90'
+                      : 'text-slate-600 cursor-not-allowed'
+                  }`}
+                  style={messageText.trim() ? { background: 'linear-gradient(135deg,#6366f1,#4f46e5)' } : { background: 'rgba(255,255,255,0.05)' }}
                 >
-                  <AtSign size={18} />
+                  <Send size={15} />
+                  <span className="hidden sm:inline">Send</span>
                 </button>
               </div>
-              <button 
-                onClick={handleSendMessage}
-                className={`p-2 rounded transition-all ${
-                  messageText.trim() 
-                    ? 'bg-tv-primary text-white scale-100' 
-                    : 'bg-slate-200 dark:bg-white/5 text-slate-500 cursor-not-allowed scale-95'
-                }`}
-                disabled={!messageText.trim()}
-              >
-                <Send size={18} />
-              </button>
             </div>
+            <p className="text-[10px] text-slate-600 mt-1.5 px-1">
+              <kbd className="font-mono">Enter</kbd> to send · <kbd className="font-mono">Shift+Enter</kbd> for new line
+            </p>
           </div>
-        </div>
-      </div>
+        )}
+      </main>
     </div>
   );
 };

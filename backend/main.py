@@ -653,8 +653,7 @@ async def startup_event():
             await connect_to_database()
             logger.info("✅ Beta startup database check passed.")
         except Exception as e:
-            logger.critical(f"🛑 Beta startup aborted: database unavailable: {e}")
-            raise RuntimeError("Database unavailable for beta startup.") from e
+            logger.critical(f"🛑 Beta startup: database unavailable: {e}. App will retry on first request.")
     async_scheduler_enabled = not (app_env == "test" and "RUN_ASYNC_SCHEDULER" not in os.environ)
     if async_scheduler is None and async_scheduler_enabled:
         try:

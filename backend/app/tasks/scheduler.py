@@ -74,6 +74,18 @@ def setup_scheduler():
         id='chatbot_nav_sync',
         replace_existing=True,
     )
+
+    # Weekly Performance Ledger - run every Sunday at midnight UTC
+    from app.services.ledger_service import generate_and_send_weekly_ledgers
+    scheduler.add_job(
+        generate_and_send_weekly_ledgers,
+        'cron',
+        day_of_week='sun',
+        hour=0,
+        minute=0,
+        id='weekly_ledger_email',
+        replace_existing=True,
+    )
     
     # Optional startup sync (disabled by default to reduce startup DB pressure)
     if os.getenv("RUN_ASYNC_STARTUP_SYNC", "false").lower() in ("1", "true", "yes", "on"):

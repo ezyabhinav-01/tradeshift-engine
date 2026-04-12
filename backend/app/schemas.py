@@ -395,6 +395,7 @@ class MessageBase(BaseModel):
     content: str
     channel_id: Optional[int] = None
     recipient_id: Optional[int] = None
+    client_temp_id: Optional[int] = None
 
 class MessageCreate(MessageBase):
     pass
@@ -435,6 +436,7 @@ class NotificationBase(BaseModel):
     title: str
     content: str
     type: str = "info" # info, warning, success, error
+    category: str = "official" # official, personal
 
 class NotificationCreate(NotificationBase):
     user_id: Optional[int] = None # NULL means broadcast
@@ -442,7 +444,8 @@ class NotificationCreate(NotificationBase):
 class NotificationResponse(NotificationBase):
     id: int
     user_id: Optional[int] = None
-    is_read: bool
+    is_read: bool 
+    category: str
     created_at: datetime
     
     class Config:

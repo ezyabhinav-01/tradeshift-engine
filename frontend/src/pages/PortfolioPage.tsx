@@ -6,7 +6,7 @@ import {
 import {
   TrendingUp, TrendingDown, RefreshCw, Briefcase,
   PieChart as PieIcon, BarChart3, Brain, AlertTriangle,
-  Shield, Target, Zap, Clock, Award, ArrowUpRight, ArrowDownRight,
+  Shield, Target, Zap, Clock, Award, ArrowUpRight, ArrowDownRight, Trash2,
 } from 'lucide-react';
 
 import { useGameActions, useGameMarket, useGameTrades } from '../hooks/useGame';
@@ -28,7 +28,7 @@ type TabId = typeof TABS[number]['id'];
 // ─── Main Component ────────────────────────────────────────────
 export default function PortfolioPage() {
   const [activeTab, setActiveTab] = useState<TabId>('holdings');
-  const { closeAllPositions } = useGameActions();
+  const { closeAllPositions, cancelOrder } = useGameActions();
   const { currentPrice, balance: liveBalance, selectedSymbol, replayTicks } = useGameMarket();
   const { trades } = useGameTrades();
   const { user } = useAuth();
@@ -289,7 +289,7 @@ export default function PortfolioPage() {
         </div>
       </div>
 
-      <PendingOrdersTable pendingOrders={pendingBuyOrders} />
+      <PendingOrdersTable pendingOrders={pendingBuyOrders} onCancel={cancelOrder} />
 
       {/* ─── Detailed Tabs ─── */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabId)} className="w-full">
@@ -325,8 +325,14 @@ export default function PortfolioPage() {
   );
 }
 
-function PendingOrdersTable({ pendingOrders }: { pendingOrders: any[] }) {
+function PendingOrdersTable({ pendingOrders, onCancel }: { pendingOrders: any[], onCancel: (id: number | string) => Promise<void> }) {
   const totalBlocked = pendingOrders.reduce((sum, order) => sum + order.blockedValue, 0);
+
+  const handleCancel = async (id: number | string) => {
+    if (window.confirm("Are you sure you want to cancel this pending order? This will release the reserved funds.")) {
+      await onCancel(id);
+    }
+  };
 
   return (
     <div className="border border-amber-200/70 dark:border-amber-500/20 bg-white dark:bg-[#121212] rounded-md overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -348,12 +354,13 @@ function PendingOrdersTable({ pendingOrders }: { pendingOrders: any[] }) {
               <th className="px-6 py-4">Qty</th>
               <th className="px-6 py-4">Trigger / Limit</th>
               <th className="px-6 py-4">Blocked Value</th>
+              <th className="px-6 py-4 text-right">Action</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-white/5">
             {pendingOrders.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-6 py-10 text-center text-sm text-gray-400">
+                <td colSpan={5} className="px-6 py-10 text-center text-sm text-gray-400">
                   No pending buy orders are currently reserving funds.
                 </td>
               </tr>
@@ -366,6 +373,15 @@ function PendingOrdersTable({ pendingOrders }: { pendingOrders: any[] }) {
                 </td>
                 <td className="px-6 py-4 font-mono text-sm font-bold text-amber-600 dark:text-amber-400">
                   ₹{order.blockedValue.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                </td>
+                <td className="px-6 py-4 text-right">
+                  <button
+                    onClick={() => handleCancel(order.id)}
+                    className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all cursor-pointer"
+                    title="Cancel Order"
+                  >
+                    <Trash2 size={16} />
+                  </button>
                 </td>
               </tr>
             ))}

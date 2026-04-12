@@ -361,6 +361,12 @@ def get_schema_gaps(engine) -> list[str]:
     if "ix_users_demat_id" not in index_names:
         gaps.append("index:ix_users_demat_id")
 
+    # Check Notifications table
+    if "notifications" in inspector.get_table_names():
+        notif_cols = [c["name"] for c in inspector.get_columns("notifications")]
+        if "category" not in notif_cols:
+            gaps.append("notifications.category")
+
     return gaps
 
 
@@ -416,3 +422,11 @@ def sync_schema_hotpatch(engine):
         if "ix_users_demat_id" not in index_names:
             conn.execute(text("CREATE UNIQUE INDEX ix_users_demat_id ON users (demat_id) WHERE demat_id IS NOT NULL"))
             conn.commit()
+
+        # Patch notifications table
+        if "notifications" in inspector.get_table_names():
+            notif_cols = [c["name"] for c in inspector.get_columns("notifications")]
+            if "category" not in notif_cols:
+                logger.info("🛠️  Legacy hot-patching notifications.category")
+                conn.execute(text("ALTER TABLE notifications ADD COLUMN category VARCHAR(50) DEFAULT 'official'"))
+                conn.commit()

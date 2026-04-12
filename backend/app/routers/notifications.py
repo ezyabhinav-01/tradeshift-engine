@@ -72,6 +72,7 @@ async def get_user_notifications(
                 "content": n.content,
                 "type": n.type,
                 "is_read": n.is_read if n.user_id is not None else (n.id in read_broadcast_ids),
+                "category": n.category,
                 "created_at": n.created_at,
             }
             response.append(data)
@@ -124,6 +125,7 @@ async def mark_notification_read(
                 "title": notification.title,
                 "content": notification.content,
                 "type": notification.type,
+                "category": notification.category,
                 "is_read": True,
                 "created_at": notification.created_at,
             }
@@ -213,6 +215,7 @@ async def send_broadcast(
             title=request.title,
             content=request.content,
             type=request.type,
+            category='official',
             is_read=False,
             created_at=datetime.utcnow()
         )

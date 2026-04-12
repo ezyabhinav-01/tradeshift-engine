@@ -3,7 +3,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, and_, distinct
 from typing import List
 from datetime import datetime
+import asyncio
+import time
 from app.database import get_db
+from app.database import get_session
 from app.models import CommunityChannel, CommunityMessage, User
 from app.schemas import Channel, ChannelCreate, Message, MessageCreate, CommunityUser
 from app.routers.trading import _get_user_id
@@ -13,6 +16,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/community", tags=["community"])
+
+DEFAULT_COMMUNITY_CHANNELS = [
+    {"name": "general", "description": "General discussion for everyone."},
+    {"name": "news", "description": "Breaking market and macro news discussion."},
+    {"name": "trading-strategies", "description": "Share setups, entries, and strategy ideas."},
+    {"name": "module-discussion", "description": "Discuss course modules and learning content."},
+    {"name": "market-insights", "description": "Market trends, sentiment, and observations."},
+]
+_DEFAULT_CHANNEL_ORDER = {name: idx for idx, name in enumerate(ch["name"] for ch in DEFAULT_COMMUNITY_CHANNELS)}
 
 
 def _to_message(m: CommunityMessage, sender_name: str) -> dict:
@@ -28,11 +40,75 @@ def _to_message(m: CommunityMessage, sender_name: str) -> dict:
     }
 
 
+async def _ensure_default_channels(db: AsyncSession) -> None:
+    names_result = await db.execute(select(CommunityChannel.name))
+    existing_names = {name for (name,) in names_result.all()}
+    missing = [ch for ch in DEFAULT_COMMUNITY_CHANNELS if ch["name"] not in existing_names]
+    if not missing:
+        return
+    for channel in missing:
+        db.add(CommunityChannel(**channel))
+    await db.commit()
+    logger.info("✅ Added %s missing community channels.", len(missing))
+
+
+async def _persist_message_async(
+    sender_id: int,
+    content: str,
+    channel_id: int | None,
+    recipient_id: int | None,
+    timestamp: datetime,
+    client_temp_id: int,
+) -> None:
+    db = await get_session()
+    try:
+        db_msg = CommunityMessage(
+            sender_id=sender_id,
+            content=content,
+            channel_id=channel_id,
+            recipient_id=recipient_id,
+            timestamp=timestamp,
+        )
+        db.add(db_msg)
+        await db.commit()
+        await db.refresh(db_msg)
+
+        await order_manager.emit_to_user(
+            sender_id,
+            "community_message_status",
+            {
+                "client_temp_id": client_temp_id,
+                "saved": True,
+                "server_id": db_msg.id,
+                "timestamp": db_msg.timestamp.isoformat(),
+            },
+        )
+    except Exception as exc:
+        logger.exception("❌ Failed to persist community message asynchronously: %s", exc)
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+        await order_manager.emit_to_user(
+            sender_id,
+            "community_message_status",
+            {
+                "client_temp_id": client_temp_id,
+                "saved": False,
+                "error": "Could not save message",
+            },
+        )
+    finally:
+        await db.close()
+
+
 @router.get("/channels", response_model=List[Channel])
 async def get_channels(db: AsyncSession = Depends(get_db)):
     """List all community channels."""
+    await _ensure_default_channels(db)
     result = await db.execute(select(CommunityChannel))
-    return result.scalars().all()
+    channels = result.scalars().all()
+    return sorted(channels, key=lambda ch: _DEFAULT_CHANNEL_ORDER.get(ch.name, 999))
 
 
 @router.post("/channels", response_model=Channel)
@@ -71,7 +147,7 @@ async def send_message(
     request: Request,
     db: AsyncSession = Depends(get_db)
 ):
-    """Send a message to a channel or a specific user."""
+    """Emit instantly via websocket and persist asynchronously."""
     user_id = await _get_user_id(request, db)
 
     db_msg = CommunityMessage(
@@ -102,6 +178,17 @@ async def send_message(
     elif db_msg.recipient_id:
         asyncio.create_task(order_manager.emit_to_user(db_msg.recipient_id, "direct_message", ws_payload))
         asyncio.create_task(order_manager.emit_to_user(user_id, "direct_message", ws_payload))
+
+    asyncio.create_task(
+        _persist_message_async(
+            sender_id=user_id,
+            content=content,
+            channel_id=msg.channel_id,
+            recipient_id=msg.recipient_id,
+            timestamp=now,
+            client_temp_id=temp_id,
+        )
+    )
 
     return Message(**response_dict)
 

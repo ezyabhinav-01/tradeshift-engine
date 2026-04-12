@@ -585,8 +585,128 @@ async def send_personalized_welcome_email(email: str, first_name: str, demat_id:
       <li>[&#8226;] Get AI-powered market analysis and insights</li>
       <li>[&#8226;] Track your portfolio performance and trade history</li>
       <li>[&#8226;] Build your trading skills without any financial risk</li>
-    </ul>
     {_cta_button("Start Trading Now")}
     """
-    
     await _send(email, "Welcome to TradeShift — Your AI Trading Journey Starts!", _html_wrapper("Welcome", content))
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 10. WEEKLY PERFORMANCE LEDGER
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _ledger_table_row(date: str, symbol: str, direction: str, qty: int, entry: float, exit: float, pnl: float) -> str:
+    pnl_color = "#26A69A" if pnl >= 0 else "#EF5350"
+    entry_fmt = f"{entry:,.2f}"
+    exit_fmt = f"{exit:,.2f}"
+    pnl_fmt = f"{pnl:+,.2f}"
+    side_color = "#26A69A" if direction.upper() == "BUY" else "#EF5350"
+    
+    return f"""
+    <tr>
+      <td style="padding:12px 0; font-size:12px; border-bottom:1px solid rgba(255,255,255,0.05); color:{TEXT_LIGHT};">{date}</td>
+      <td style="padding:12px 0; font-size:12px; border-bottom:1px solid rgba(255,255,255,0.05); color:#fff; font-weight:600;">{symbol}</td>
+      <td style="padding:12px 0; font-size:12px; border-bottom:1px solid rgba(255,255,255,0.05); color:{side_color};">{direction.upper()}</td>
+      <td style="padding:12px 0; font-size:12px; border-bottom:1px solid rgba(255,255,255,0.05); color:#fff;">{qty}</td>
+      <td style="padding:12px 0; font-size:12px; border-bottom:1px solid rgba(255,255,255,0.05); color:#fff; text-align:right;">{entry_fmt}</td>
+      <td style="padding:12px 0; font-size:12px; border-bottom:1px solid rgba(255,255,255,0.05); color:#fff; text-align:right;">{exit_fmt}</td>
+      <td style="padding:12px 0; font-size:12px; border-bottom:1px solid rgba(255,255,255,0.05); color:{pnl_color}; font-weight:700; text-align:right;">{pnl_fmt}</td>
+    </tr>
+    """
+
+async def send_weekly_summary_email(
+    email: str,
+    name: str,
+    start_date: str,
+    end_date: str,
+    stats: dict,
+    trades: list[dict]
+):
+    """
+    Sends a professional weekly performance statement (Ledger style).
+    """
+    first = name.split()[0] if name else "Trader"
+    
+    total_pnl = stats.get('total_pnl', 0.0)
+    pnl_fmt = f"Rs {total_pnl:+,.2f}"
+    pnl_color = "#26A69A" if total_pnl >= 0 else "#EF5350"
+    
+    trade_count = str(stats.get('trade_count', 0))
+    win_rate_fmt = f"{stats.get('win_rate', 0.0):.1f}%"
+    
+    opening_bal_fmt = f"Rs {stats.get('opening_balance', 0.0):,.2f}"
+    closing_bal_fmt = f"Rs {stats.get('closing_balance', 0.0):,.2f}"
+    net_gain_fmt = f"Rs {total_pnl:+,.2f}"
+    
+    summary_html = """
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:32px;">
+      <tr>
+        <td style="padding:0 5px 0 0; width:33.3%;">
+          <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px; text-align:center;">
+            <p style="margin:0 0 4px; color:{{TEXT_LIGHT}}; font-size:10px; text-transform:uppercase; letter-spacing:1px;">Net PnL</p>
+            <span style="font-size:16px; font-weight:800; color:{{PNL_COLOR}};">{{PNL_FMT}}</span>
+          </div>
+        </td>
+        <td style="padding:0 5px; width:33.3%;">
+          <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px; text-align:center;">
+            <p style="margin:0 0 4px; color:{{TEXT_LIGHT}}; font-size:10px; text-transform:uppercase; letter-spacing:1px;">Trades</p>
+            <span style="font-size:16px; font-weight:800; color:#fff;">{{TRADE_COUNT}}</span>
+          </div>
+        </td>
+        <td style="padding:0 0 0 5px; width:33.3%;">
+          <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px; text-align:center;">
+            <p style="margin:0 0 4px; color:{{TEXT_LIGHT}}; font-size:10px; text-transform:uppercase; letter-spacing:1px;">Win Rate</p>
+            <span style="font-size:16px; font-weight:800; color:#fff;">{{WIN_RATE_FMT}}</span>
+          </div>
+        </td>
+      </tr>
+    </table>
+    """.replace("{{TEXT_LIGHT}}", TEXT_LIGHT).replace("{{PNL_COLOR}}", pnl_color).replace("{{PNL_FMT}}", pnl_fmt).replace("{{TRADE_COUNT}}", trade_count).replace("{{WIN_RATE_FMT}}", win_rate_fmt)
+    
+    table_rows = "".join([_ledger_table_row(t['date'], t['symbol'], t['direction'], t['qty'], t['entry'], t['exit'], t['pnl']) for t in trades])
+    
+    if not table_rows:
+        table_html = _text("No closed trades recorded for this period.", 14, TEXT_LIGHT)
+    else:
+        table_html = """
+        <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin-bottom:32px;">
+          <thead>
+            <tr>
+              <th style="padding:10px 0; text-align:left; color:{{TEXT_LIGHT}}; font-size:10px; text-transform:uppercase; border-bottom:2px solid rgba(255,255,255,0.08);">Date</th>
+              <th style="padding:10px 0; text-align:left; color:{{TEXT_LIGHT}}; font-size:10px; text-transform:uppercase; border-bottom:2px solid rgba(255,255,255,0.08);">Symbol</th>
+              <th style="padding:10px 0; text-align:left; color:{{TEXT_LIGHT}}; font-size:10px; text-transform:uppercase; border-bottom:2px solid rgba(255,255,255,0.08);">Side</th>
+              <th style="padding:10px 0; text-align:left; color:{{TEXT_LIGHT}}; font-size:10px; text-transform:uppercase; border-bottom:2px solid rgba(255,255,255,0.08);">Qty</th>
+              <th style="padding:10px 0; text-align:right; color:{{TEXT_LIGHT}}; font-size:10px; text-transform:uppercase; border-bottom:2px solid rgba(255,255,255,0.08);">Entry</th>
+              <th style="padding:10px 0; text-align:right; color:{{TEXT_LIGHT}}; font-size:10px; text-transform:uppercase; border-bottom:2px solid rgba(255,255,255,0.08);">Exit</th>
+              <th style="padding:10px 0; text-align:right; color:{{TEXT_LIGHT}}; font-size:10px; text-transform:uppercase; border-bottom:2px solid rgba(255,255,255,0.08);">PnL</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{TABLE_ROWS}}
+          </tbody>
+        </table>
+        """.replace("{{TEXT_LIGHT}}", TEXT_LIGHT).replace("{{TABLE_ROWS}}", table_rows)
+    
+    hi_text = _text(f"Hi {first}, here is your consolidated trading statement for the period <strong>{start_date}</strong> to <strong>{end_date}</strong>.")
+    reconcile_text = _text("This statement reflects all matched and closed orders across your simulation sessions. Use this data to refine your strategy and minimize emotional biases.", 13, TEXT_LIGHT)
+    
+    content_parts = [
+        _heading("Weekly Performance Ledger"),
+        hi_text,
+        summary_html,
+        _divider(),
+        '<p style="margin:0 0 16px; color:#fff; font-size:16px; font-weight:700;">Transaction History</p>',
+        table_html,
+        '<div style="background:rgba(41,98,255,0.05); border:1px solid rgba(41,98,255,0.1); border-radius:12px; padding:24px; margin:24px 0;">',
+        '  <p style="color:#fff; font-size:14px; font-weight:700; margin:0 0 16px; text-align:center;">Account Reconciliation</p>',
+        _info_table([
+            ("Opening Balance", opening_bal_fmt),
+            ("Closing Balance", closing_bal_fmt),
+            ("Net Week Gain/Loss", net_gain_fmt)
+        ]),
+        '</div>',
+        reconcile_text,
+        _cta_button("Review Performance Analytics")
+    ]
+    content = "\n".join(content_parts)
+    
+    subject = f"📊 Weekly Ledger: {net_gain_fmt} | TradeShift Statement"
+    await _send(email, subject, _html_wrapper("Weekly Statement", content))

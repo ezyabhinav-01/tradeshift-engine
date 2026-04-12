@@ -8,7 +8,8 @@ export interface Notification {
   user_id: number | null;
   title: string;
   content: string;
-  type: 'info' | 'warning' | 'success' | 'error';
+  type: 'info' | 'warning' | 'success' | 'error' | 'alert' | 'system';
+  category: string;
   is_read: boolean;
   created_at: string;
 }

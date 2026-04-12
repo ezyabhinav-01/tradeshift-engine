@@ -9,7 +9,7 @@ from app.models import UserSettings as UserSettingsModel, UserChartSettings as C
 from app.schemas import UserSettings, UserSettingsUpdate, ChartSettings, ChartSettingsUpdate, DrawingTemplateCreate, DrawingTemplateResponse, HelpRequestCreate, HelpRequestResponse
 from app.routers.trading import _get_user_id
 from app.services.risk_engine import risk_engine
-from app.config import conf, MAIL_USERNAME, MAIL_PASSWORD, MAIL_SERVER
+from app.config import conf, MAIL_USERNAME, MAIL_PASSWORD, MAIL_SERVER, MAIL_PORT
 
 logger = logging.getLogger(__name__)
 
@@ -181,7 +181,7 @@ async def delete_template(
     """Delete a drawing template."""
     user_id = await _get_user_id(request, db)
     result = await db.execute(select(TemplateModel).filter(TemplateModel.id == template_id, TemplateModel.user_id == user_id))
-    template = result.scalars().first()
+    template = result.   scalars().first()
     
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
@@ -201,8 +201,7 @@ def send_help_email(user_id: str, message: str):
     sender = MAIL_USERNAME
     password = MAIL_PASSWORD
     smtp_server = MAIL_SERVER
-    # SSL Port 465 was verified as working on current network
-    port = 465
+    port = MAIL_PORT
     
     if not sender or not password or "your-email" in sender:
         logger.error(f"Email credentials not configured correctly in .env. Current sender: {sender}")
@@ -222,11 +221,17 @@ def send_help_email(user_id: str, message: str):
     
     try:
         logger.info(f"Attempting to send email via {smtp_server}:{port} for user {user_id}...")
-        server = smtplib.SMTP_SSL(smtp_server, port, timeout=15)
+        # Handle Mailtrap/SendGrid using TLS vs old Gmail implicit SSL
+        if port == 465:
+            server = smtplib.SMTP_SSL(smtp_server, port, timeout=15)
+        else:
+            server = smtplib.SMTP(smtp_server, port, timeout=15)
+            server.starttls()
+            
         server.login(sender, password)
         server.send_message(msg)
         server.quit()
-        logger.info(f"Successfully sent help email for user {user_id} via SMTP_SSL (Port 465)")
+        logger.info(f"Successfully sent help email for user {user_id} via SMTP (Port {port})")
         print(f"✅ EMAIL SENT: Support request from {user_id} forwarded to mannat07kumar@gmail.com")
     except Exception as e:
         logger.error(f"Failed to send help email for user {user_id}: {str(e)}")

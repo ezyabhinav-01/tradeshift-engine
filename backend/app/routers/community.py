@@ -82,22 +82,26 @@ async def send_message(
         timestamp=datetime.utcnow()
     )
     db.add(db_msg)
+    
+    # Fast projection query for user info
+    sender_res = await db.execute(select(User.full_name, User.email).filter(User.id == user_id))
+    sender = sender_res.first()
+    sender_name = (sender[0] or sender[1]) if sender else "Unknown"
+
     await db.commit()
     await db.refresh(db_msg)
 
-    sender_res = await db.execute(select(User).filter(User.id == user_id))
-    sender = sender_res.scalars().one()
-    sender_name = sender.full_name or sender.email or "Unknown"
     response_dict = _to_message(db_msg, sender_name)
 
-    # Broadcast via WebSocket
+    # Broadcast via WebSocket synchronously in background so HTTP returns instantly
+    import asyncio
     ws_payload = {**response_dict, "timestamp": response_dict["timestamp"].isoformat()}
 
     if db_msg.channel_id:
-        await order_manager.emit_to_channel(db_msg.channel_id, "community_message", ws_payload)
+        asyncio.create_task(order_manager.emit_to_channel(db_msg.channel_id, "community_message", ws_payload))
     elif db_msg.recipient_id:
-        await order_manager.emit_to_user(db_msg.recipient_id, "direct_message", ws_payload)
-        await order_manager.emit_to_user(user_id, "direct_message", ws_payload)
+        asyncio.create_task(order_manager.emit_to_user(db_msg.recipient_id, "direct_message", ws_payload))
+        asyncio.create_task(order_manager.emit_to_user(user_id, "direct_message", ws_payload))
 
     return Message(**response_dict)
 

@@ -98,27 +98,6 @@ async def execute_trade(
             ws_payload["simulated_slippage_bps"] = result.get("simulated_slippage_bps")
             await order_manager.emit_to_user(user_id, "order_update", ws_payload)
 
-        # Send trade confirmation email in background
-        user_result = await db.execute(select(User).filter(User.id == user_id))
-        user = user_result.scalars().first()
-        if user and user.email:
-            executed_at_dt = trade.entry_time or datetime.utcnow()
-            executed_at = executed_at_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
-            background_tasks.add_task(
-                send_trade_confirmation_email,
-                user.email,
-                user.full_name or "Trader",
-                result["trade_id"],
-                trade_request.symbol,
-                trade_request.direction,
-                result.get("quantity", trade_request.quantity),
-                result.get("entry_price", 0.0),
-                trade_request.order_type,
-                executed_at,
-                trade_request.stop_loss,
-                trade_request.take_profit,
-                user.demat_id,
-            )
         
         notification_price = result.get('entry_price')
         if notification_price is None or notification_price == 0:
@@ -129,7 +108,8 @@ async def execute_trade(
             user_id=user_id,
             title="Order Executed",
             content=f"Filled {trade_request.direction} for {result.get('quantity', trade_request.quantity)}x {trade_request.symbol} at {notification_price}.",
-            type="success"
+            type="success",
+            category="personal"
         )
         db.add(notification)
         
@@ -227,27 +207,52 @@ async def modify_order(
 async def cancel_order(
     order_id: int,
     request: Request,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
     """
     Cancel a pending order (Async).
     """
-    user_id = await _get_user_id(request, db, request.query_params.get("session_type"))
-    success = await oms_service.cancel_order(db, order_id, user_id)
+    session_type = (request.query_params.get("session_type") or "REPLAY").upper()
+    user_id = await _get_user_id(request, db, session_type)
+    success = await oms_service.cancel_order(db, order_id, user_id, session_type=session_type)
     
     if not success:
         raise HTTPException(status_code=404, detail="Pending order not found or not owned by user")
-        
-    # Log User Event
-    await db.execute(
-        insert(UserEvent).values(
+
+    # Commit deletion first so ancillary analytics/notification failures
+    # can never rollback the actual order cancellation.
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    # Best-effort side effects only.
+    try:
+        notification = Notification(
             user_id=user_id,
-            event_name="trade_order_cancelled",
-            event_data={"order_id": order_id},
-            created_at=text("CURRENT_TIMESTAMP")
+            title="Order Cancelled",
+            content=f"Pending order #{order_id} has been cancelled.",
+            type="info",
+            category="personal"
         )
-    )
-    await db.commit()
+        db.add(notification)
+        await db.execute(
+            insert(UserEvent).values(
+                user_id=user_id,
+                event_name="trade_order_cancelled",
+                event_data={"order_id": order_id},
+                created_at=text("CURRENT_TIMESTAMP")
+            )
+        )
+        await db.commit()
+    except Exception as e:
+        await db.rollback()
+        logger.warning(f"Cancel order side-effects failed for user={user_id}, order_id={order_id}: {e}")
+    
+    # Portfolio snapshot runs in background — doesn't block response
+    background_tasks.add_task(portfolio_service.save_portfolio_snapshot, user_id, session_type)
         
     return {"message": "Order cancelled successfully", "order_id": order_id}
 
@@ -313,30 +318,6 @@ async def close_trade(
     ws_payload["simulated_slippage_bps"] = close_meta["simulated_slippage_bps"]
     await order_manager.emit_to_user(user_id, "order_update", ws_payload)
 
-    # Send trade closed email in background
-    user_result = await db.execute(select(User).filter(User.id == user_id))
-    user = user_result.scalars().first()
-    if user and user.email:
-        pnl = 0.0
-        if trade.entry_price and exit_price:
-            multiplier = 1 if trade.direction.upper() == "BUY" else -1
-            pnl = round((exit_price - trade.entry_price) * (trade.quantity or 1) * multiplier, 2)
-        closed_at_dt = trade.exit_time or datetime.utcnow()
-        closed_at = closed_at_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
-        background_tasks.add_task(
-            send_trade_closed_email,
-            user.email,
-            user.full_name or "Trader",
-            trade.id,
-            trade.symbol,
-            trade.direction,
-            trade.quantity or 1,
-            trade.entry_price or 0.0,
-            exit_price,
-            pnl,
-            closed_at,
-            user.demat_id,
-        )
     
     # Log User Event
     await db.execute(
@@ -436,36 +417,14 @@ async def close_all_trades(
         await order_manager.emit_to_user(user_id, "order_update", ws_payload)
         closed_ids.append(trade.id)
         
-        # Send trade closed email in background
-        if user and user.email:
-            exit_price = trade.exit_price or price_mapping.get(trade.symbol, trade.entry_price or 0.0)
-            pnl = 0.0
-            if trade.entry_price and exit_price:
-                multiplier = 1 if trade.direction.upper() == "BUY" else -1
-                pnl = round((exit_price - trade.entry_price) * (trade.quantity or 1) * multiplier, 2)
-            closed_at_dt = trade.exit_time or datetime.utcnow()
-            closed_at = closed_at_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
-            background_tasks.add_task(
-                send_trade_closed_email,
-                user.email,
-                user.full_name or "Trader",
-                trade.id,
-                trade.symbol,
-                trade.direction,
-                trade.quantity or 1,
-                trade.entry_price or 0.0,
-                exit_price,
-                pnl,
-                closed_at,
-                user.demat_id,
-            )
             
         # Add Notification
         notification = Notification(
             user_id=user_id,
             title="Position Closed",
             content=f"Closed {trade.direction} for {trade.quantity or 1}x {trade.symbol} at {trade.exit_price or price_mapping.get(trade.symbol)}.",
-            type="system"
+            type="system",
+            category="personal"
         )
         db.add(notification)
         
@@ -532,7 +491,8 @@ async def trigger_price_alert(
         user_id=user_id,
         title="Price Alert Triggered",
         content=f"{alert_request.symbol} alert triggered at {alert_request.current_price}",
-        type="alert"
+        type="alert",
+        category="personal"
     )
     db.add(notification)
 

@@ -298,7 +298,11 @@
 html, body {
   margin: 0;
   padding: 0;
-  /* ═══════════════════════════════════════════
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ═══════════════════════════════════════════
    SUBMODULE DETAIL PAGE - TYPOGRAPHY
    Standardizing to: Inter (Heading), Montserrat (Body)
    ═══════════════════════════════════════════ */
@@ -332,9 +336,6 @@ html, body {
   font-family: 'Montserrat', sans-serif !important;
   line-height: 1.8;
   font-weight: 500;
-}
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
 .cms-content p:last-child {

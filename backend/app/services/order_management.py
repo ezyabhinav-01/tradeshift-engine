@@ -274,23 +274,44 @@ class OrderManagementSystem:
             asyncio.create_task(portfolio_service.save_portfolio_snapshot(order.user_id, order.session_type))
         self.invalidate_pending_cache(order.symbol, order.session_type, order.user_id)
 
-    async def cancel_order(self, db: AsyncSession, order_id: int, user_id: int) -> bool:
-        """Cancel a pending order (Async)."""
-        result = await db.execute(
-            select(TradeLog).filter(
-                TradeLog.id == order_id,
-                TradeLog.user_id == user_id,
-                TradeLog.status == "PENDING"
-            )
+    async def cancel_order(
+        self,
+        db: AsyncSession,
+        order_id: int,
+        user_id: int,
+        session_type: Optional[str] = None,
+    ) -> bool:
+        """Cancel a pending order (Async). Does NOT commit — caller must commit."""
+        query = select(TradeLog).filter(
+            TradeLog.id == order_id,
+            TradeLog.user_id == user_id,
+            TradeLog.status == "PENDING"
         )
+        if session_type:
+            query = query.filter(TradeLog.session_type == session_type)
+
+        result = await db.execute(query)
         order = result.scalars().first()
 
         if not order:
             return False
 
+        # Set status to CANCELLED for the websocket payload
         order.status = "CANCELLED"
+        
+        # Instead of marking it cancelled, delete it so it removes the reserved funds
+        # and satisfies the expectation that it is deleted
+        await db.delete(order)
+        # Force SQL DELETE now so failures surface before response is prepared.
+        await db.flush()
         self.invalidate_pending_cache(order.symbol, order.session_type, order.user_id)
-        await db.commit()
+        
+        # Fire-and-forget WS notification (don't block HTTP response)
+        payload = TradeEngine.build_order_update_payload(order)
+        payload["message"] = f"Pending order #{order.id} for {order.symbol} has been cancelled."
+        if order.user_id:
+            asyncio.create_task(order_manager.emit_to_user(order.user_id, "order_update", payload))
+
         return True
 
     async def modify_order(self, db: AsyncSession, order_id: int, user_id: int, updates: dict) -> Optional[TradeLog]:

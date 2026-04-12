@@ -93,6 +93,7 @@ interface GameState {
   ) => Promise<void> | void;
   closeAllPositions: () => Promise<void>;
   modifyOrder: (orderId: number | string, updates: any) => Promise<void>;
+  cancelOrder: (orderId: number | string) => Promise<void>;
   resetSimulation: () => void;
   clearHistoryForReplay: () => void;
   askNewsQuestion: (newsId: string | number, question: string) => void;
@@ -100,7 +101,7 @@ interface GameState {
 
 export const GameContext = createContext<GameState | null>(null);
 const GamePlaybackContext = createContext<Pick<GameState, 'isPlaying' | 'speed' | 'selectedDate' | 'availableDates' | 'isReplayActive' | 'currentTime'> | null>(null);
-const GameActionContext = createContext<Pick<GameState, 'togglePlay' | 'toggleReplay' | 'setSpeed' | 'setDate' | 'setSymbol' | 'toggleTheme' | 'placeOrder' | 'modifyOrder' | 'closePosition' | 'closeAllPositions' | 'resetSimulation' | 'clearHistoryForReplay' | 'askNewsQuestion' | 'updateUserSettings'> | null>(null);
+const GameActionContext = createContext<Pick<GameState, 'togglePlay' | 'toggleReplay' | 'setSpeed' | 'setDate' | 'setSymbol' | 'toggleTheme' | 'placeOrder' | 'modifyOrder' | 'cancelOrder' | 'closePosition' | 'closeAllPositions' | 'resetSimulation' | 'clearHistoryForReplay' | 'askNewsQuestion' | 'updateUserSettings'> | null>(null);
 const GameMarketContext = createContext<Pick<GameState, 'currentPrice' | 'currentCandle' | 'historicalCandles' | 'replayTicks' | 'simulatedIndices' | 'selectedSymbol' | 'theme' | 'isLoadingHistory' | 'newsItems' | 'balance'> | null>(null);
 const GameTradeContext = createContext<Pick<GameState, 'trades' | 'userSettings' | 'sessionType'> | null>(null);
 
@@ -659,6 +660,22 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
       if (payload.type === 'order_update') {
         const order = payload.data;
         
+        // 🔥 Flash notification on screen for execution/exit
+        if (order.status === 'FILLED' || (order.status === 'OPEN' && order.triggered)) {
+          toast.success(`Trade Executed: ${order.direction} ${order.quantity}x ${order.symbol} @ ${order.entry_price}`, {
+            description: `Order ID: #${order.trade_id}`,
+            duration: 5000
+          });
+        } else if (order.status === 'CLOSED') {
+          const pnlColor = order.pnl >= 0 ? 'text-emerald-500' : 'text-red-500';
+          toast.info(`Trade Exited: ${order.symbol}`, {
+            description: `PnL: Rs ${order.pnl.toFixed(2)}`,
+            duration: 5000
+          });
+        } else if (order.status === 'CANCELLED') {
+          toast.error(`Order Cancelled: ${order.symbol} #${order.trade_id}`);
+        }
+
         // 🔥 Refresh user balance if trade was filled or closed
         if (order.status === 'FILLED' || order.status === 'CLOSED' || order.status === 'OPEN') {
            checkAuth();
@@ -937,9 +954,95 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
     }
   }, [currentTime, syncPortfolioNow]);
 
+  const cancelOrder = useCallback(async (orderId: string | number) => {
+    const targetId = String(orderId);
+    const portfolioBefore = usePortfolioStore.getState();
+    const prevActiveOrders = portfolioBefore.activeOrders || [];
+    const prevSummary = portfolioBefore.summary;
+    const nextActiveOrders = prevActiveOrders.filter((o: any) => {
+      const oid = String(o?.trade_id ?? o?.id ?? '');
+      return oid !== targetId;
+    });
+    const removedOrder = prevActiveOrders.find((o: any) => String(o?.trade_id ?? o?.id ?? '') === targetId);
+    const removedIsPendingPrimaryBuy =
+      removedOrder &&
+      String(removedOrder?.status || '').toUpperCase() === 'PENDING' &&
+      !removedOrder?.parent_trade_id &&
+      String(removedOrder?.direction || '').toUpperCase() === 'BUY';
+
+    let optimisticSummary = prevSummary;
+    if (removedIsPendingPrimaryBuy && prevSummary) {
+      const orderType = String(removedOrder?.order_type || '').toUpperCase();
+      const refPrice =
+        orderType === 'LIMIT' || orderType === 'GTT'
+          ? Number(removedOrder?.limit_price || 0)
+          : orderType === 'STOP'
+            ? Number(removedOrder?.stop_price || 0)
+            : Number(removedOrder?.entry_price || 0);
+      const released = Number(removedOrder?.quantity || 0) * refPrice;
+      const pendingBuyValue = Math.max(0, Number(prevSummary.pending_buy_value || 0) - released);
+      const pendingOrderCount = Math.max(0, Number(prevSummary.pending_order_count || 0) - 1);
+      const cashBalance = Number(prevSummary.cash_balance || 0);
+      optimisticSummary = {
+        ...prevSummary,
+        pending_order_count: pendingOrderCount,
+        pending_buy_value: pendingBuyValue,
+        effective_available_cash: Math.max(0, cashBalance - pendingBuyValue),
+      };
+    }
+
+    // Optimistic UI: remove instantly from pending orders table.
+    usePortfolioStore.setState({ activeOrders: nextActiveOrders, summary: optimisticSummary });
+    setTrades(prev => prev.filter(t => String(t.id) !== targetId));
+
+    try {
+      const response = await fetch(`/api/trade/order/${orderId}?session_type=REPLAY`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        let message = 'Failed to cancel order';
+        try {
+          const err = await response.json();
+          if (typeof err?.detail === 'string' && err.detail.trim()) {
+            message = err.detail;
+          } else if (typeof err?.message === 'string' && err.message.trim()) {
+            message = err.message;
+          }
+        } catch {
+          const raw = await response.text().catch(() => "");
+          if (raw?.trim()) {
+            message = raw.slice(0, 200);
+          }
+        }
+        throw new Error(message);
+      }
+
+      const result = await response.json();
+      toast.success(result.message || 'Order cancelled successfully');
+      
+      // Refresh in parallel — don't block each other
+      fetchActiveTrades();
+      syncPortfolioNow(true);
+    } catch (err: any) {
+      // Rollback optimistic removal if backend cancel failed.
+      usePortfolioStore.setState({ activeOrders: prevActiveOrders, summary: prevSummary });
+      console.error('Cancel Order Error:', err);
+      toast.error(err.message);
+    }
+  }, [fetchActiveTrades, syncPortfolioNow]);
+
   const closePosition = useCallback(async (tradeId: string | number, exitType: 'MARKET' | 'LIMIT' = 'MARKET', limitPrice?: number, simulatedTime?: string | Date) => {
     try {
       const activeTrade = trades.find(t => String(t.id) === String(tradeId));
+      
+      if (activeTrade && activeTrade.status === 'PENDING') {
+        // Exiting a pending order implies cancelling it
+        await cancelOrder(tradeId);
+        return;
+      }
+
       const tradeSymbol = activeTrade?.symbol;
       const symbolTickPrice = tradeSymbol ? replayTicks[tradeSymbol]?.close : undefined;
       const safeExitPrice = exitType === 'LIMIT'
@@ -972,7 +1075,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
       console.error('Close Position Error:', err);
       toast.error(err.message);
     }
-  }, [currentPrice, currentTime, fetchActiveTrades, replayTicks, selectedSymbol, syncPortfolioNow, trades]);
+  }, [currentPrice, currentTime, fetchActiveTrades, replayTicks, selectedSymbol, syncPortfolioNow, trades, cancelOrder]);
 
   const closeAllPositions = useCallback(async () => {
     try {
@@ -1030,14 +1133,14 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
     sessionType,
     userSettings,
     togglePlay, toggleTheme, setSpeed, setSymbol, setDate,
-    placeOrder, modifyOrder, closePosition, closeAllPositions, resetSimulation, toggleReplay, clearHistoryForReplay, askNewsQuestion, updateUserSettings
+    placeOrder, modifyOrder, cancelOrder, closePosition, closeAllPositions, resetSimulation, toggleReplay, clearHistoryForReplay, askNewsQuestion, updateUserSettings
   }), [
     isPlaying, speed, balance, currentPrice, currentCandle, currentTime,
     historicalCandles, replayTicks, trades, newsItems, simulatedIndices, theme, selectedSymbol, selectedDate, availableDates, sessionLockedDate, isLoadingHistory, isReplayActive,
     sessionType,
     userSettings,
     togglePlay, toggleTheme, setSpeed, setSymbol, setDate,
-    placeOrder, modifyOrder, closePosition, closeAllPositions, resetSimulation, toggleReplay, clearHistoryForReplay, askNewsQuestion, updateUserSettings
+    placeOrder, modifyOrder, cancelOrder, closePosition, closeAllPositions, resetSimulation, toggleReplay, clearHistoryForReplay, askNewsQuestion, updateUserSettings
   ]);
 
   const playbackValue = React.useMemo(() => ({
@@ -1058,13 +1161,14 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
     toggleTheme,
     placeOrder,
     modifyOrder,
+    cancelOrder,
     closePosition,
     closeAllPositions,
     resetSimulation,
     clearHistoryForReplay,
     askNewsQuestion,
     updateUserSettings,
-  }), [togglePlay, toggleReplay, setSpeed, setDate, setSymbol, toggleTheme, placeOrder, modifyOrder, closePosition, closeAllPositions, resetSimulation, clearHistoryForReplay, askNewsQuestion, updateUserSettings]);
+  }), [togglePlay, toggleReplay, setSpeed, setDate, setSymbol, toggleTheme, placeOrder, modifyOrder, cancelOrder, closePosition, closeAllPositions, resetSimulation, clearHistoryForReplay, askNewsQuestion, updateUserSettings]);
 
   const marketValue = React.useMemo(() => ({
     currentPrice,

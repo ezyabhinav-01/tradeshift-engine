@@ -182,16 +182,30 @@ export default function SubModuleDetailPage() {
     if (!scrollRef || !scrollRef.current) return;
 
     const wrapper = scrollRef.current;
+    
+    // Use the actual container content as the content source for Lenis
     const contentEl = wrapper.firstElementChild as HTMLElement | null;
+    
     const lenis = new Lenis({
-      wrapper, // Target the scrollable div from Layout
+      wrapper, 
       content: contentEl || wrapper,
       duration: 1.2,
       easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
       orientation: 'vertical',
       gestureOrientation: 'vertical',
       smoothWheel: true,
+      wheelMultiplier: 1.1, // Slight boost for that "premium" glide
+      touchMultiplier: 1.5, // Natural touch responsiveness
     });
+
+    // 📏 ResizeObserver to handle dynamic content height changes (CMS loading, etc)
+    const resizeObserver = new ResizeObserver(() => {
+      lenis.resize();
+    });
+    
+    if (contentEl) {
+      resizeObserver.observe(contentEl);
+    }
 
     let rafId = 0;
     function raf(time: number) {
@@ -201,18 +215,22 @@ export default function SubModuleDetailPage() {
 
     rafId = requestAnimationFrame(raf);
 
-    // Global Lenis interaction fixes
     const handleScroll = () => {
-      // Sync Lenis with any other systems if needed
+      // Any scroll-synced logic can go here
     };
     lenis.on('scroll', handleScroll);
+
+    // Global interaction fixes - ensure smooth experience
+    window.addEventListener('resize', () => lenis.resize());
 
     return () => {
       if (rafId) cancelAnimationFrame(rafId);
       lenis.off('scroll', handleScroll);
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', () => lenis.resize());
       lenis.destroy();
     };
-  }, [scrollRef]);
+  }, [scrollRef, loading, data]); // Re-run when layout/data changes to ensure fresh measurements
 
   useEffect(() => {
     if (!user) {

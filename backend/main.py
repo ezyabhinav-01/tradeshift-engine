@@ -701,24 +701,29 @@ async def shutdown_event():
         pass
 
 async def seed_community_channels():
-    """Create default community channels if they don't exist."""
+    """Ensure default community channels exist."""
     from app.database import get_session
     from app.models import CommunityChannel
     from sqlalchemy import select
-    
+
+    defaults = [
+        {"name": "general", "description": "General discussion for everyone."},
+        {"name": "news", "description": "Breaking market and macro news discussion."},
+        {"name": "trading-strategies", "description": "Share setups, entries, and strategy ideas."},
+        {"name": "module-discussion", "description": "Discuss course modules and learning content."},
+        {"name": "market-insights", "description": "Market trends, sentiment, and observations."},
+    ]
+
     async with await get_session() as db:
-        result = await db.execute(select(CommunityChannel))
-        if not result.scalars().first():
-            logger.info("🌱 Seeding default community channels...")
-            channels = [
-                {"name": "general", "description": "General discussion for everyone."},
-                {"name": "trading-signals", "description": "Share and discuss trading signals."},
-                {"name": "announcements", "description": "Important updates and announcements."}
-            ]
-            for ch_data in channels:
+        result = await db.execute(select(CommunityChannel.name))
+        existing = {name for (name,) in result.all()}
+        missing = [channel for channel in defaults if channel["name"] not in existing]
+        if missing:
+            logger.info("🌱 Ensuring default community channels...")
+            for ch_data in missing:
                 db.add(CommunityChannel(**ch_data))
             await db.commit()
-            logger.info("✅ Default channels seeded.")
+            logger.info("✅ Added %s missing default channels.", len(missing))
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):

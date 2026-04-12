@@ -453,6 +453,7 @@ class Notification(Base):
     title = Column(String(255), nullable=False)
     content = Column(Text, nullable=False)
     type = Column(String(50), default="info") # info, warning, success, error
+    category = Column(String(50), default="official") # official, personal
     
     is_read = Column(Boolean, default=False)
 

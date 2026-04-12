@@ -11,6 +11,7 @@ export interface Notification {
     title: string;
     content: string;
     type: string;
+    category: string;
     is_read: boolean;
     created_at: string;
 }

@@ -39,6 +39,8 @@ interface Message {
   timestamp: string;
   channel_id?: number;
   recipient_id?: number;
+  client_temp_id?: number;
+  delivery_status?: 'sending' | 'sent' | 'failed';
 }
 
 interface CommunityUser {
@@ -94,12 +96,11 @@ const getAvatarColor = (id: number) => AVATAR_COLORS[id % AVATAR_COLORS.length];
 const LoginPromptModal = () => {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)' }}
     >
       <div
-        className="w-full max-w-sm mx-4 rounded-2xl shadow-2xl border border-white/10 overflow-hidden"
-        style={{ background: 'linear-gradient(135deg, #1e2128 0%, #16181d 100%)' }}
+        className="w-full max-w-sm rounded-[2rem] shadow-2xl border border-slate-200 dark:border-white/10 overflow-hidden bg-white dark:bg-[#1e2128]"
       >
         {/* Icon */}
         <div className="flex flex-col items-center px-8 pt-10 pb-6 text-center">
@@ -119,14 +120,13 @@ const LoginPromptModal = () => {
         <div className="px-8 pb-8 flex flex-col gap-3">
           <a
             href="/login"
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white transition-all hover:opacity-90"
-            style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white transition-all hover:opacity-90 bg-gradient-to-tr from-indigo-500 to-indigo-600 shadow-xl shadow-indigo-500/20"
           >
             Log In to Continue
           </a>
           <a
             href="/register"
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-slate-300 border border-white/10 hover:border-indigo-500/40 hover:text-indigo-400 transition-all"
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-white/10 hover:border-indigo-500/40 hover:text-indigo-500 transition-all"
           >
             Create an Account
           </a>
@@ -166,27 +166,26 @@ const NewDMModal = ({ onClose, onConfirm }: NewDMModalProps) => {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)' }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)' }}
     >
       <div
-        className="w-full max-w-md mx-4 rounded-2xl shadow-2xl border border-white/10 overflow-hidden"
-        style={{ background: 'linear-gradient(135deg, #1e2128 0%, #16181d 100%)' }}
+        className="w-full max-w-md rounded-[2rem] shadow-2xl border border-slate-200 dark:border-white/10 overflow-hidden bg-white dark:bg-[#1e2128]"
       >
         {/* Modal header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/8">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-white/10">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'rgba(99,102,241,0.15)' }}>
-              <MessageSquare size={18} className="text-indigo-400" />
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-indigo-500/10">
+              <MessageSquare size={18} className="text-indigo-500" />
             </div>
             <div>
-              <h3 className="font-bold text-white text-sm">New Direct Message</h3>
-              <p className="text-xs text-slate-400">Enter recipient's Email or Demat ID</p>
+              <h3 className="font-bold text-slate-900 dark:text-white text-sm">New Direct Message</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Enter recipient's Email or Demat ID</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/8 transition-colors cursor-pointer"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
           >
             <X size={16} />
           </button>
@@ -201,49 +200,47 @@ const NewDMModal = ({ onClose, onConfirm }: NewDMModalProps) => {
               onChange={(e) => { setQuery(e.target.value); setError(''); setFound(null); }}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
               placeholder="user@gmail.com or DEMAT123456"
-              className="flex-1 bg-white/6 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/30 transition-all"
+              className="flex-1 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
               autoFocus
             />
             <button
               onClick={handleSearch}
               disabled={loading || !query.trim()}
-              className="px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}
+              className="px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed bg-indigo-600 text-white hover:bg-indigo-700"
             >
-              {loading ? <Loader2 size={16} className="animate-spin text-white" /> : <Search size={16} className="text-white" />}
-              <span className="text-white">Find</span>
+              {loading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+              <span>Find</span>
             </button>
           </div>
 
           {/* Error state */}
           {error && (
-            <div className="flex items-center gap-2.5 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20">
-              <AlertCircle size={15} className="text-red-400 shrink-0" />
-              <p className="text-sm text-red-300">{error}</p>
+            <div className="flex items-center gap-2.5 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20">
+              <AlertCircle size={15} className="text-red-500 shrink-0" />
+              <p className="text-sm text-red-600 dark:text-red-300">{error}</p>
             </div>
           )}
 
           {/* Found user */}
           {found && (
-            <div className="rounded-xl border border-indigo-500/25 overflow-hidden" style={{ background: 'rgba(99,102,241,0.06)' }}>
+            <div className="rounded-xl border border-indigo-500/20 overflow-hidden bg-indigo-500/5">
               <div className="flex items-center gap-4 px-4 py-3.5">
                 <div
-                  className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm shrink-0"
+                  className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm shrink-0 shadow-lg shadow-indigo-500/10"
                   style={{ background: getAvatarColor(found.id) }}
                 >
                   {getInitials(found.full_name)}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-white text-sm truncate">{found.full_name}</p>
-                  <p className="text-xs text-slate-400 truncate">{found.email}</p>
+                  <p className="font-bold text-slate-900 dark:text-white text-sm truncate">{found.full_name}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{found.email}</p>
                 </div>
-                <div className={`w-2 h-2 rounded-full shrink-0 ${found.is_online ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+                <div className={`w-2 h-2 rounded-full shrink-0 ${found.is_online ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`} />
               </div>
-              <div className="border-t border-indigo-500/20 px-4 py-3 flex justify-end">
+              <div className="border-t border-indigo-500/10 px-4 py-3 flex justify-end">
                 <button
                   onClick={() => onConfirm(found)}
-                  className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold text-white cursor-pointer transition-all hover:opacity-90"
-                  style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}
+                  className="flex items-center gap-2 px-6 py-2 rounded-xl text-sm font-bold text-white cursor-pointer transition-all hover:bg-indigo-700 bg-indigo-600 shadow-xl shadow-indigo-500/20"
                 >
                   <UserCheck size={15} />
                   Open Chat
@@ -260,7 +257,7 @@ const NewDMModal = ({ onClose, onConfirm }: NewDMModalProps) => {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 const CommunityPage = () => {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
 
   const [channels, setChannels] = useState<Channel[]>([]);
   const [activeChannel, setActiveChannel] = useState<Channel | null>(null);
@@ -374,8 +371,21 @@ const CommunityPage = () => {
       socket.onmessage = (event) => {
         if (!isAlive) return;
         const payload = JSON.parse(event.data);
+        if (payload.type === 'community_message_status') {
+          const status = payload.data as { client_temp_id: number; saved: boolean; server_id?: number };
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.id !== status.client_temp_id) return m;
+              if (status.saved && status.server_id) {
+                return { ...m, id: status.server_id, delivery_status: 'sent' };
+              }
+              return { ...m, delivery_status: 'failed' };
+            })
+          );
+          return;
+        }
         if (payload.type === 'community_message' || payload.type === 'direct_message') {
-          const msg: Message = payload.data;
+          const msg: Message = { ...payload.data, delivery_status: 'sent' };
           const curChannel = activeChannelRef.current;
           const curDM = activeDMUserRef.current;
 
@@ -417,15 +427,33 @@ const CommunityPage = () => {
   const handleSendMessage = async () => {
     if (!messageText.trim() || !user) return;
 
+    const content = messageText.trim();
+    const clientTempId = -Date.now() - Math.floor(Math.random() * 1000);
     const payload: any = { content: messageText.trim() };
     if (activeChannel) payload.channel_id = activeChannel.id;
     else if (activeDMUser) payload.recipient_id = activeDMUser.id;
     else return;
+    payload.client_temp_id = clientTempId;
+
+    appendMessage({
+      id: clientTempId,
+      client_temp_id: clientTempId,
+      content,
+      sender_id: user.id,
+      sender_name: user.full_name || user.email,
+      timestamp: new Date().toISOString(),
+      channel_id: activeChannel?.id,
+      recipient_id: activeDMUser?.id,
+      delivery_status: 'sending',
+    });
 
     setMessageText('');
     try {
       await axios.post('/api/community/messages', payload);
     } catch {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === clientTempId ? { ...m, delivery_status: 'failed' } : m))
+      );
       toast.error('Failed to send message');
     }
   };
@@ -451,10 +479,18 @@ const CommunityPage = () => {
     else grouped.push({ label, items: [msg] });
   }
 
+  if (authLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-background min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+      </div>
+    );
+  }
+
   return (
-    <div className="flex h-[calc(100vh-56px)] overflow-hidden" style={{ background: '#0f1117' }}>
+    <div className="flex h-[calc(100vh-56px)] overflow-hidden bg-background">
       {/* Show login gate for unauthenticated users */}
-      {!user && <LoginPromptModal />}
+      {!authLoading && !user && <LoginPromptModal />}
 
       {showNewDM && user && (
         <NewDMModal
@@ -465,23 +501,20 @@ const CommunityPage = () => {
 
       {/* ── Sidebar ─────────────────────────────────────────────────────────── */}
       <aside
-        className="w-[260px] flex flex-col shrink-0 border-r"
-        style={{ background: '#13151a', borderColor: 'rgba(255,255,255,0.06)' }}
+        className="w-[260px] flex flex-col shrink-0 border-r border-slate-200 dark:border-white/5 bg-slate-50 dark:bg-[#0a0a0a]"
       >
         {/* Workspace header */}
         <div
-          className="h-13 flex items-center justify-between px-4 py-3 border-b cursor-pointer group"
-          style={{ borderColor: 'rgba(255,255,255,0.06)' }}
+          className="h-13 flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-white/5 cursor-pointer group"
         >
           <div className="flex items-center gap-2.5">
             <div
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-white font-black text-xs"
-              style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)' }}
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-white font-black text-xs bg-gradient-to-tr from-indigo-500 to-indigo-600"
             >
               TS
             </div>
-            <span className="text-white font-bold text-sm flex items-center gap-1">
-              Tradeshift <ChevronDown size={13} className="text-slate-500" />
+            <span className="text-slate-900 dark:text-white font-bold text-sm flex items-center gap-1">
+              Tradeshift <ChevronDown size={13} className="text-slate-400 dark:text-slate-500" />
             </span>
           </div>
           <Settings size={15} className="text-slate-500 group-hover:text-slate-300 transition-colors cursor-pointer" />
@@ -512,12 +545,11 @@ const CommunityPage = () => {
                       setActiveDMUser(null);
                       setChannels((prev) => prev.map((c) => (c.id === ch.id ? { ...c, unread: 0 } : c)));
                     }}
-                    className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-left transition-all cursor-pointer text-sm font-medium group/ch ${
+                    className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-left transition-all cursor-pointer text-sm font-black group/ch ${
                       activeChannel?.id === ch.id
-                        ? 'text-white'
-                        : 'text-slate-400 hover:text-white hover:bg-white/5'
+                        ? 'text-white bg-indigo-500 shadow-lg shadow-indigo-500/20'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-indigo-500 dark:hover:text-white hover:bg-white/5'
                     }`}
-                    style={activeChannel?.id === ch.id ? { background: 'rgba(99,102,241,0.18)' } : {}}
                   >
                     <Hash size={15} className={activeChannel?.id === ch.id ? 'text-indigo-400' : 'text-slate-500 group-hover/ch:text-slate-300'} />
                     <span className="flex-1 truncate">{ch.name}</span>
@@ -549,8 +581,7 @@ const CommunityPage = () => {
               {dmHistory.length === 0 ? (
                 <button
                   onClick={() => setShowNewDM(true)}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg border border-dashed text-sm text-slate-500 hover:text-indigo-400 hover:border-indigo-500/40 transition-all cursor-pointer"
-                  style={{ borderColor: 'rgba(255,255,255,0.08)' }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg border border-dashed border-slate-200 dark:border-white/10 text-sm text-slate-500 hover:text-indigo-500 hover:border-indigo-500/40 transition-all cursor-pointer"
                 >
                   <Plus size={14} />
                   <span>New message</span>
@@ -561,19 +592,20 @@ const CommunityPage = () => {
                     <button
                       key={u.id}
                       onClick={() => openDM(u)}
-                      className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-left transition-all cursor-pointer text-sm font-medium ${
-                        activeDMUser?.id === u.id ? 'text-white' : 'text-slate-400 hover:text-white hover:bg-white/5'
+                      className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-left transition-all cursor-pointer text-sm font-black ${
+                        activeDMUser?.id === u.id 
+                          ? 'text-white bg-indigo-500 shadow-lg shadow-indigo-500/20' 
+                          : 'text-slate-500 dark:text-slate-400 hover:text-indigo-500 dark:hover:text-white hover:bg-white/5'
                       }`}
-                      style={activeDMUser?.id === u.id ? { background: 'rgba(99,102,241,0.18)' } : {}}
                     >
                       <div className="relative shrink-0">
                         <div
-                          className="w-6 h-6 rounded-md flex items-center justify-center text-white font-bold text-[10px]"
+                          className="w-6 h-6 rounded-md flex items-center justify-center text-white font-black text-[10px] shadow-sm"
                           style={{ background: getAvatarColor(u.id) }}
                         >
                           {getInitials(u.full_name)}
                         </div>
-                        <div className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-[#13151a] ${u.is_online ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+                        <div className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-slate-50 dark:border-[#13151a] ${u.is_online ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`} />
                       </div>
                       <span className="flex-1 truncate">{u.full_name}</span>
                     </button>
@@ -592,20 +624,19 @@ const CommunityPage = () => {
         </div>
 
         {/* Bottom profile */}
-        <div className="p-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+        <div className="p-3 border-t border-slate-200 dark:border-white/5">
           <div
             className="flex items-center gap-2.5 p-2 rounded-xl cursor-pointer transition-colors hover:bg-white/5"
           >
             <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-xs relative shrink-0"
-              style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)' }}
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-black text-xs relative shrink-0 bg-gradient-to-tr from-indigo-500 to-indigo-600 shadow-lg shadow-indigo-500/10"
             >
               {user?.full_name ? getInitials(user.full_name) : 'U'}
-              <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 border-2 border-[#13151a] rounded-full" />
+              <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 border-2 border-slate-50 dark:border-[#13151a] rounded-full" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-bold text-white truncate">{user?.full_name || 'You'}</p>
-              <p className="text-[10px] text-emerald-400">Online</p>
+              <p className="text-xs font-black text-slate-900 dark:text-white truncate">{user?.full_name || 'You'}</p>
+              <p className="text-[10px] text-emerald-500 font-bold uppercase tracking-tight">Online</p>
             </div>
             <Settings size={14} className="text-slate-500 hover:text-slate-300 transition-colors cursor-pointer shrink-0" />
           </div>
@@ -613,18 +644,17 @@ const CommunityPage = () => {
       </aside>
 
       {/* ── Main Chat Area ───────────────────────────────────────────────────── */}
-      <main className="flex-1 flex flex-col min-w-0" style={{ background: '#0f1117' }}>
+      <main className="flex-1 flex flex-col min-w-0 bg-white dark:bg-[#0f1117]">
         {/* Chat header */}
         <div
-          className="h-13 flex items-center justify-between px-5 py-3 border-b shrink-0"
-          style={{ borderColor: 'rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}
+          className="h-13 flex items-center justify-between px-5 py-3 border-b shrink-0 border-slate-200 dark:border-white/5 bg-white/50 dark:bg-white/2"
         >
           <div className="flex items-center gap-3 min-w-0">
             {activeChannel ? (
               <>
-                <Hash size={18} className="text-indigo-400 shrink-0" />
+                <Hash size={18} className="text-indigo-500 dark:text-indigo-400 shrink-0" />
                 <div className="overflow-hidden">
-                  <h2 className="font-bold text-white text-sm truncate">{activeChannel.name}</h2>
+                  <h2 className="font-black text-slate-900 dark:text-white text-sm truncate">{activeChannel.name}</h2>
                   <p className="text-xs text-slate-500 hidden sm:block truncate">
                     {activeChannel.description || 'Community Channel'}
                   </p>
@@ -634,15 +664,15 @@ const CommunityPage = () => {
               <>
                 <div className="relative shrink-0">
                   <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-xs"
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-black text-xs shadow-md"
                     style={{ background: getAvatarColor(activeDMUser.id) }}
                   >
                     {getInitials(activeDMUser.full_name)}
                   </div>
-                  <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#0f1117] ${activeDMUser.is_online ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+                  <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-[#0f1117] ${activeDMUser.is_online ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`} />
                 </div>
                 <div className="overflow-hidden">
-                  <h2 className="font-bold text-white text-sm truncate">{activeDMUser.full_name}</h2>
+                  <h2 className="font-black text-slate-900 dark:text-white text-sm truncate">{activeDMUser.full_name}</h2>
                   <p className="text-xs text-slate-500 truncate">{activeDMUser.is_online ? 'Online' : 'Offline'}</p>
                 </div>
               </>
@@ -674,9 +704,9 @@ const CommunityPage = () => {
               >
                 {activeChannel
                   ? <Hash size={28} className="text-indigo-400" />
-                  : <AtSign size={28} className="text-indigo-400" />}
+                  : <AtSign size={28} className="text-indigo-500 dark:text-indigo-400" />}
               </div>
-              <h1 className="text-2xl font-black text-white mb-1">
+              <h1 className="text-2xl font-black text-slate-900 dark:text-white mb-1">
                 {activeChannel ? `#${activeChannel.name}` : activeDMUser?.full_name}
               </h1>
               <p className="text-slate-400 text-sm max-w-lg">
@@ -691,10 +721,9 @@ const CommunityPage = () => {
           {!activeChannel && !activeDMUser && (
             <div className="flex-1 flex flex-col items-center justify-center pt-24 text-center">
               <div
-                className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
-                style={{ background: 'rgba(99,102,241,0.1)' }}
+                className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4 bg-indigo-500/10"
               >
-                <Hash size={30} className="text-indigo-400" />
+                <Hash size={30} className="text-indigo-500 dark:text-indigo-400" />
               </div>
               <p className="text-slate-400 font-semibold">Pick a channel or start a direct message</p>
               <p className="text-slate-600 text-sm mt-1">Your conversations will appear here</p>
@@ -713,14 +742,13 @@ const CommunityPage = () => {
             <div key={label}>
               {/* Date divider */}
               <div className="flex items-center gap-3 my-5">
-                <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
+                <div className="flex-1 h-px bg-slate-100 dark:bg-white/5" />
                 <span
-                  className="text-[11px] font-semibold text-slate-400 px-3 py-1 rounded-full"
-                  style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.08)' }}
+                  className="text-[11px] font-black text-slate-500 dark:text-slate-400 px-3 py-1 rounded-full bg-slate-100 dark:bg-white/7 border border-slate-200 dark:border-white/8 uppercase tracking-widest"
                 >
                   {label}
                 </span>
-                <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
+                <div className="flex-1 h-px bg-slate-100 dark:bg-white/5" />
               </div>
 
               <div className="flex flex-col gap-[3px]">
@@ -754,14 +782,14 @@ const CommunityPage = () => {
 
                       {/* Bubble */}
                       <div
-                        className={`max-w-[68%] min-w-[60px] relative ${
+                        className={`max-w-[85%] md:max-w-[70%] min-w-[60px] relative shadow-sm ${
                           isMe
                             ? 'rounded-t-2xl rounded-bl-2xl rounded-br-sm'
-                            : 'rounded-t-2xl rounded-br-2xl rounded-bl-sm'
+                            : 'rounded-t-2xl rounded-br-2xl rounded-bl-sm bubble-others'
                         }`}
                         style={isMe
-                          ? { background: 'linear-gradient(135deg, #5b5ef4 0%, #4338ca 100%)' }
-                          : { background: '#1e2330', border: '1px solid rgba(255,255,255,0.06)' }
+                          ? { background: 'linear-gradient(135deg, #6366f1 0%, #4338ca 100%)' }
+                          : {}
                         }
                       >
                         {/* Sender name (channel view, others, first in group) */}
@@ -777,8 +805,8 @@ const CommunityPage = () => {
                         {/* Message text + time inline */}
                         <div className="px-3 pt-2 pb-2">
                           <p
-                            className={`text-[14.5px] leading-relaxed break-words ${
-                              isMe ? 'text-white' : 'text-slate-200'
+                            className={`text-[14.5px] leading-relaxed break-words font-medium ${
+                              isMe ? 'text-white' : 'text-slate-800 dark:text-slate-200'
                             }`}
                           >
                             {msg.content}
@@ -793,6 +821,8 @@ const CommunityPage = () => {
                           style={{ color: isMe ? 'rgba(255,255,255,0.55)' : 'rgba(148,163,184,0.8)' }}
                         >
                           {formatTime(msg.timestamp)}
+                          {isMe && msg.delivery_status === 'sending' ? ' • Sending' : ''}
+                          {isMe && msg.delivery_status === 'failed' ? ' • Failed' : ''}
                         </span>
                       </div>
                     </div>
@@ -809,8 +839,7 @@ const CommunityPage = () => {
         {(activeChannel || activeDMUser) && (
           <div className="px-4 pb-4 pt-2 shrink-0">
             <div
-              className="rounded-xl border transition-all shadow-lg"
-              style={{ background: '#1a1d24', borderColor: 'rgba(255,255,255,0.08)' }}
+              className="rounded-2xl border border-slate-200 dark:border-white/8 transition-all shadow-2xl bg-slate-50 dark:bg-[#1a1d24]"
             >
               <textarea
                 ref={textareaRef}
@@ -823,7 +852,7 @@ const CommunityPage = () => {
                   }
                 }}
                 placeholder={`Message ${activeChannel ? `#${activeChannel.name}` : activeDMUser?.full_name || ''}`}
-                className="w-full bg-transparent border-none focus:outline-none focus:ring-0 px-4 pt-3.5 pb-1 text-[14.5px] text-slate-200 placeholder-slate-600 resize-none min-h-[64px] max-h-[180px]"
+                className="w-full bg-transparent border-none focus:outline-none focus:ring-0 px-4 pt-3.5 pb-1 text-[14.5px] text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-600 resize-none min-h-[64px] max-h-[180px] font-medium"
               />
 
               <div className="flex items-center justify-between px-3 pb-2.5 pt-1">
@@ -859,8 +888,7 @@ const CommunityPage = () => {
 
                   {showEmojiPicker && (
                     <div
-                      className="absolute bottom-10 left-0 rounded-xl border shadow-xl p-2 flex gap-1 z-50"
-                      style={{ background: '#1e2028', borderColor: 'rgba(255,255,255,0.1)' }}
+                      className="absolute bottom-12 left-0 rounded-2xl border shadow-2xl p-2 flex gap-1 z-50 bg-white dark:bg-[#1e2028] border-slate-200 dark:border-white/10"
                     >
                       {['😀', '😂', '🔥', '👍', '🚀', '👀', '💯', '🎯'].map((emoji) => (
                         <button
@@ -882,12 +910,11 @@ const CommunityPage = () => {
                 <button
                   onClick={handleSendMessage}
                   disabled={!messageText.trim()}
-                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+                  className={`flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-black transition-all cursor-pointer shadow-lg ${
                     messageText.trim()
-                      ? 'text-white hover:opacity-90'
-                      : 'text-slate-600 cursor-not-allowed'
+                      ? 'bg-indigo-500 text-white hover:bg-indigo-400 shadow-indigo-500/20'
+                      : 'bg-slate-200 dark:bg-white/5 text-slate-400 dark:text-slate-600 cursor-not-allowed'
                   }`}
-                  style={messageText.trim() ? { background: 'linear-gradient(135deg,#6366f1,#4f46e5)' } : { background: 'rgba(255,255,255,0.05)' }}
                 >
                   <Send size={15} />
                   <span className="hidden sm:inline">Send</span>
@@ -900,6 +927,23 @@ const CommunityPage = () => {
           </div>
         )}
       </main>
+
+      <style>{`
+        .bubble-others {
+          background-color: #f1f5f9; /* slate-100 (light mode) */
+          border: 1px solid #e2e8f0; /* slate-200 */
+        }
+        .dark .bubble-others {
+          background-color: #1e2330 !important; /* dark variant */
+          border: 1px solid rgba(255,255,255,0.06) !important;
+        }
+
+        .cms-content-chapter {
+          color: #475569;
+          font-size: 1.125rem;
+          line-height: 1.8;
+        }
+      `}</style>
     </div>
   );
 };

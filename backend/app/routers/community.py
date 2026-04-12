@@ -147,50 +147,49 @@ async def send_message(
     request: Request,
     db: AsyncSession = Depends(get_db)
 ):
-    """Emit instantly via websocket and persist asynchronously."""
+    """Save message to DB then broadcast via WebSocket in background."""
     user_id = await _get_user_id(request, db)
+    now = datetime.utcnow()
+
+    # Fetch sender name with a lightweight projection (no full object load)
+    sender_res = await db.execute(
+        select(User.full_name, User.email).filter(User.id == user_id)
+    )
+    sender = sender_res.first()
+    sender_name = (sender[0] or sender[1]) if sender else "Unknown"
 
     db_msg = CommunityMessage(
         sender_id=user_id,
         content=msg.content,
         channel_id=msg.channel_id,
         recipient_id=msg.recipient_id,
-        timestamp=datetime.utcnow()
+        timestamp=now,
     )
     db.add(db_msg)
-    
-    # Fast projection query for user info
-    sender_res = await db.execute(select(User.full_name, User.email).filter(User.id == user_id))
-    sender = sender_res.first()
-    sender_name = (sender[0] or sender[1]) if sender else "Unknown"
-
     await db.commit()
     await db.refresh(db_msg)
 
     response_dict = _to_message(db_msg, sender_name)
 
-    # Broadcast via WebSocket synchronously in background so HTTP returns instantly
-    import asyncio
-    ws_payload = {**response_dict, "timestamp": response_dict["timestamp"].isoformat()}
+    # Timestamp must be a string for JSON serialization over WebSocket
+    ts = db_msg.timestamp.isoformat() if hasattr(db_msg.timestamp, "isoformat") else str(db_msg.timestamp)
+    ws_payload = {**response_dict, "timestamp": ts}
 
+    # Fire-and-forget WebSocket broadcast — does NOT block the HTTP response
     if db_msg.channel_id:
-        asyncio.create_task(order_manager.emit_to_channel(db_msg.channel_id, "community_message", ws_payload))
-    elif db_msg.recipient_id:
-        asyncio.create_task(order_manager.emit_to_user(db_msg.recipient_id, "direct_message", ws_payload))
-        asyncio.create_task(order_manager.emit_to_user(user_id, "direct_message", ws_payload))
-
-    asyncio.create_task(
-        _persist_message_async(
-            sender_id=user_id,
-            content=content,
-            channel_id=msg.channel_id,
-            recipient_id=msg.recipient_id,
-            timestamp=now,
-            client_temp_id=temp_id,
+        asyncio.create_task(
+            order_manager.emit_to_channel(db_msg.channel_id, "community_message", ws_payload)
         )
-    )
+    elif db_msg.recipient_id:
+        asyncio.create_task(
+            order_manager.emit_to_user(db_msg.recipient_id, "direct_message", ws_payload)
+        )
+        asyncio.create_task(
+            order_manager.emit_to_user(user_id, "direct_message", ws_payload)
+        )
 
     return Message(**response_dict)
+
 
 
 @router.get("/users", response_model=List[CommunityUser])

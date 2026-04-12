@@ -353,20 +353,16 @@ const CommunityPage = () => {
 
   const appendMessage = useCallback((msg: Message) => {
     setMessages((prev) => {
-      // 1. Check if we already have this exact message by ID
+      // Deduplicate: skip if exact ID already present
       if (prev.some((m) => m.id === msg.id)) return prev;
-      
-      // 2. Remove any optimistic stub message (fake negative ID) with identical content
-      // to prevent brief visual duplication when websocket arrives.
-      const isMe = msg.sender_id === user?.id;
-      if (isMe) {
-        const filtered = prev.filter(m => !(m.id < 0 && m.content === msg.content));
+      // If WS delivers the real message for our optimistic stub, replace it
+      if (msg.id > 0) {
+        const filtered = prev.filter((m) => !(m.id < 0 && m.content === msg.content && m.sender_id === msg.sender_id));
         return [...filtered, msg];
       }
-      
       return [...prev, msg];
     });
-  }, [user?.id]);
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -441,60 +437,46 @@ const CommunityPage = () => {
     if (!messageText.trim() || !user) return;
 
     const content = messageText.trim();
-    const clientTempId = -Date.now() - Math.floor(Math.random() * 1000);
-    const payload: any = { content: messageText.trim() };
+    const tempId = -Date.now(); // negative so it never collides with real DB ids
+
+    const payload: any = { content };
     if (activeChannel) payload.channel_id = activeChannel.id;
     else if (activeDMUser) payload.recipient_id = activeDMUser.id;
     else return;
-    payload.client_temp_id = clientTempId;
 
-    appendMessage({
-      id: clientTempId,
-      client_temp_id: clientTempId,
-      content,
-      sender_id: user.id,
-      sender_name: user.full_name || user.email,
-      timestamp: new Date().toISOString(),
-      channel_id: activeChannel?.id,
-      recipient_id: activeDMUser?.id,
-      delivery_status: 'sending',
-    });
-
-    const currentText = messageText.trim();
+    // ── 1. Show instantly (Optimistic UI) ──
     setMessageText('');
-
-    // --- OPTIMISTIC UI UPDATE ---
-    // Inject instantly into the screen so the user experiences zero latency
-    const optimisticId = -(Date.now());
-    const optimisticMsg: Message = {
-      id: optimisticId,
-      content: currentText,
-      sender_id: user.id,
-      sender_name: user.full_name || user.email || 'You',
-      timestamp: new Date().toISOString(),
-      channel_id: activeChannel?.id,
-      recipient_id: activeDMUser?.id,
-    };
-    appendMessage(optimisticMsg);
-    // -----------------------------
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: tempId,
+        content,
+        sender_id: user.id,
+        sender_name: user.full_name || user.email || 'You',
+        timestamp: new Date().toISOString(),
+        channel_id: activeChannel?.id,
+        recipient_id: activeDMUser?.id,
+        delivery_status: 'sending' as const,
+      },
+    ]);
 
     try {
+      // ── 2. Save to DB in background ──
       const res = await axios.post('/api/community/messages', payload);
-      // Once server confirms it, swap out the optimistic stub safely
+      // Swap stub with real confirmed message (has the real DB id)
       setMessages((prev) => {
-        const alreadyHasReal = prev.some((m) => m.id === res.data.id);
-        if (alreadyHasReal) {
-            return prev.filter((m) => m.id !== optimisticId);
+        // WS may have already delivered the real message
+        if (prev.some((m) => m.id === res.data.id)) {
+          return prev.filter((m) => m.id !== tempId);
         }
-        return prev.map((m) => m.id === optimisticId ? res.data : m);
+        return prev.map((m) => (m.id === tempId ? { ...res.data, delivery_status: 'sent' } : m));
       });
     } catch {
+      // Mark as failed so user knows
       setMessages((prev) =>
-        prev.map((m) => (m.id === clientTempId ? { ...m, delivery_status: 'failed' } : m))
+        prev.map((m) => (m.id === tempId ? { ...m, delivery_status: 'failed' } : m))
       );
-      toast.error('Failed to send message');
-      // Revert the optimistic message if network fails
-      setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
+      toast.error('Failed to send message. Tap to retry.');
     }
   };
 
@@ -519,10 +501,11 @@ const CommunityPage = () => {
     else grouped.push({ label, items: [msg] });
   }
 
-  if (authLoading) {
+  // While auth is resolving show a neutral loading spinner (not the login gate)
+  if (loading && !user) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-background min-h-[400px]">
-        <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+      <div className="flex h-[calc(100vh-56px)] items-center justify-center" style={{ background: '#0f1117' }}>
+        <Loader2 className="w-8 h-8 animate-spin text-indigo-400" />
       </div>
     );
   }

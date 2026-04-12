@@ -1,5 +1,6 @@
 import json
 import logging
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -193,7 +194,7 @@ async def delete_template(
 
 # ─── Help Requests ──────────────────────────────────────────────
 
-def send_help_email(user_id: str, message: str):
+async def send_help_email(user_id: str, message: str):
     import smtplib
     from email.mime.text import MIMEText
     
@@ -219,23 +220,22 @@ def send_help_email(user_id: str, message: str):
     msg["From"] = f"{MAIL_FROM_NAME} <{MAIL_FROM}>"
     msg["To"] = "mannat07kumar@gmail.com"
     
-    try:
-        logger.info(f"Attempting to send email via {smtp_server}:{port} for user {user_id}...")
-        # Handle Mailtrap/SendGrid using TLS vs old Gmail implicit SSL
+    def _do_send():
         if port == 465:
-            server = smtplib.SMTP_SSL(smtp_server, port, timeout=15)
+            server = smtplib.SMTP_SSL(smtp_server, port, timeout=8)
         else:
-            server = smtplib.SMTP(smtp_server, port, timeout=15)
+            server = smtplib.SMTP(smtp_server, port, timeout=8)
             server.starttls()
-            
         server.login(sender, password)
         server.send_message(msg)
         server.quit()
-        logger.info(f"Successfully sent help email for user {user_id} via SMTP (Port {port})")
-        print(f"✅ EMAIL SENT: Support request from {user_id} forwarded to mannat07kumar@gmail.com")
+
+    try:
+        # Run the blocking SMTP call in a thread so it never stalls the async event loop
+        await asyncio.to_thread(_do_send)
+        logger.info(f"Help email sent for user {user_id}")
     except Exception as e:
         logger.error(f"Failed to send help email for user {user_id}: {str(e)}")
-        print(f"❌ EMAIL FAILED: {str(e)}")
 
 
 @router.post("/help", response_model=HelpRequestResponse)

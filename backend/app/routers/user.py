@@ -9,7 +9,7 @@ from app.models import UserSettings as UserSettingsModel, UserChartSettings as C
 from app.schemas import UserSettings, UserSettingsUpdate, ChartSettings, ChartSettingsUpdate, DrawingTemplateCreate, DrawingTemplateResponse, HelpRequestCreate, HelpRequestResponse
 from app.routers.trading import _get_user_id
 from app.services.risk_engine import risk_engine
-from app.config import conf, MAIL_USERNAME, MAIL_PASSWORD, MAIL_SERVER, MAIL_PORT
+from app.config import conf, MAIL_USERNAME, MAIL_PASSWORD, MAIL_SERVER, MAIL_PORT, MAIL_FROM, MAIL_FROM_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -216,7 +216,7 @@ def send_help_email(user_id: str, message: str):
     
     msg = MIMEText(html, "html")
     msg["Subject"] = f"New User Help Request - {user_id}"
-    msg["From"] = sender
+    msg["From"] = f"{MAIL_FROM_NAME} <{MAIL_FROM}>"
     msg["To"] = "mannat07kumar@gmail.com"
     
     try:
@@ -237,33 +237,6 @@ def send_help_email(user_id: str, message: str):
         logger.error(f"Failed to send help email for user {user_id}: {str(e)}")
         print(f"❌ EMAIL FAILED: {str(e)}")
 
-@router.get("/test-email")
-async def test_email_connection():
-    """Diagnostic endpoint to test live SMTP connection without background tasks"""
-    import smtplib
-    from fastapi import HTTPException
-    
-    sender = MAIL_USERNAME
-    password = MAIL_PASSWORD
-    smtp_server = MAIL_SERVER
-    port = MAIL_PORT
-    
-    try:
-        if port == 465:
-            server = smtplib.SMTP_SSL(smtp_server, port, timeout=10)
-        else:
-            server = smtplib.SMTP(smtp_server, port, timeout=10)
-            server.starttls()
-            
-        server.login(sender, password)
-        server.quit()
-        return {
-            "status": "success",
-            "message": f"Successfully connected and authenticated to {smtp_server}:{port}",
-            "username": sender
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/help", response_model=HelpRequestResponse)
 async def submit_help_request(

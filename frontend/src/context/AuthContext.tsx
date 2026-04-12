@@ -32,22 +32,30 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const cached = localStorage.getItem('ts_cached_user');
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [loading, setLoading] = useState(!user); // instantly false if cached
 
   const checkAuth = async () => {
     try {
       const response = await axios.get('/auth/me');
       setUser(response.data);
+      localStorage.setItem('ts_cached_user', JSON.stringify(response.data));
     } catch (error) {
-      // If access token is expired or missing, try silent refresh
       try {
         await axios.post('/auth/refresh');
-        // If refresh succeeds, try getting the user profile again
         const retryResponse = await axios.get('/auth/me');
         setUser(retryResponse.data);
+        localStorage.setItem('ts_cached_user', JSON.stringify(retryResponse.data));
       } catch (refreshError) {
         setUser(null);
+        localStorage.removeItem('ts_cached_user');
       }
     } finally {
       setLoading(false);
@@ -62,6 +70,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const response = await axios.post('/auth/login', credentials);
     if (!response.data.status) {
       setUser(response.data);
+      localStorage.setItem('ts_cached_user', JSON.stringify(response.data));
     }
     return response.data;
   };
@@ -77,6 +86,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const finalizeSignupPin = async (email: string, pin: string) => {
     const response = await axios.post('/auth/register/set-pin', { email, pin });
     setUser(response.data);
+    localStorage.setItem('ts_cached_user', JSON.stringify(response.data));
   };
 
   const logout = async () => {
@@ -86,8 +96,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       console.error('Logout error:', error);
     } finally {
       useLearnStore.getState().resetStore();
-      // Clear user state immediately so no stale session is in memory
       setUser(null);
+      localStorage.removeItem('ts_cached_user');
       window.location.href = '/';
     }
   };

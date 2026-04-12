@@ -149,46 +149,35 @@ async def send_message(
 ):
     """Emit instantly via websocket and persist asynchronously."""
     user_id = await _get_user_id(request, db)
-    content = (msg.content or "").strip()
-    if not content:
-        raise HTTPException(status_code=400, detail="Message cannot be empty.")
-    if bool(msg.channel_id) == bool(msg.recipient_id):
-        raise HTTPException(status_code=400, detail="Provide either channel_id or recipient_id.")
 
-    if msg.channel_id:
-        channel = await db.scalar(select(CommunityChannel).where(CommunityChannel.id == msg.channel_id))
-        if not channel:
-            raise HTTPException(status_code=404, detail="Channel not found.")
-    else:
-        if msg.recipient_id == user_id:
-            raise HTTPException(status_code=400, detail="You cannot message yourself.")
-        recipient = await db.scalar(select(User).where(User.id == msg.recipient_id))
-        if not recipient:
-            raise HTTPException(status_code=404, detail="Recipient not found.")
+    db_msg = CommunityMessage(
+        sender_id=user_id,
+        content=msg.content,
+        channel_id=msg.channel_id,
+        recipient_id=msg.recipient_id,
+        timestamp=datetime.utcnow()
+    )
+    db.add(db_msg)
+    
+    # Fast projection query for user info
+    sender_res = await db.execute(select(User.full_name, User.email).filter(User.id == user_id))
+    sender = sender_res.first()
+    sender_name = (sender[0] or sender[1]) if sender else "Unknown"
 
-    sender_res = await db.execute(select(User).filter(User.id == user_id))
-    sender = sender_res.scalars().one()
-    sender_name = sender.full_name or sender.email or "Unknown"
-    now = datetime.utcnow()
-    temp_id = msg.client_temp_id if isinstance(msg.client_temp_id, int) else -int(time.time_ns() % 10_000_000_000_000_000)
-    response_dict = {
-        "id": temp_id,
-        "content": content,
-        "sender_id": user_id,
-        "channel_id": msg.channel_id,
-        "recipient_id": msg.recipient_id,
-        "timestamp": now,
-        "sender_name": sender_name,
-    }
+    await db.commit()
+    await db.refresh(db_msg)
 
-    # Broadcast via WebSocket
+    response_dict = _to_message(db_msg, sender_name)
+
+    # Broadcast via WebSocket synchronously in background so HTTP returns instantly
+    import asyncio
     ws_payload = {**response_dict, "timestamp": response_dict["timestamp"].isoformat()}
 
-    if msg.channel_id:
-        await order_manager.emit_to_channel(msg.channel_id, "community_message", ws_payload)
-    elif msg.recipient_id:
-        await order_manager.emit_to_user(msg.recipient_id, "direct_message", ws_payload)
-        await order_manager.emit_to_user(user_id, "direct_message", ws_payload)
+    if db_msg.channel_id:
+        asyncio.create_task(order_manager.emit_to_channel(db_msg.channel_id, "community_message", ws_payload))
+    elif db_msg.recipient_id:
+        asyncio.create_task(order_manager.emit_to_user(db_msg.recipient_id, "direct_message", ws_payload))
+        asyncio.create_task(order_manager.emit_to_user(user_id, "direct_message", ws_payload))
 
     asyncio.create_task(
         _persist_message_async(

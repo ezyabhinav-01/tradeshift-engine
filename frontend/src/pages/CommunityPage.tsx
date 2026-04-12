@@ -257,7 +257,7 @@ const NewDMModal = ({ onClose, onConfirm }: NewDMModalProps) => {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 const CommunityPage = () => {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading } = useAuth();
 
   const [channels, setChannels] = useState<Channel[]>([]);
   const [activeChannel, setActiveChannel] = useState<Channel | null>(null);
@@ -288,7 +288,10 @@ const CommunityPage = () => {
 
   // ── Initial data: channels + persisted DM contacts ────────────────────────
   // Only fetch DM contacts when logged in — never expose other users' DMs to guests
+  // only fetch when we definitively know the auth state
   useEffect(() => {
+    if (loading) return;
+
     const fetchData = async () => {
       try {
         setIsInitializing(true);
@@ -315,7 +318,7 @@ const CommunityPage = () => {
       }
     };
     fetchData();
-  }, [user]);
+  }, [user, loading]);
 
   // ── Fetch messages whenever active target changes ────────────────────────────
   useEffect(() => {
@@ -350,10 +353,20 @@ const CommunityPage = () => {
 
   const appendMessage = useCallback((msg: Message) => {
     setMessages((prev) => {
+      // 1. Check if we already have this exact message by ID
       if (prev.some((m) => m.id === msg.id)) return prev;
+      
+      // 2. Remove any optimistic stub message (fake negative ID) with identical content
+      // to prevent brief visual duplication when websocket arrives.
+      const isMe = msg.sender_id === user?.id;
+      if (isMe) {
+        const filtered = prev.filter(m => !(m.id < 0 && m.content === msg.content));
+        return [...filtered, msg];
+      }
+      
       return [...prev, msg];
     });
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user) return;
@@ -447,14 +460,41 @@ const CommunityPage = () => {
       delivery_status: 'sending',
     });
 
+    const currentText = messageText.trim();
     setMessageText('');
+
+    // --- OPTIMISTIC UI UPDATE ---
+    // Inject instantly into the screen so the user experiences zero latency
+    const optimisticId = -(Date.now());
+    const optimisticMsg: Message = {
+      id: optimisticId,
+      content: currentText,
+      sender_id: user.id,
+      sender_name: user.full_name || user.email || 'You',
+      timestamp: new Date().toISOString(),
+      channel_id: activeChannel?.id,
+      recipient_id: activeDMUser?.id,
+    };
+    appendMessage(optimisticMsg);
+    // -----------------------------
+
     try {
-      await axios.post('/api/community/messages', payload);
+      const res = await axios.post('/api/community/messages', payload);
+      // Once server confirms it, swap out the optimistic stub safely
+      setMessages((prev) => {
+        const alreadyHasReal = prev.some((m) => m.id === res.data.id);
+        if (alreadyHasReal) {
+            return prev.filter((m) => m.id !== optimisticId);
+        }
+        return prev.map((m) => m.id === optimisticId ? res.data : m);
+      });
     } catch {
       setMessages((prev) =>
         prev.map((m) => (m.id === clientTempId ? { ...m, delivery_status: 'failed' } : m))
       );
       toast.error('Failed to send message');
+      // Revert the optimistic message if network fails
+      setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
     }
   };
 
@@ -490,7 +530,7 @@ const CommunityPage = () => {
   return (
     <div className="flex h-[calc(100vh-56px)] overflow-hidden bg-background">
       {/* Show login gate for unauthenticated users */}
-      {!authLoading && !user && <LoginPromptModal />}
+      {!user && !loading && <LoginPromptModal />}
 
       {showNewDM && user && (
         <NewDMModal

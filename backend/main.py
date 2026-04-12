@@ -187,7 +187,7 @@ REPLAY_MAX_CONCURRENT_SESSIONS = max(int(os.getenv("REPLAY_MAX_CONCURRENT_SESSIO
 REPLAY_MAX_THREAD_WORKERS = max(int(os.getenv("REPLAY_MAX_THREAD_WORKERS", "4")), 2)
 REPLAY_AI_MAX_CONCURRENCY = max(int(os.getenv("REPLAY_AI_MAX_CONCURRENCY", "2")), 1)
 WS_SEND_TIMEOUT_SECONDS = max(float(os.getenv("WS_SEND_TIMEOUT_SECONDS", "0.8")), 0.1)
-ENABLE_SHOONYA_BACKGROUND_CONNECT = os.getenv("ENABLE_SHOONYA_BACKGROUND_CONNECT", "true").lower() in ("1", "true", "yes", "on")
+ENABLE_SHOONYA_BACKGROUND_CONNECT = os.getenv("ENABLE_SHOONYA_BACKGROUND_CONNECT", "false").lower() in ("1", "true", "yes", "on")
 ENFORCE_BETA_POSTGRES = os.getenv("ENFORCE_BETA_POSTGRES", "true").lower() in ("1", "true", "yes", "on")
 REPLAY_START_SUCCESS_THRESHOLD = max(min(float(os.getenv("REPLAY_START_SUCCESS_THRESHOLD", "0.95")), 1.0), 0.0)
 REPLAY_BOOTSTRAP_CACHE_TTL_SECONDS = max(int(os.getenv("REPLAY_BOOTSTRAP_CACHE_TTL_SECONDS", "900")), 60)
@@ -1009,7 +1009,6 @@ def load_market_data_tiered(symbol: str, target_date: str = None, allow_fallback
         try:
             cached = redis_client.get(cache_key)
             if cached:
-                logger.info(f"⚡ Redis Cache Hit: {cache_key}")
                 data = json.loads(cached)
                 df = pd.DataFrame(data)
                 source_info = f"cache:{cache_key}"
@@ -1245,7 +1244,7 @@ async def get_available_dates(symbol: str):
         base_symbol = symbol.split('-')[0] if '-' in symbol else symbol
         
         dates = await _run_blocking(_get_available_dates_cached, base_symbol)
-        logger.info(f"📅 Found {len(dates)} dates for {base_symbol} in metadata.")
+        # logger.info(f"📅 Found {len(dates)} dates for {base_symbol} in metadata.")
         
         return {"symbol": symbol, "dates": dates}
     except Exception as e:

@@ -185,7 +185,7 @@ class MarketService:
         cached_data = self._cache_get(cache_key)
         
         if cached_data:
-            logger.info("Serving indices from Redis cache")
+            # logger.info("Serving indices from Redis cache")
             return json.loads(cached_data)
 
         logger.info("Fetching fresh indices data from yfinance")

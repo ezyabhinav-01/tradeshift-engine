@@ -68,3 +68,7 @@ backend/chatbot/logs/*
 !backend/chatbot/logs/.gitkeep
 frontend/public/__MACOSX/
 project_docs_archive/
+
+
+# Ignore Chroma DB files
+backend/chatbot/chroma_db/

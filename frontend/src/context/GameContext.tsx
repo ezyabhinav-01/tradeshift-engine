@@ -392,7 +392,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
     loadAvailableDatesAndHistory(DEFAULT_SYMBOL);
     fetchUserSettings();
     fetchActiveTrades();
-  }, [loadAvailableDatesAndHistory, fetchUserSettings, fetchActiveTrades]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Heartbeat tracking for Admin Dashboard ────────────────
   useEffect(() => {

@@ -1,7 +1,8 @@
 import axios from 'axios';
 import { getCachedOrFetch } from '../utils/requestCache';
+import { API_BASE } from '../utils/api';
 
-const API_URL = '/api';
+const API_URL = `${API_BASE}/api`;
 const CHAT_TIMEOUT_MS = 30000;
 const HEALTH_CACHE_MS = 20_000;
 const SUGGESTION_CACHE_MS = 2 * 60_000;

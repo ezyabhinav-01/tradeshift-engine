@@ -1,8 +1,10 @@
 import axios from 'axios';
 
+import { API_BASE } from '../utils/api';
+
 // Assuming vite proxies /api requests to backend
 const api = axios.create({
-    baseURL: '/api/notifications',
+    baseURL: `${API_BASE}/api/notifications`,
     withCredentials: true,
 });
 

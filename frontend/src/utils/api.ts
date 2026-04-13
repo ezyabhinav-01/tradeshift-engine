@@ -4,7 +4,7 @@
  * backend URL is automatically prepended in production.
  */
 
-const API_BASE = 'https://20.40.42.232.nip.io';
+export const API_BASE = 'https://20.40.42.232.nip.io';
 
 /**
  * Drop-in replacement for fetch() that automatically prepends the API base URL.

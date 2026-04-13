@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const API_URL = '/auth';
+import { API_BASE } from '../utils/api';
+
+const API_URL = `${API_BASE}/auth`;
 
 // Create axios instance with credentials support (Cookies)
 const api = axios.create({

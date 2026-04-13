@@ -2,7 +2,9 @@ import axios from 'axios';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-const api = axios.create({ baseURL: '', withCredentials: true });
+import { API_BASE } from '../utils/api';
+
+const api = axios.create({ baseURL: API_BASE, withCredentials: true });
 
 const DEFAULT_SUMMARY = {
   current_value: 0,

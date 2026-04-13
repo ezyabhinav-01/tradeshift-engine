@@ -458,7 +458,7 @@ const TrackCard: React.FC<{
 export default function LearnPage() {
   const {
     tracks, badges, secrets, completedLessons, totalXP, level,
-    currentStreak, longestStreak, lastActiveDate, learningMinutes,
+    currentStreak, longestStreak, learningMinutes,
     weeklyHistory,
     secretsRevealed, secretsTotal,
     getTrackProgress,

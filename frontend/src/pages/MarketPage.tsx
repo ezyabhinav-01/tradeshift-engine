@@ -22,7 +22,7 @@ import MoversTable from './market/MoversTable';
 
 interface IndexData {
   name: string;
-  symbol: string;
+  symbol?: string;
   price: number;
   change: number;
   change_percent: number;
@@ -53,15 +53,7 @@ const MarketPage: React.FC = () => {
   const [isLiveWsConnected, setIsLiveWsConnected] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(true);
 
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-
-  const checkScroll = () => {
-    if (scrollContainerRef.current) {
-      const { scrollLeft, scrollWidth, clientWidth } = scrollContainerRef.current;
-    }
-  };
-
-  const { isPlaying, currentTime } = useGamePlayback();
+  const { isPlaying } = useGamePlayback();
   const { simulatedIndices } = useGameMarket();
 
   // Optimized configurations for TradingView widgets

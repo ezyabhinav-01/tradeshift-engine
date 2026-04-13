@@ -33,6 +33,7 @@ export interface NewsItem {
 
 export interface IndexData {
   name: string;
+  symbol?: string;
   price: number;
   change: number;
   change_percent: number;

@@ -4,7 +4,7 @@ import LiveValue from '../../components/ui/LiveValue';
 
 interface IndexData {
   name: string;
-  symbol: string;
+  symbol?: string;
   price: number;
   change: number;
   change_percent: number;

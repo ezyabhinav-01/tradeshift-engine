@@ -9,7 +9,7 @@ import App from './App.tsx';
 // In production, all /api/* calls must go to the Azure VM backend.
 // Setting axios baseURL and monkey-patching fetch here means EVERY file
 // in the app automatically talks to the right server without changes.
-const API_BASE = import.meta.env.VITE_API_URL || '';
+const API_BASE = import.meta.env.VITE_API_URL || 'https://20.40.42.232.nip.io';
 
 if (API_BASE) {
   // 1. Axios: set global base URL

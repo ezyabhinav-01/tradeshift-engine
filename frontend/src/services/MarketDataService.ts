@@ -2,8 +2,9 @@ import type { CandleData } from '../types';
 
 type MessageHandler = (data: any) => void;
 
-const API_BASE = ''; // Use relative paths for proxy
-const WS_BASE = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host;
+const API_BASE = import.meta.env.VITE_API_URL || '';
+const WS_BASE = import.meta.env.VITE_WS_URL || 
+  (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host;
 
 export class MarketDataService {
     private ws: WebSocket | null = null;

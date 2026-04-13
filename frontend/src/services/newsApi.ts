@@ -1,7 +1,8 @@
 import axios from 'axios';
 import { getCachedOrFetch } from '../utils/requestCache';
 
-const API_BASE = '/api/news';
+const BASE_URL = import.meta.env.VITE_API_URL || '';
+const API_BASE = `${BASE_URL}/api/news`;
 
 export interface NewsItem {
   id: string;

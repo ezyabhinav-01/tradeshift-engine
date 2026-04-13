@@ -9,7 +9,6 @@ from sqlalchemy import create_engine, text, select, update, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 import pandas as pd
 import numpy as np
-from minio import Minio
 import io
 import os
 import json
@@ -942,29 +941,6 @@ app.include_router(admin.router)
 # --- 3. INFRASTRUCTURE CONNECTIONS ---
 # Database connection is now handled by app.database module (above)
 
-# MinIO Configuration
-MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9000").replace("http://", "").replace("https://", "")
-MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
-MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
-MINIO_BUCKET = os.getenv("MINIO_BUCKET", "market-data")
-MINIO_CONFIGURED = "MINIO_ENDPOINT" in os.environ
-
-if _is_beta_runtime() and not MINIO_CONFIGURED:
-    logger.warning("⚠️ MinIO disabled in beta: MINIO_ENDPOINT is not set explicitly.")
-    minio_client = None
-else:
-    try:
-        minio_client = Minio(
-            MINIO_ENDPOINT,
-            access_key=MINIO_ACCESS_KEY,
-            secret_key=MINIO_SECRET_KEY,
-            secure=os.getenv("MINIO_SECURE", "False").lower() == "true"
-        )
-        logger.info(f"✅ MinIO client initialized for endpoint {MINIO_ENDPOINT}")
-    except Exception as e:
-        logger.error(f"❌ MinIO initialization failed: {e}")
-        minio_client = None
-
 # Redis Configuration
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
@@ -1021,60 +997,9 @@ def load_market_data_tiered(symbol: str, target_date: str = None, allow_fallback
         except Exception as e:
             logger.warning(f"⚠️ Redis read error: {e}")
 
-    # --- LEVEL 2: MINIO PRIMARY STORAGE ---
+    # --- LEVEL 2: POSTGRESQL (Primary Storage) ---
     if df is None:
-        if minio_client:
-            try:
-                engine = ensure_sync_engine()
-                dialect = engine.dialect.name
-                # First, resolve metadata to get the bucket and object name
-                if dialect == "sqlite":
-                    meta_query = text("""
-                        SELECT bucket_name, object_name FROM index_metadata
-                        WHERE instrument = :symbol AND date(start_date) = :target_date
-                        LIMIT 1
-                    """)
-                    latest_meta_query = text("""
-                        SELECT bucket_name, object_name FROM index_metadata
-                        WHERE instrument = :symbol ORDER BY start_date DESC LIMIT 1
-                    """)
-                else:
-                    meta_query = text("""
-                        SELECT bucket_name, object_name FROM index_metadata 
-                        WHERE instrument = :symbol AND TO_CHAR(start_date, 'YYYY-MM-DD') = :target_date
-                        LIMIT 1
-                    """)
-                    latest_meta_query = text("""
-                        SELECT bucket_name, object_name FROM index_metadata 
-                        WHERE instrument = :symbol ORDER BY start_date DESC LIMIT 1
-                    """)
-                if not target_date:
-                    meta_query = latest_meta_query
-                
-                with engine.connect() as conn:
-                    row = conn.execute(meta_query, {"symbol": base_symbol, "target_date": date_str}).fetchone()
-                
-                if row:
-                    bucket_name, object_name = row
-                    if bucket_name == "local":
-                        if os.path.exists(object_name):
-                            df = pd.read_parquet(object_name)
-                            source_info = f"local:{object_name}"
-                    else:
-                        logger.info(f"📦 Fetching from MinIO: {bucket_name}/{object_name}")
-                        response = minio_client.get_object(bucket_name, object_name)
-                        try:
-                            df = pd.read_parquet(io.BytesIO(response.data))
-                            source_info = f"minio:{bucket_name}/{object_name}"
-                        finally:
-                            response.close()
-                            response.release_conn()
-            except Exception as e:
-                logger.warning(f"⚠️ MinIO Primary Load Failed for {base_symbol}/{date_str}: {e}")
-
-    # --- LEVEL 3: POSTGRESQL FALLBACK (The 7-day Backup) ---
-    if df is None:
-        logger.info(f"🔄 MinIO Unavailable. Attempting DB Fallback for {base_symbol} on {date_str}...")
+        logger.info(f"🔄 Cache Miss. Attempting DB Fetch for {base_symbol} on {date_str}...")
         try:
             query = text("""
                 SELECT timestamp, open, high, low, close, volume 
@@ -1318,7 +1243,7 @@ async def get_historical_candles(
         elif date:
             target_dates = [date]
         
-        # 3. Fetch Data from MinIO
+        # 3. Fetch Data from Storage
         all_dfs = []
         loaded_files = set()
         

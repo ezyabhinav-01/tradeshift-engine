@@ -17,8 +17,6 @@ numpy
 yfinance
 
 # === Object Storage ===
-minio
-
 # === Message Queue ===
 pika
 

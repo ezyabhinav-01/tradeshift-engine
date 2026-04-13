@@ -48,20 +48,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const response = await axios.get('/auth/me');
       setUser(response.data);
       localStorage.setItem('ts_cached_user', JSON.stringify(response.data));
+      identifyUser(response.data.id, response.data.email, response.data.full_name);
     } catch (error) {
       try {
         await axios.post('/auth/refresh');
         const retryResponse = await axios.get('/auth/me');
         setUser(retryResponse.data);
         localStorage.setItem('ts_cached_user', JSON.stringify(retryResponse.data));
+        identifyUser(retryResponse.data.id, retryResponse.data.email, retryResponse.data.full_name);
     } catch (refreshError) {
         setUser(null);
         localStorage.removeItem('ts_cached_user');
       }
     } finally {
-      if (response && response.data) {
-          identifyUser(response.data.id, response.data.email, response.data.full_name);
-      }
       setLoading(false);
     }
   };

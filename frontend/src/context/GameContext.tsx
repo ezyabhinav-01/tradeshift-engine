@@ -9,6 +9,7 @@ import { useMultiChartStore } from '../store/useMultiChartStore';
 import { usePortfolioStore } from '../store/usePortfolioStore';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
+import { trackEvent } from '../utils/analytics';
 
 export interface NewsItem {
   id: string | number;
@@ -932,6 +933,16 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
       }
       await fetchActiveTrades();
       await syncPortfolioNow(true);
+      
+      // 📊 Track Analytics
+      trackEvent('Order Placed', {
+        symbol: symbol || selectedSymbol,
+        direction: type,
+        quantity: quantity,
+        order_type: orderType,
+        is_replay: isReplayActive
+      });
+
       toast.success(result.message);
     } catch (err: any) {
       console.error('Trading Error:', err);
@@ -959,6 +970,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
 
       const result = await response.json();
       toast.success(result.message || 'Order modified');
+      
+      // 📊 Track Analytics
+      trackEvent('Order Modified', { orderId, ...updates });
+
       await syncPortfolioNow(true);
     } catch (err: any) {
       console.error('Modify Order Error:', err);
@@ -1034,6 +1049,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
       const result = await response.json();
       toast.success(result.message || 'Order cancelled successfully');
       
+      // 📊 Track Analytics
+      trackEvent('Order Cancelled', { orderId: targetId });
+      
       // Refresh in parallel — don't block each other
       fetchActiveTrades();
       syncPortfolioNow(true);
@@ -1082,6 +1100,14 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
       const result = await response.json();
       await fetchActiveTrades();
       await syncPortfolioNow(true);
+      
+      // 📊 Track Analytics
+      trackEvent('Trade Closed', { 
+        tradeId, 
+        exitType, 
+        exitPrice: safeExitPrice 
+      });
+
       toast.success(result.message || 'Position closing initiated');
     } catch (err: any) {
       console.error('Close Position Error:', err);
@@ -1120,6 +1146,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
       const result = await response.json();
       await fetchActiveTrades();
       await syncPortfolioNow(true);
+      
+      // 📊 Track Analytics
+      trackEvent('All Trades Closed', { count: openTrades.length });
+
       toast.success(result.message || 'All positions closed successfully');
     } catch (err: any) {
       console.error('Close All Positions Error:', err);

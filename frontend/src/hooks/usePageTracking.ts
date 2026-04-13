@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import { trackPageView } from '../utils/analytics';
 
 const HEARTBEAT_INTERVAL = 60000; // 60 seconds
 const ANALYTICS_BASE_URL = '/api/analytics';
@@ -80,14 +81,24 @@ export const usePageTracking = () => {
     }, [user]);
 
     useEffect(() => {
+        // Track the initial page view (or on user login state change if desired)
+        if (location.pathname === lastPathRef.current && startTimeRef.current === Date.now()) {
+             // Handle first mount manually if we wanted, but the effect triggers anyway.
+        }
+    }, [user]);
+
+    useEffect(() => {
         // On actual location change
         if (location.pathname !== lastPathRef.current) {
             const duration = Date.now() - startTimeRef.current;
             sendEngagementData(lastPathRef.current, duration);
             
+            // Send standard standard GA/Mixpanel Page View
+            trackPageView(location.pathname, location.search);
+
             // Reset for the new path
             lastPathRef.current = location.pathname;
             startTimeRef.current = Date.now();
         }
-    }, [location.pathname, user]);
+    }, [location.pathname, location.search, user]);
 };

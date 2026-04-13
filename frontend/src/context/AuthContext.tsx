@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import axios from 'axios';
 import { useLearnStore } from '../store/useLearnStore';
+import { identifyUser, trackEvent, resetUserIdentity } from '../utils/analytics';
 
 interface User {
   id: number;
@@ -53,11 +54,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const retryResponse = await axios.get('/auth/me');
         setUser(retryResponse.data);
         localStorage.setItem('ts_cached_user', JSON.stringify(retryResponse.data));
-      } catch (refreshError) {
+    } catch (refreshError) {
         setUser(null);
         localStorage.removeItem('ts_cached_user');
       }
     } finally {
+      if (response && response.data) {
+          identifyUser(response.data.id, response.data.email, response.data.full_name);
+      }
       setLoading(false);
     }
   };
@@ -68,9 +72,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const login = async (credentials: any) => {
     const response = await axios.post('/auth/login', credentials);
-    if (!response.data.status) {
+    if (!response.data.status) { // if no errors and returns user
       setUser(response.data);
       localStorage.setItem('ts_cached_user', JSON.stringify(response.data));
+      identifyUser(response.data.id, response.data.email, response.data.full_name);
+      trackEvent('User Logged In');
     }
     return response.data;
   };
@@ -87,17 +93,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const response = await axios.post('/auth/register/set-pin', { email, pin });
     setUser(response.data);
     localStorage.setItem('ts_cached_user', JSON.stringify(response.data));
+    identifyUser(response.data.id, response.data.email, response.data.full_name);
+    trackEvent('Account Registered');
   };
 
   const logout = async () => {
     try {
       await axios.post('/auth/logout');
+      trackEvent('User Logged Out');
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
       useLearnStore.getState().resetStore();
       setUser(null);
       localStorage.removeItem('ts_cached_user');
+      resetUserIdentity();
       window.location.href = '/';
     }
   };

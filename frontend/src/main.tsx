@@ -4,6 +4,10 @@ import { BrowserRouter } from 'react-router-dom';
 import axios from 'axios';
 import './index.css';
 import App from './App.tsx';
+import { initAnalytics } from './utils/analytics';
+
+// Initialize Mixpanel and GA4
+initAnalytics();
 
 // ─── Global API Routing ────────────────────────────────────────────────────
 // In production, all /api/* calls must go to the Azure VM backend.

@@ -667,7 +667,6 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
             duration: 5000
           });
         } else if (order.status === 'CLOSED') {
-          const pnlColor = order.pnl >= 0 ? 'text-emerald-500' : 'text-red-500';
           toast.info(`Trade Exited: ${order.symbol}`, {
             description: `PnL: Rs ${order.pnl.toFixed(2)}`,
             duration: 5000

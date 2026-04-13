@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback, createContext, useContext, use
 import axios from 'axios';
 import type { CandleData, Trade } from '../types';
 import { marketDataService, fetchHistoricalCandles, fetchAvailableDates } from '../services/MarketDataService';
+import { apiFetch, apiUrl } from '../utils/api';
 import { toast } from 'sonner';
 import { useMultiChartStore } from '../store/useMultiChartStore';
 import { usePortfolioStore } from '../store/usePortfolioStore';
@@ -328,7 +329,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
 
   const fetchUserSettings = useCallback(async () => {
     try {
-      const response = await axios.get('/api/user/settings');
+      const response = await axios.get(apiUrl('/api/user/settings'));
       setUserSettings(response.data);
     } catch (err) {
       console.error('Failed to fetch user settings:', err);
@@ -337,7 +338,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
 
   const fetchActiveTrades = useCallback(async () => {
     try {
-      const response = await fetch('/api/trade/orders', { credentials: 'include' });
+      const response = await apiFetch('/api/trade/orders');
       if (response.ok) {
         const orders = await response.json();
         const formattedTrades: Trade[] = orders.map((o: any) => ({
@@ -398,7 +399,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
     // Ping heartbeat every 30 seconds to keep last_active_at fresh
     const heartbeatInterval = setInterval(async () => {
       try {
-        await fetch('/api/user/heartbeat', { credentials: 'include' });
+        await apiFetch('/api/user/heartbeat');
       } catch (err) {
         // Silent fail for heartbeat
       }
@@ -409,7 +410,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
 
   const updateUserSettings = useCallback(async (updates: any) => {
     try {
-      const response = await fetch(`/api/user/settings`, {
+      const response = await apiFetch(`/api/user/settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
@@ -897,7 +898,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
         }
       }
 
-      const response = await fetch(`/api/trade/`, {
+      const response = await apiFetch(`/api/trade/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -939,7 +940,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
 
   const modifyOrder = useCallback(async (orderId: number | string, updates: any) => {
     try {
-      const response = await fetch(`/api/trade/order/${orderId}`, {
+      const response = await apiFetch(`/api/trade/order/${orderId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1006,7 +1007,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
     setTrades(prev => prev.filter(t => String(t.id) !== targetId));
 
     try {
-      const response = await fetch(`/api/trade/order/${orderId}?session_type=REPLAY`, {
+      const response = await apiFetch(`/api/trade/order/${orderId}?session_type=REPLAY`, {
         method: 'DELETE',
         credentials: 'include'
       });
@@ -1059,7 +1060,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
         ? limitPrice
         : (symbolTickPrice ?? (tradeSymbol === selectedSymbol ? currentPrice : undefined));
 
-      const response = await fetch(`/api/trade/close/${tradeId}`, {
+      const response = await apiFetch(`/api/trade/close/${tradeId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1098,7 +1099,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
         }
       });
 
-      const response = await fetch(`/api/trade/close-all`, {
+      const response = await apiFetch(`/api/trade/close-all`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

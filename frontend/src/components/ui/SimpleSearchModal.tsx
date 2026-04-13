@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, X, Globe, DollarSign, TrendingUp, Building2, Coins, Activity } from 'lucide-react';
+import { apiFetch } from '../../utils/api';
 
 interface Instrument {
     token: string;
@@ -40,7 +41,7 @@ const SimpleSearchModal: React.FC<SymbolSearchProps> = ({ open, onOpenChange, on
         const fetchAvailableSymbols = async () => {
             setIsLoading(true);
             try {
-                const response = await fetch(`/api/available-symbols`);
+                const response = await apiFetch(`/api/available-symbols`);
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
 

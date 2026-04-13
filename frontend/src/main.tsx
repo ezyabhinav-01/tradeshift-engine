@@ -1,8 +1,34 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
+import axios from 'axios';
 import './index.css';
 import App from './App.tsx';
+
+// ─── Global API Routing ────────────────────────────────────────────────────
+// In production, all /api/* calls must go to the Azure VM backend.
+// Setting axios baseURL and monkey-patching fetch here means EVERY file
+// in the app automatically talks to the right server without changes.
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
+if (API_BASE) {
+  // 1. Axios: set global base URL
+  axios.defaults.baseURL = API_BASE;
+  axios.defaults.withCredentials = true;
+
+  // 2. Fetch: intercept relative /api/ paths and prepend base URL
+  const _originalFetch = window.fetch.bind(window);
+  window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+    if (typeof input === 'string' && input.startsWith('/api')) {
+      return _originalFetch(`${API_BASE}${input}`, {
+        credentials: 'include',
+        ...init,
+      });
+    }
+    return _originalFetch(input, init);
+  };
+}
+// ──────────────────────────────────────────────────────────────────────────
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -11,7 +37,3 @@ createRoot(document.getElementById('root')!).render(
     </BrowserRouter>
   </StrictMode>,
 )
-
-
-
-

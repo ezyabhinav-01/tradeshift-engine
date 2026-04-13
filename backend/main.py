@@ -200,6 +200,7 @@ DEFAULT_CORS_ORIGINS = [
     "http://127.0.0.1:5174",
     "http://0.0.0.0:5173",
     "https://tradeshift-india.netlify.app",
+    "https://20.40.42.232.nip.io",
 ]
 ALLOWED_CORS_ORIGINS = parse_cors_origins(os.getenv("CORS_ALLOWED_ORIGINS"), DEFAULT_CORS_ORIGINS)
 

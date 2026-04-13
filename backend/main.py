@@ -997,7 +997,19 @@ def load_market_data_tiered(symbol: str, target_date: str = None, allow_fallback
         except Exception as e:
             logger.warning(f"⚠️ Redis read error: {e}")
 
-    # --- LEVEL 2: POSTGRESQL (Primary Storage) ---
+    # --- LEVEL 2: LOCAL PARQUET STORAGE (Fallback before DB) ---
+    if df is None:
+        # Assuming parquet files are in backend/data/
+        local_path = os.path.join(os.path.dirname(__file__), "data", f"{base_symbol}_{date_str}.parquet")
+        if os.path.exists(local_path):
+            try:
+                df = pd.read_parquet(local_path)
+                source_info = f"local:{local_path}"
+                logger.info(f"📦 Fetching from local disk: {local_path}")
+            except Exception as e:
+                logger.warning(f"⚠️ Local Parquet Load Failed for {base_symbol}/{date_str}: {e}")
+
+    # --- LEVEL 3: POSTGRESQL (Primary DB Fallback) ---
     if df is None:
         logger.info(f"🔄 Cache Miss. Attempting DB Fetch for {base_symbol} on {date_str}...")
         try:

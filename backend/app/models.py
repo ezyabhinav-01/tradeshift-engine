@@ -292,6 +292,8 @@ class UserStreak(Base):
     longest_streak = Column(Integer, default=0)
     last_active_date = Column(DateTime, nullable=True)
     learning_minutes = Column(Integer, default=0)
+    learning_seconds = Column(Integer, default=0)
+    weekly_history = Column(JSON, default=lambda: [False] * 7) # [Mon, Tue, Wed, Thu, Fri, Sat, Sun]
 
 
 class UserBadge(Base):

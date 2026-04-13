@@ -140,6 +140,7 @@ interface LearnState {
   quizzesCompleted: number;
   tracksStarted: string[]; // track IDs
   learningMinutes: number; // dynamically tracked DB minutes
+  weeklyHistory: boolean[]; // Mon-Sun activity flags
   secretsRevealed: number;
   secretsTotal: number;
 
@@ -183,6 +184,7 @@ export const useLearnStore = create<LearnState>((set, get) => ({
   quizzesCompleted: 0,
   tracksStarted: [],
   learningMinutes: 0,
+  weeklyHistory: [false, false, false, false, false, false, false],
   secretsRevealed: 0,
   secretsTotal: 0,
 
@@ -226,19 +228,20 @@ export const useLearnStore = create<LearnState>((set, get) => ({
         completedLessons: Array.isArray(data.completed_lessons) ? data.completed_lessons : [],
         badges: mergedBadges,
         learningMinutes: data.learning_minutes ?? 0,
+        weeklyHistory: Array.isArray(data.weekly_history) ? data.weekly_history : [false, false, false, false, false, false, false],
       });
     } catch (e) {
       console.error("Failed to fetch user stats", e);
     }
   },
 
-  logLearningTime: async (minutes: number) => {
+  logLearningTime: async (seconds: number) => {
     try {
       const res = await fetch('/api/learn/time', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ minutes })
+        body: JSON.stringify({ seconds })
       });
       if (res.ok) {
         const data = await res.json();

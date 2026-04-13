@@ -5,28 +5,35 @@ function useTradingViewWidget(scriptUrl: string, config: any, height = 600) {
 
 
     useEffect(
-
         () => {
+            if (!containerRef.current) return;
+            
+            const configString = JSON.stringify(config);
+            const currentConfig = containerRef.current.dataset.config;
+            
+            // Only re-initialize if the config content or script URL has changed
+            if (containerRef.current.dataset.loaded === "true" && currentConfig === configString) {
+                return;
+            }
 
-            if (!containerRef.current) return;  //if there is no containerRef.current then we will exit.
-            if (containerRef.current.dataset.loaded) return; //if the widget is already loaded then we will exit.
-            containerRef.current.innerHTML = `<div class="tradingview-widget-container__widget" style="width: 100%; height:${height}px;"></div>`;   // set the innerHTML of the containerRef to a regular div
+            // Clear previous content
+            containerRef.current.innerHTML = `<div class="tradingview-widget-container__widget" style="width: 100%; height:${height}px;"></div>`;
 
             const script = document.createElement("script");
             script.src = scriptUrl;
             script.async = true;
-            script.innerHTML = JSON.stringify(config);
-            containerRef.current.appendChild(script); // append all the properties to the containerRef
-            containerRef.current.dataset.loaded = "true"; // set the data-loaded attribute to true
+            script.innerHTML = configString;
+            containerRef.current.appendChild(script);
+            
+            containerRef.current.dataset.loaded = "true";
+            containerRef.current.dataset.config = configString;
 
             return () => {
-                if (containerRef.current) {
-                    containerRef.current.innerHTML = "";
-                    delete containerRef.current.dataset.loaded; // delete the data-loaded attribute to true
-                }
+                // NOTE: We don't clear the innerHTML here to prevent flickering when parent re-renders quickly.
+                // The dataset check above will handle re-initialization only when necessary.
             };
         },
-        [scriptUrl, config, height]  // make sure that it loads whenever the any of the props change such as url, config or height.
+        [scriptUrl, config, height] 
     );
 
     return containerRef;

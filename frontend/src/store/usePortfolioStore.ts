@@ -38,6 +38,7 @@ interface PortfolioState {
   isRefreshing: boolean;
   lastFetchedAt: number | null;
   refreshPortfolio: (options?: PortfolioRefreshOptions) => Promise<void>;
+  applyOrderUpdate: (order: any) => void;
   setGuestFallback: () => void;
 }
 
@@ -128,6 +129,49 @@ export const usePortfolioStore = create<PortfolioState>()(
           });
 
         return inflightRequest;
+      },
+
+      applyOrderUpdate: (order: any) => {
+        set((state) => {
+          // 1. Update activeOrders
+          let nextOrders = [...state.activeOrders];
+          const orderIndex = nextOrders.findIndex(o => o.trade_id === order.trade_id);
+          if (['PENDING', 'OPEN', 'TRIGGERED'].includes(order.status)) {
+            if (orderIndex !== -1) nextOrders[orderIndex] = order;
+            else nextOrders = [order, ...nextOrders];
+          } else {
+            // Remove cancelled/closed/filled if they shouldn't be in 'active' anymore
+            if (orderIndex !== -1) nextOrders.splice(orderIndex, 1);
+          }
+
+          // 2. Update positions
+          let nextPositions = [...state.positions];
+          if (order.status === 'OPEN' || order.status === 'TRIGGERED') {
+            const posIndex = nextPositions.findIndex(p => p.symbol === order.symbol);
+            if (posIndex !== -1) nextPositions[posIndex] = { ...nextPositions[posIndex], ...order };
+            else nextPositions = [{ ...order, avg_price: order.entry_price }, ...nextPositions];
+          } else if (order.status === 'CLOSED') {
+            nextPositions = nextPositions.filter(p => {
+               // If closing a specific trade, we'd need more complex logic for partials,
+               // but for now let's just assume we want to refresh positions from API 
+               // eventually. Local removal is fine for single-lot trading.
+               return p.symbol !== order.symbol; 
+            });
+          }
+
+          // 3. Update Summary (Cash Balance estimation)
+          let nextSummary = state.summary ? { ...state.summary } : { ...DEFAULT_SUMMARY };
+          if (order.status === 'CLOSED' && order.pnl !== undefined) {
+             nextSummary.cash_balance += (order.pnl || 0);
+          }
+
+          return {
+            activeOrders: nextOrders,
+            positions: nextPositions,
+            summary: nextSummary,
+            lastFetchedAt: Date.now() // Treat local update as fresh-ish
+          };
+        });
       },
 
       setGuestFallback: () => {

@@ -3,7 +3,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select, update, func
 from pydantic import BaseModel
 from datetime import datetime, date, timedelta
 from typing import Optional, List
@@ -13,7 +13,7 @@ import asyncio
 
 from sqlalchemy.orm import joinedload
 from app.database import get_db
-from app.models import LearningProgress, UserStreak, UserBadge, Track, Module, SubModule, Lesson, MarketSecret, UserSecretReveal, User, ChapterComment
+from app.models import LearningProgress, UserStreak, UserBadge, Track, Module, SubModule, Lesson, MarketSecret, UserSecretReveal, User, ChapterComment, PageEngagement
 from app.dependencies import get_current_user, admin_or_internal
 from app.schemas import ChapterCommentCreate, ChapterCommentResponse
 from app.redis_utils import get_redis_client
@@ -55,7 +55,8 @@ class CompleteLessonRequest(BaseModel):
     xp_earned: int = 15
 
 class AddTimeRequest(BaseModel):
-    minutes: int
+    seconds: int = 0
+    minutes: int = 0
 
 class StreakResponse(BaseModel):
     current_streak: int
@@ -105,6 +106,46 @@ async def get_learning_stats(current_user: User = Depends(get_current_user), db:
         # Calculate level
         level = calculate_level(total_xp)
 
+        # --- Rolling 7-Day History ---
+        # Calculate last 7 dates (Today, Today-1, ..., Today-6)
+        today = date.today()
+        rolling_dates = [today - timedelta(days=i) for i in range(7)]
+        rolling_history = [False] * 7
+
+        # Check activity in LearningProgress and PageEngagement for these dates
+        # Note: We reverse rolling_dates for the boolean array if the UI expects Mon-Sun or Left-to-Right
+        # The user said "rolling system" Today-6 to Today.
+        
+        # Query for activity on these specific dates
+        activity_tasks = [
+            db.execute(
+                select(func.date(LearningProgress.completed_at))
+                .where(LearningProgress.user_id == current_user.id)
+                .where(func.date(LearningProgress.completed_at) >= rolling_dates[-1])
+            ),
+            db.execute(
+                select(func.date(PageEngagement.timestamp))
+                .where(PageEngagement.user_id == current_user.id)
+                .where(PageEngagement.page_path.like("/learn%"))
+                .where(func.date(PageEngagement.timestamp) >= rolling_dates[-1])
+            )
+        ]
+        activity_results = await asyncio.gather(*activity_tasks)
+        
+        active_dates = set()
+        for res in activity_results:
+            for row in res.scalars().all():
+                if isinstance(row, datetime):
+                    active_dates.add(row.date())
+                else:
+                    active_dates.add(row)
+
+        # Build bitmask [Mon, ..., Sun] or [Today-6, ..., Today]
+        # UI expects 7 booleans. If we use corrected index in UI, we can just return chronological T-6 to T.
+        # But to keep it simple for the current UI (which uses index 0-6 as M-S), 
+        # let's return a map or just the rolling 7 booleans [T-6, T-5, T-4, T-3, T-2, T-1, T]
+        rolling_history = [(today - timedelta(days=6-i)) in active_dates for i in range(7)]
+
         return {
             "total_xp": total_xp,
             "level": level,
@@ -113,6 +154,7 @@ async def get_learning_stats(current_user: User = Depends(get_current_user), db:
             "learning_minutes": streak.learning_minutes if streak else 0,
             "last_active_date": streak.last_active_date.isoformat() if streak and streak.last_active_date else None,
             "completed_lessons": completed_lessons,
+            "weekly_history": rolling_history, # This is now the last 7 days
             "badges": [
                 {
                     "badge_id": b.badge_id,
@@ -181,16 +223,25 @@ async def add_learning_time(request: AddTimeRequest, current_user: User = Depend
     Increment user's total learning time (active session tracking).
     """
     try:
-        # Get or setup streak model since that's where learning_minutes lives
+        # Get or setup streak model
         streak = await update_streak(db, current_user.id)
         
-        # Add time
-        streak.learning_minutes = (streak.learning_minutes or 0) + request.minutes
+        # High-precision heartbeat accumulation
+        incoming_seconds = request.seconds + (request.minutes * 60)
+        
+        # Security: Cap individual heartbeat to 60s
+        effective_seconds = min(incoming_seconds, 60)
+        
+        streak.learning_seconds = (streak.learning_seconds or 0) + effective_seconds
+        
+        # Recalculate minutes for legacy/ui display
+        streak.learning_minutes = streak.learning_seconds // 60
+        
         await db.commit()
         
         return {
             "status": "success", 
-            "added": request.minutes, 
+            "added_seconds": effective_seconds, 
             "total_learning_minutes": streak.learning_minutes
         }
     except Exception as e:

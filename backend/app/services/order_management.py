@@ -365,11 +365,17 @@ class OrderManagementSystem:
         self.invalidate_pending_cache(order.symbol, order.session_type, order.user_id)
         return order
 
-    async def close_trade(self, db: AsyncSession, trade_id: int, user_id: int, exit_price: float, exit_type: str = "MARKET", simulated_time: Optional[datetime] = None) -> Optional[TradeLog]:
-        """Close an open trade (Async)."""
+        return trade
+
+    async def calculate_close_draft(self, db: AsyncSession, trade_id: int, user_id: int, exit_price: float, exit_type: str = "MARKET", simulated_time: Optional[datetime] = None) -> Optional[dict]:
+        """
+        Calculate close results (PnL, time) without committing.
+        Returns a draft payload for WS emission.
+        """
         normalized_time = self._normalize_db_timestamp(simulated_time)
         exit_price = money_float(exit_price)
         close_time = normalized_time or datetime.utcnow()
+        
         result = await db.execute(
             select(TradeLog).filter(
                 TradeLog.id == trade_id,
@@ -378,78 +384,51 @@ class OrderManagementSystem:
             )
         )
         trade = result.scalars().first()
+        if not trade or trade.entry_price is None:
+            return None
 
-        if not trade:
-            return None
-        if trade.entry_price is None:
-            logger.warning(f"Trade {trade.id} has no entry_price; cannot compute close PnL safely.")
-            return None
         if trade.entry_time and close_time < trade.entry_time:
-            # Guard against accidental replay clock rewind on UI side.
             close_time = trade.entry_time
 
-        # Calculate PnL
         multiplier = 1 if trade.direction == "BUY" else -1
         pnl = calc_pnl(trade.entry_price, exit_price, trade.quantity or 0, multiplier)
-        holding_time = None
-        if trade.entry_time:
-            holding_time = max(0.0, (close_time - trade.entry_time).total_seconds())
+        holding_time = (close_time - trade.entry_time).total_seconds() if trade.entry_time else 0.0
 
-        await db.execute(
-            update(TradeLog)
-            .where(TradeLog.id == trade.id)
-            .values(
-                status="CLOSED",
-                exit_price=exit_price,
-                exit_time=close_time,
-                exit_reason=f"manual_{exit_type.lower()}",
-                pnl=pnl,
-                holding_time=holding_time,
-            )
-        )
+        # Build draft payload for WS
+        return {
+            "trade_id": trade.id,
+            "status": "CLOSED",
+            "symbol": trade.symbol,
+            "direction": trade.direction,
+            "order_type": trade.order_type,
+            "entry_price": trade.entry_price,
+            "exit_price": exit_price,
+            "stop_loss": trade.stop_loss,
+            "take_profit": trade.take_profit,
+            "quantity": trade.quantity,
+            "pnl": pnl,
+            "parent_trade_id": trade.parent_trade_id,
+            "session_type": trade.session_type,
+            "exit_reason": f"manual_{exit_type.lower()}",
+            "entry_time": trade.entry_time.isoformat() if trade.entry_time else None,
+            "exit_time": close_time.isoformat(),
+            "holding_time_seconds": round(holding_time, 1),
+            "holding_time_mins": round(holding_time / 60.0, 2),
+        }
 
-        # Cancel any linked PENDING orders (SL/TP)
-        await db.execute(
-            update(TradeLog).filter(
-                TradeLog.parent_trade_id == trade.id,
-                TradeLog.status == "PENDING"
-            ).values(status="CANCELLED")
-        )
-        self.invalidate_pending_cache(trade.symbol, trade.session_type, trade.user_id)
-
-        # --- UPDATE CASH BALANCE ---
-        # For a BUY trade, closing (SELLING) adds cash.
-        # For a SELL trade, closing (BUYING) removes cash.
-        multiplier = 1 if trade.direction == "BUY" else -1
-        exit_value = money_float((trade.quantity or 0) * exit_price)
-        await db.execute(
-            update(User)
-            .where(User.id == user_id)
-            .values(balance=User.balance + (multiplier * exit_value))
-        )
-
-        # 🔥 NEW: SYNC TO PORTFOLIO HOLDINGS (CLOSING)
-        # To close, we perform an opposite action to the holding pool
-        close_direction = "SELL" if trade.direction == "BUY" else "BUY"
-        await sync_portfolio_holding(
-            db=db,
-            user_id=user_id,
-            symbol=trade.symbol,
-            quantity_delta=trade.quantity,
-            price=exit_price,
-            direction=close_direction,
-            session_type=trade.session_type or "REPLAY"
-        )
-
-        await db.commit()
-        result = await db.execute(select(TradeLog).filter(TradeLog.id == trade.id))
-        trade = result.scalars().first()
-        
-        # Persist the post-close snapshot before returning so request/test lifecycles
-        # don't leave detached DB writers behind.
-        await portfolio_service.save_portfolio_snapshot(user_id, trade.session_type or "REPLAY")
-
-        return trade
+    async def close_trade_async(self, trade_id: int, user_id: int, exit_price: float, exit_type: str = "MARKET", simulated_time: Optional[datetime] = None):
+        """
+        Background worker for trade closing.
+        """
+        db = await get_session()
+        try:
+            await self.close_trade(db, trade_id, user_id, exit_price, exit_type, simulated_time)
+            logger.info(f"✅ Async background close complete for trade {trade_id}")
+        except Exception as e:
+            logger.error(f"❌ Async background close failed: {e}")
+            await db.rollback()
+        finally:
+            await db.close()
 
     async def close_all_trades(self, db: AsyncSession, user_id: int, exit_price_mapping: dict[str, float], session_type: str = "REPLAY", simulated_time: Optional[datetime] = None) -> list[TradeLog]:
         """Close all open/triggered trades (Async)."""

@@ -293,9 +293,9 @@ export default function SubModuleDetailPage() {
     if (loading || !data) return;
     const interval = setInterval(() => {
       if (!document.hidden) {
-        logLearningTime(1);
+        logLearningTime(30);
       }
-    }, 60000);
+    }, 30000);
     return () => clearInterval(interval);
   }, [loading, data, logLearningTime]);
 

@@ -241,6 +241,9 @@ export const ProChart: React.FC<ProChartProps> = ({
   const quickMenuRef = useRef<HTMLDivElement | null>(null);
   const lastPriceRef = useRef<number>(currentPrice);
   const lastFitIdRef = useRef<string>('');
+  const flashTimeoutRef = useRef<any>(null);
+  const [isFlashing, setIsFlashing] = useState(false);
+  const triggerLineRef = useRef<any>(null);
 
   // Combine external (from TopToolbar) and internal (from DrawingToolbar) alert triggers
   const isAlertsDialogOpen = externalAlertsOpen || isLocalAlertsOpen;
@@ -646,6 +649,12 @@ export const ProChart: React.FC<ProChartProps> = ({
       priceLineStyle: 2, // dashed
     } as any);
 
+    // Dynamic execution flash effect when price crosses a trade
+    series.applyOptions({
+      lastValueVisible: true,
+      priceLineVisible: true,
+    });
+
     seriesRef.current = series as any;
     setSeriesInstance(series as any);
 
@@ -817,8 +826,53 @@ export const ProChart: React.FC<ProChartProps> = ({
     };
 
     chartInstance.subscribeCrosshairMove(handleCrosshairMove);
+
+    // Effect for "Yellow Line" trigger tracking
+    const updateTriggerLine = (price: number | null) => {
+      if (!seriesInstance) return;
+      if (price === null) {
+        if (triggerLineRef.current) {
+          seriesInstance.removePriceLine(triggerLineRef.current);
+          triggerLineRef.current = null;
+        }
+        return;
+      }
+
+      const options = {
+        price: price,
+        color: '#facc15', // Yellow-400
+        lineWidth: 2,
+        lineStyle: 0, // Solid
+        axisLabelVisible: true,
+        title: 'TRIGGER ACTIVE',
+      };
+
+      if (triggerLineRef.current) {
+        triggerLineRef.current.applyOptions(options);
+      } else {
+        triggerLineRef.current = seriesInstance.createPriceLine(options);
+      }
+    };
+
+    // Listen for custom trigger events from GameContext
+    const handleTriggerActive = (e: any) => updateTriggerLine(e.detail.price);
+    const handleTriggerClear = () => updateTriggerLine(null);
+    const handleExecFlash = () => {
+      setIsFlashing(true);
+      if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
+      flashTimeoutRef.current = setTimeout(() => setIsFlashing(false), 800);
+    };
+
+    window.addEventListener('trade:trigger:active', handleTriggerActive as any);
+    window.addEventListener('trade:trigger:clear', handleTriggerClear as any);
+    window.addEventListener('trade:execution:flash', handleExecFlash);
+
     return () => {
       chartInstance.unsubscribeCrosshairMove(handleCrosshairMove);
+      window.removeEventListener('trade:trigger:active', handleTriggerActive as any);
+      window.removeEventListener('trade:trigger:clear', handleTriggerClear as any);
+      window.removeEventListener('trade:execution:flash', handleExecFlash);
+      if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
     };
   }, [chartInstance, isPrimary, isQuickMenuInteracting, isQuickMenuOpen, seriesInstance, updateHoverValues]);
 

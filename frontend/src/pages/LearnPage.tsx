@@ -70,24 +70,29 @@ const XPRing: React.FC<{ xp: number; level: number }> = ({ xp, level }) => {
 // ═══════════════════════════════════════════
 // STREAK CALENDAR COMPONENT
 // ═══════════════════════════════════════════
-const StreakCalendar: React.FC<{ streak: number; lastActiveDate: string | null }> = ({ streak, lastActiveDate }) => {
-  const days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-  const today = new Date();
-  const todayDay = today.getDay(); // 0=Sun, 1=Mon...
-  const adjustedToday = todayDay === 0 ? 6 : todayDay - 1; // Convert to Mon=0
+const StreakCalendar: React.FC<{ weeklyHistory: boolean[] }> = ({ weeklyHistory }) => {
+  const dayNames = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  
+  // Calculate labels for the last 7 days (including today)
+  const days = Array.from({ length: 7 }).map((_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    return dayNames[d.getDay()];
+  });
 
   return (
     <div className="flex items-center gap-2">
       {days.map((day, i) => {
-        const isActiveDay = i <= adjustedToday && i > adjustedToday - Math.min(streak, adjustedToday + 1);
-        const isToday = i === adjustedToday;
+        const isActiveDay = weeklyHistory[i];
+        const isToday = i === 6; // Last item is always today in rolling view
+
         return (
           <div key={i} className="flex flex-col items-center gap-1.5">
             <span className="text-[9px] font-bold text-slate-400 dark:text-slate-600 uppercase">{day}</span>
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all streak-day ${
               isActiveDay
                 ? 'bg-emerald-500 text-white active'
-                : isToday && lastActiveDate !== new Date().toISOString().split('T')[0]
+                : isToday
                   ? 'bg-slate-200 dark:bg-white/10 text-slate-400 dark:text-slate-500 ring-2 ring-emerald-500/30'
                   : 'bg-slate-100 dark:bg-white/5 text-slate-300 dark:text-slate-600'
             }`}>

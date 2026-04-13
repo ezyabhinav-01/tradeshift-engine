@@ -84,61 +84,31 @@ async def execute_trade(
     Execute a new trade (Async).
     """
     user_id = await _get_user_id(request, db, trade_request.session_type)
-    try:
-        result = await TradeEngine.execute_trade(trade_request, user_id, db)
+        # 1. Sync Calculation (Fast)
+        drafter = await TradeEngine.calculate_execution_draft(trade_request, user_id)
         
-        # Emit WebSocket update
-        res_trade = await db.execute(select(TradeLog).filter(TradeLog.id == result["trade_id"]))
-        trade = res_trade.scalars().first()
-        if trade:
-            ws_payload = TradeEngine.build_order_update_payload(trade)
-            ws_payload["requested_quantity"] = result.get("requested_quantity")
-            ws_payload["fill_ratio"] = result.get("fill_ratio")
-            ws_payload["simulated_latency_ms"] = result.get("simulated_latency_ms")
-            ws_payload["simulated_slippage_bps"] = result.get("simulated_slippage_bps")
-            await order_manager.emit_to_user(user_id, "order_update", ws_payload)
-
+        # 2. Emit WebSocket update (Instant)
+        ws_payload = drafter["meta"].copy()
+        # Note: In draft mode, we don't have a DB ID yet, but we can return the draft state.
+        # However, to be fully functional, it's better to background the REAL work
+        # and let the background task emit the final ID.
+        # BUT the user wants "Message goes instantly".
+        # Let's emit a 'preliminary' update or just let the background task handle it if it's fast enough.
+        # Actually, the user wants lightning fast. Let's background the whole thing
+        # but return a 202 immediately.
         
-        notification_price = result.get('entry_price')
-        if notification_price is None or notification_price == 0:
-            notification_price = "market price"
+        background_tasks.add_task(TradeEngine.save_trade_async, trade_request, user_id)
             
-        # Add Notification
-        notification = Notification(
-            user_id=user_id,
-            title="Order Executed",
-            content=f"Filled {trade_request.direction} for {result.get('quantity', trade_request.quantity)}x {trade_request.symbol} at {notification_price}.",
-            type="success",
-            category="personal"
+        return TradeResponse(
+            trade_id=0, # Signal that it's being processed
+            status=drafter["trade"].status,
+            symbol=drafter["trade"].symbol,
+            direction=drafter["trade"].direction,
+            quantity=drafter["trade"].quantity,
+            entry_price=drafter["entry_price"] or 0.0,
+            order_type=drafter["trade"].order_type,
+            message="Order accepted for high-speed execution"
         )
-        db.add(notification)
-        
-        # Log User Event
-        await db.execute(
-            insert(UserEvent).values(
-                user_id=user_id,
-                event_name="trade_order_placed",
-                event_data={
-                    "symbol": trade_request.symbol,
-                    "direction": trade_request.direction,
-                    "quantity": result.get("quantity", trade_request.quantity),
-                    "requested_quantity": result.get("requested_quantity", trade_request.quantity),
-                    "fill_ratio": result.get("fill_ratio"),
-                    "simulated_latency_ms": result.get("simulated_latency_ms"),
-                    "simulated_slippage_bps": result.get("simulated_slippage_bps"),
-                    "order_type": trade_request.order_type,
-                    "trade_id": result["trade_id"]
-                },
-                created_at=text("CURRENT_TIMESTAMP")
-            )
-        )
-        
-        await db.commit()
-        
-        # 🔥 Snapshot: Update equity curve after trade execution
-        background_tasks.add_task(portfolio_service.save_portfolio_snapshot, user_id, trade_request.session_type)
-            
-        return TradeResponse(**result)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -301,56 +271,35 @@ async def close_trade(
             "simulated_slippage_bps": close_exec.slippage_bps,
         }
 
-    trade = await oms_service.close_trade(
-        db,
-        trade_id,
-        user_id,
-        exit_price,
-        exit_request.exit_type,
-        exit_request.simulated_time,
+    # 1. Sync Calculation (Fast)
+    draft = await oms_service.calculate_close_draft(
+        db, trade_id, user_id, exit_price, exit_request.exit_type, exit_request.simulated_time
     )
-    if not trade:
+    if not draft:
         raise HTTPException(status_code=404, detail="Open trade not found or not owned by user")
-    
-    # Emit update
-    ws_payload = TradeEngine.build_order_update_payload(trade)
+
+    # 2. Emit WebSocket Update (Instant)
+    # We add metadata before emitting
+    ws_payload = draft.copy()
     ws_payload["simulated_latency_ms"] = close_meta["simulated_latency_ms"]
     ws_payload["simulated_slippage_bps"] = close_meta["simulated_slippage_bps"]
     await order_manager.emit_to_user(user_id, "order_update", ws_payload)
 
-    
-    # Log User Event
-    await db.execute(
-        insert(UserEvent).values(
-            user_id=user_id,
-            event_name="trade_position_closed",
-            event_data={
-                "trade_id": trade.id,
-                "exit_price": exit_price,
-                "simulated_latency_ms": close_meta["simulated_latency_ms"],
-                "simulated_slippage_bps": close_meta["simulated_slippage_bps"],
-                "pnl": pnl if 'pnl' in locals() else None
-            },
-            created_at=text("CURRENT_TIMESTAMP")
-        )
+    # 3. Background DB Persistence
+    background_tasks.add_task(
+        oms_service.close_trade_async,
+        trade_id, user_id, exit_price, exit_request.exit_type, exit_request.simulated_time
     )
-    await db.commit()
     
     return TradeResponse(
-        trade_id=trade.id,
-        status=trade.status,
-        symbol=trade.symbol,
-        direction=trade.direction,
-        quantity=trade.quantity,
-        entry_price=trade.entry_price or 0.0,
-        order_type=trade.order_type,
-        stop_loss=trade.stop_loss,
-        take_profit=trade.take_profit,
-        requested_quantity=trade.quantity,
-        fill_ratio=1.0,
-        simulated_latency_ms=close_meta["simulated_latency_ms"],
-        simulated_slippage_bps=close_meta["simulated_slippage_bps"],
-        message=f"Trade closed successfully at {exit_price}"
+        trade_id=trade_id,
+        status="CLOSED",
+        symbol=draft["symbol"],
+        direction=draft["direction"],
+        quantity=draft["quantity"],
+        entry_price=draft["entry_price"],
+        order_type=draft["order_type"],
+        message=f"Position close request accepted for high-speed execution"
     )
 
 @router.post("/close-all")

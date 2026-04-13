@@ -14,7 +14,11 @@ from sqlalchemy import update
 from app.utils.portfolio_utils import sync_portfolio_holding
 from app.utils.money import money_float
 from app.services.execution_simulator import execution_simulator
+from app.portfolio_service import portfolio_service
 import logging
+
+import logging
+from app.database import get_session
 
 logger = logging.getLogger(__name__)
 
@@ -53,77 +57,18 @@ class TradeEngine:
         order_data = request.model_dump()
         await risk_engine.check_order(db, user_id, order_data)
 
-        order_type = request.order_type.value
-        is_market = order_type == "MARKET"
-
-        # Determination of entry time - use simulated time if provided and strip tzinfo
-        entry_time = TradeEngine._normalize_db_timestamp(request.simulated_time) or datetime.utcnow()
-
-        # Determine status and effective prices - MARKET orders are OPEN immediately
-        status = "OPEN" if is_market else "PENDING"
-        entry_price = money_float(request.price)
-        filled_quantity = request.quantity
-        execution_meta = {
-            "requested_quantity": request.quantity,
-            "fill_ratio": 1.0,
-            "simulated_latency_ms": 0,
-            "simulated_slippage_bps": 0.0,
-        }
+        drafter = await TradeEngine.calculate_execution_draft(request, user_id)
         
-        # If MARKET order and price is missing/0, try to get from live market service
-        if is_market and (not entry_price or entry_price == 0):
-            from app.live_market import live_market_service
-            entry_price = live_market_service.get_last_price(request.symbol)
-            logger.info(f"Fallbacked to market price for {request.symbol}: {entry_price}")
-
-        # Apply realistic execution effects for marketable entry flow.
-        if is_market and entry_price:
-            execution = execution_simulator.simulate_fill(
-                side=request.direction.value,
-                quantity=request.quantity,
-                reference_price=entry_price,
-                simulated_time=request.simulated_time,
-            )
-            entry_price = money_float(execution.fill_price)
-            filled_quantity = execution.fill_quantity
-            entry_time = TradeEngine._normalize_db_timestamp(execution.execution_time) or entry_time
-            execution_meta = {
-                "requested_quantity": execution.requested_quantity,
-                "fill_ratio": execution.fill_ratio,
-                "simulated_latency_ms": execution.latency_ms,
-                "simulated_slippage_bps": execution.slippage_bps,
-            }
-
-        # For MARKET orders, ignore limit_price/stop_price
-        limit_price = None if is_market else request.limit_price
-        stop_price = None if is_market else request.stop_price
-
-        # --- 2. CREATE MAIN TRADE RECORD ---
-        trade = TradeLog(
-            symbol=request.symbol,
-            direction=request.direction.value,
-            entry_price=entry_price if is_market else None,
-            quantity=filled_quantity if is_market else request.quantity,
-            pnl=0.0,
-            entry_time=entry_time if is_market else None,
-            exit_time=None,
-            holding_time=None,
-            user_id=user_id,
-            alert=request.alert,
-            order_type=order_type,
-            limit_price=limit_price,
-            stop_price=stop_price,
-            status=status,
-            stop_loss=request.stop_loss,
-            take_profit=request.take_profit,
-            session_type=request.session_type
-        )
-
+        trade = drafter["trade"]
         db.add(trade)
         await db.flush() # Get trade.id before commit to link others
+        
+        # Link children to the real DB ID
+        trade_id = trade.id
+        execution_meta = drafter["meta"]
 
         # --- 3. CREATE LINKED ORDERS (for MARKET entry) ---
-        if is_market:
+        if drafter["is_market"]:
             linked_orders = []
             if request.stop_loss:
                 sl_order = TradeLog(
@@ -137,7 +82,7 @@ class TradeEngine:
                     order_type="STOP",
                     status="PENDING",
                     user_id=user_id,
-                    parent_trade_id=trade.id,
+                    parent_trade_id=trade_id,
                     alert=request.alert,
                     session_type=request.session_type
                 )
@@ -155,7 +100,7 @@ class TradeEngine:
                     order_type="LIMIT",
                     status="PENDING",
                     user_id=user_id,
-                    parent_trade_id=trade.id,
+                    parent_trade_id=trade_id,
                     alert=request.alert,
                     session_type=request.session_type
                 )
@@ -213,6 +158,137 @@ class TradeEngine:
             "simulated_slippage_bps": execution_meta["simulated_slippage_bps"],
             "message": f"Order {status_label} successfully",
         }
+
+    @staticmethod
+    async def calculate_execution_draft(request: TradeExecuteRequest, user_id: int) -> dict:
+        """
+        Calculate the trade result without touching the database.
+        Returns a dictionary with a TradeLog object (unsaved) and metadata.
+        """
+        order_type = request.order_type.value
+        is_market = order_type == "MARKET"
+
+        # Determination of entry time
+        entry_time = TradeEngine._normalize_db_timestamp(request.simulated_time) or datetime.utcnow()
+
+        # Determine status and effective prices
+        status = "OPEN" if is_market else "PENDING"
+        entry_price = money_float(request.price)
+        filled_quantity = request.quantity
+        execution_meta = {
+            "requested_quantity": request.quantity,
+            "fill_ratio": 1.0,
+            "simulated_latency_ms": 0,
+            "simulated_slippage_bps": 0.0,
+        }
+        
+        if is_market and (not entry_price or entry_price == 0):
+            from app.live_market import live_market_service
+            entry_price = live_market_service.get_last_price(request.symbol)
+
+        if is_market and entry_price:
+            execution = execution_simulator.simulate_fill(
+                side=request.direction.value,
+                quantity=request.quantity,
+                reference_price=entry_price,
+                simulated_time=request.simulated_time,
+            )
+            entry_price = money_float(execution.fill_price)
+            filled_quantity = execution.fill_quantity
+            entry_time = TradeEngine._normalize_db_timestamp(execution.execution_time) or entry_time
+            execution_meta = {
+                "requested_quantity": execution.requested_quantity,
+                "fill_ratio": execution.fill_ratio,
+                "simulated_latency_ms": execution.latency_ms,
+                "simulated_slippage_bps": execution.slippage_bps,
+            }
+
+        limit_price = None if is_market else request.limit_price
+        stop_price = None if is_market else request.stop_price
+
+        trade = TradeLog(
+            symbol=request.symbol,
+            direction=request.direction.value,
+            entry_price=entry_price if is_market else None,
+            quantity=filled_quantity if is_market else request.quantity,
+            pnl=0.0,
+            entry_time=entry_time if is_market else None,
+            exit_time=None,
+            holding_time=None,
+            user_id=user_id,
+            alert=request.alert,
+            order_type=order_type,
+            limit_price=limit_price,
+            stop_price=stop_price,
+            status=status,
+            stop_loss=request.stop_loss,
+            take_profit=request.take_profit,
+            session_type=request.session_type
+        )
+
+        return {
+            "trade": trade,
+            "meta": execution_meta,
+            "is_market": is_market,
+            "entry_price": entry_price,
+            "filled_quantity": filled_quantity
+        }
+
+    @staticmethod
+    async def save_trade_async(request: TradeExecuteRequest, user_id: int):
+        """
+        Background worker that performs the real DB persistence.
+        Starts a fresh session to ensure atomicity outside router context.
+        """
+        db = await get_session()
+        try:
+            # Re-verify risk in the background just in case state changed
+            order_data = request.model_dump()
+            await risk_engine.check_order(db, user_id, order_data)
+
+            # Re-calculate to keep logic consistent with drafting
+            drafter = await TradeEngine.calculate_execution_draft(request, user_id)
+            trade = drafter["trade"]
+            db.add(trade)
+            await db.flush()
+
+            trade_id = trade.id
+            if drafter["is_market"]:
+                linked_orders = []
+                if request.stop_loss:
+                    linked_orders.append(TradeLog(
+                        symbol=request.symbol, direction="SELL" if request.direction.value == "BUY" else "BUY",
+                        quantity=drafter["filled_quantity"], status="PENDING", user_id=user_id,
+                        parent_trade_id=trade_id, order_type="STOP", stop_price=request.stop_loss,
+                        session_type=request.session_type
+                    ))
+                if request.take_profit:
+                    linked_orders.append(TradeLog(
+                        symbol=request.symbol, direction="SELL" if request.direction.value == "BUY" else "BUY",
+                        quantity=drafter["filled_quantity"], status="PENDING", user_id=user_id,
+                        parent_trade_id=trade_id, order_type="LIMIT", limit_price=request.take_profit,
+                        session_type=request.session_type
+                    ))
+                if linked_orders: db.add_all(linked_orders)
+
+                multiplier = -1 if request.direction == TradeDirection.BUY else 1
+                tx_value = money_float(drafter["filled_quantity"] * drafter["entry_price"])
+                await db.execute(update(User).where(User.id == user_id).values(balance=User.balance + (multiplier * tx_value)))
+                
+                await sync_portfolio_holding(db, user_id, request.symbol, drafter["filled_quantity"], drafter["entry_price"], request.direction.value, request.session_type)
+
+            await db.commit()
+            from app.services.order_management import oms_service
+            oms_service.invalidate_pending_cache(request.symbol, request.session_type, user_id)
+            logger.info(f"✅ Async background save complete for trade {trade_id}")
+            
+            # 🔥 Update snapshots in background too
+            await portfolio_service.save_portfolio_snapshot(user_id, request.session_type)
+        except Exception as e:
+            logger.error(f"❌ Async background save failed: {e}")
+            await db.rollback()
+        finally:
+            await db.close()
 
     @staticmethod
     def build_order_update_payload(trade: TradeLog) -> dict:

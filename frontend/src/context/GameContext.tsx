@@ -660,6 +660,13 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
       if (payload.type === 'order_update') {
         const order = payload.data;
         
+        // 🔥 Trigger Visual Effects in ProChart
+        window.dispatchEvent(new CustomEvent('trade:execution:flash'));
+        if (order.status === 'PENDING' && (order.stop_price || order.limit_price)) {
+          window.dispatchEvent(new CustomEvent('trade:trigger:active', { detail: { price: order.stop_price || order.limit_price } }));
+          setTimeout(() => window.dispatchEvent(new CustomEvent('trade:trigger:clear')), 2000);
+        }
+
         // 🔥 Flash notification on screen for execution/exit
         if (order.status === 'FILLED' || (order.status === 'OPEN' && order.triggered)) {
           toast.success(`Trade Executed: ${order.direction} ${order.quantity}x ${order.symbol} @ ${order.entry_price}`, {
@@ -678,6 +685,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
         // 🔥 Refresh user balance if trade was filled or closed
         if (order.status === 'FILLED' || order.status === 'CLOSED' || order.status === 'OPEN') {
            checkAuth();
+           // Force an immediate portfolio refresh 
+           void syncPortfolioNow(true);
         }
         setTrades(prev => {
           const index = prev.findIndex(t => t.id === order.trade_id);
@@ -713,6 +722,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; }> = ({ childre
           }
         });
         if (['OPEN', 'FILLED', 'CLOSED', 'PENDING', 'TRIGGERED', 'CANCELLED'].includes(order.status)) {
+           usePortfolioStore.getState().applyOrderUpdate(order);
           void syncPortfolioNow();
         }
       }

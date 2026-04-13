@@ -1123,24 +1123,51 @@ def _available_symbols_sync() -> list[dict]:
 
 
 def _available_dates_sync(base_symbol: str) -> list[str]:
-    engine = ensure_sync_engine()
-    if engine.dialect.name == "sqlite":
-        query = text("""
-            SELECT strftime('%Y-%m-%d', start_date) as date_str
-            FROM index_metadata
-            WHERE instrument = :symbol
-            ORDER BY start_date DESC
-        """)
-    else:
-        query = text("""
-            SELECT TO_CHAR(start_date, 'YYYY-MM-DD') as date_str
-            FROM index_metadata
-            WHERE instrument = :symbol
-            ORDER BY start_date DESC
-        """)
-    with engine.connect() as conn:
-        rows = conn.execute(query, {"symbol": base_symbol}).fetchall()
-    return [row[0] for row in rows]
+    """
+    Returns sorted list of dates (DESC) where data is available for a symbol.
+    Strategy: 1) Scan local parquet files, 2) Fallback to index_metadata table.
+    """
+    data_dir = os.path.join(os.path.dirname(__file__), "data")
+    local_dates = []
+    if os.path.isdir(data_dir):
+        for fname in os.listdir(data_dir):
+            if fname.endswith(".parquet") and fname.startswith(f"{base_symbol}_"):
+                # Filename: HDFCBANK_2026-04-07.parquet → date = 2026-04-07
+                date_part = fname.replace(f"{base_symbol}_", "").replace(".parquet", "")
+                # Validate it's a proper date
+                try:
+                    pd.to_datetime(date_part)
+                    local_dates.append(date_part)
+                except Exception:
+                    pass
+    if local_dates:
+        return sorted(local_dates, reverse=True)
+
+    # Fallback to DB metadata only if no local files found
+    try:
+        engine = ensure_sync_engine()
+        if engine.dialect.name == "sqlite":
+            query = text("""
+                SELECT strftime('%Y-%m-%d', start_date) as date_str
+                FROM index_metadata
+                WHERE instrument = :symbol
+                ORDER BY start_date DESC
+            """)
+        else:
+            query = text("""
+                SELECT TO_CHAR(start_date, 'YYYY-MM-DD') as date_str
+                FROM index_metadata
+                WHERE instrument = :symbol
+                ORDER BY start_date DESC
+            """)
+        with engine.connect() as conn:
+            rows = conn.execute(query, {"symbol": base_symbol}).fetchall()
+        return [row[0] for row in rows]
+    except Exception as e:
+        logger.warning(f"⚠️ DB dates lookup failed for {base_symbol}: {e}")
+        return []
+
+
 
 @app.get("/api/search")
 async def search_instruments(query: str):

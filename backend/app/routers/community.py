@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, and_, distinct
 from typing import List
@@ -145,9 +145,10 @@ async def get_channel_messages(channel_id: int, db: AsyncSession = Depends(get_d
 async def send_message(
     msg: MessageCreate,
     request: Request,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db)
 ):
-    """Save message to DB then broadcast via WebSocket in background."""
+    """Save message to DB async and broadcast via WebSocket instantly."""
     user_id = await _get_user_id(request, db)
     now = datetime.utcnow()
 
@@ -158,35 +159,48 @@ async def send_message(
     sender = sender_res.first()
     sender_name = (sender[0] or sender[1]) if sender else "Unknown"
 
-    db_msg = CommunityMessage(
+    client_temp_id = msg.client_temp_id or int(now.timestamp())
+    
+    # We do not have a real DB ID yet. Wait for DB sync to notify client
+    temp_msg_id = client_temp_id if client_temp_id < 0 else -client_temp_id
+    
+    response_dict = {
+        "id": temp_msg_id,
+        "content": msg.content,
+        "sender_id": user_id,
+        "channel_id": msg.channel_id,
+        "recipient_id": msg.recipient_id,
+        "timestamp": now,
+        "sender_name": sender_name,
+    }
+
+    # Timestamp must be a string for JSON serialization over WebSocket
+    ts = now.isoformat()
+    ws_payload = {**response_dict, "timestamp": ts}
+
+    # Fire-and-forget WebSocket broadcast immediately (without waiting for DB)
+    if msg.channel_id:
+        asyncio.create_task(
+            order_manager.emit_to_channel(msg.channel_id, "community_message", ws_payload)
+        )
+    elif msg.recipient_id:
+        asyncio.create_task(
+            order_manager.emit_to_user(msg.recipient_id, "direct_message", ws_payload)
+        )
+        asyncio.create_task(
+            order_manager.emit_to_user(user_id, "direct_message", ws_payload)
+        )
+        
+    # Queue the DB persistence in the background
+    background_tasks.add_task(
+        _persist_message_async,
         sender_id=user_id,
         content=msg.content,
         channel_id=msg.channel_id,
         recipient_id=msg.recipient_id,
         timestamp=now,
+        client_temp_id=temp_msg_id,
     )
-    db.add(db_msg)
-    await db.commit()
-    await db.refresh(db_msg)
-
-    response_dict = _to_message(db_msg, sender_name)
-
-    # Timestamp must be a string for JSON serialization over WebSocket
-    ts = db_msg.timestamp.isoformat() if hasattr(db_msg.timestamp, "isoformat") else str(db_msg.timestamp)
-    ws_payload = {**response_dict, "timestamp": ts}
-
-    # Fire-and-forget WebSocket broadcast — does NOT block the HTTP response
-    if db_msg.channel_id:
-        asyncio.create_task(
-            order_manager.emit_to_channel(db_msg.channel_id, "community_message", ws_payload)
-        )
-    elif db_msg.recipient_id:
-        asyncio.create_task(
-            order_manager.emit_to_user(db_msg.recipient_id, "direct_message", ws_payload)
-        )
-        asyncio.create_task(
-            order_manager.emit_to_user(user_id, "direct_message", ws_payload)
-        )
 
     return Message(**response_dict)
 

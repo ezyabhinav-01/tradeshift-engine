@@ -278,6 +278,15 @@ class TradeEngine:
                 await sync_portfolio_holding(db, user_id, request.symbol, drafter["filled_quantity"], drafter["entry_price"], request.direction.value, request.session_type)
 
             await db.commit()
+            
+            # 🔥 Emit WebSocket Payload instantly after commit
+            from app.websocket_manager import order_manager
+            await db.refresh(trade)
+            ws_payload = TradeEngine.build_order_update_payload(trade)
+            ws_payload["simulated_latency_ms"] = drafter["meta"]["simulated_latency_ms"]
+            ws_payload["simulated_slippage_bps"] = drafter["meta"]["simulated_slippage_bps"]
+            await order_manager.emit_to_user(user_id, "order_update", ws_payload)
+
             from app.services.order_management import oms_service
             oms_service.invalidate_pending_cache(request.symbol, request.session_type, user_id)
             logger.info(f"✅ Async background save complete for trade {trade_id}")

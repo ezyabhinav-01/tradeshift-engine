@@ -79,12 +79,12 @@ def verify_pin_value(plain_pin: str, stored_pin: Optional[str]) -> bool:
     return hmac.compare_digest(stored_pin, plain_pin)
 
 def _cookie_secure() -> bool:
-    return os.getenv("COOKIE_SECURE", "false").lower() in ("1", "true", "yes", "on")
+    return os.getenv("COOKIE_SECURE", "true").lower() in ("1", "true", "yes", "on")
 
 def _cookie_samesite() -> str:
-    value = os.getenv("COOKIE_SAMESITE", "lax").strip().lower()
+    value = os.getenv("COOKIE_SAMESITE", "none").strip().lower()
     if value not in ("lax", "strict", "none"):
-        return "lax"
+        return "none"
     return value
 
 def normalize_phone(phone: Optional[str]) -> Optional[str]:

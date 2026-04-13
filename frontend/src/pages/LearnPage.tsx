@@ -459,6 +459,7 @@ export default function LearnPage() {
   const {
     tracks, badges, secrets, completedLessons, totalXP, level,
     currentStreak, longestStreak, lastActiveDate, learningMinutes,
+    weeklyHistory,
     secretsRevealed, secretsTotal,
     getTrackProgress,
     fetchUserStats, fetchTracks, fetchSecrets, revealSecret
@@ -632,7 +633,7 @@ export default function LearnPage() {
                 {currentStreak} Day Streak
               </span>
             </div>
-            <StreakCalendar streak={currentStreak} lastActiveDate={lastActiveDate} />
+            <StreakCalendar weeklyHistory={weeklyHistory} />
             <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-4 leading-relaxed">
               Complete at least one lesson each day to maintain your streak. Consistency compounds knowledge. 💪
             </p>

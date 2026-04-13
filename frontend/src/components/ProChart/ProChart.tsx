@@ -242,7 +242,7 @@ export const ProChart: React.FC<ProChartProps> = ({
   const lastPriceRef = useRef<number>(currentPrice);
   const lastFitIdRef = useRef<string>('');
   const flashTimeoutRef = useRef<any>(null);
-  const [isFlashing, setIsFlashing] = useState(false);
+  const [_isFlashing, setIsFlashing] = useState(false);
   const triggerLineRef = useRef<any>(null);
 
   // Combine external (from TopToolbar) and internal (from DrawingToolbar) alert triggers

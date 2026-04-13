@@ -1,22 +1,17 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import axios from 'axios';
 import { getCachedOrFetch } from '@/utils/requestCache';
 import {
-  TrendingUp,
-  TrendingDown,
   Activity,
   BarChart2,
   PieChart,
-  RefreshCw,
-  Search,
-  Clock,
-  ChevronLeft,
-  ChevronRight
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useGamePlayback, useGameMarket } from '@/hooks/useGame';
+import TradingViewWidget from '@/components/ui/TradingViewWidget';
+import { MARKET_OVERVIEW_WIDGET_CONFIG, HEATMAP_WIDGET_CONFIG } from '@/lib/constants';
 
 // NEW: Professional Market Components
 import SimulationHeader from './market/SimulationHeader';
@@ -59,26 +54,10 @@ const MarketPage: React.FC = () => {
   const [isDarkMode, setIsDarkMode] = useState(true);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(true);
 
   const checkScroll = () => {
     if (scrollContainerRef.current) {
       const { scrollLeft, scrollWidth, clientWidth } = scrollContainerRef.current;
-      setCanScrollLeft(scrollLeft > 0);
-      setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 1);
-    }
-  };
-
-  useEffect(() => {
-    checkScroll();
-    window.addEventListener('resize', checkScroll);
-    return () => window.removeEventListener('resize', checkScroll);
-  }, [indices]);
-
-  const scrollByAmount = (offset: number) => {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollBy({ left: offset, behavior: 'smooth' });
     }
   };
 

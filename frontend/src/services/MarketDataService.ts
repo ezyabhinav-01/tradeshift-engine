@@ -2,8 +2,8 @@ import type { CandleData } from '../types';
 
 type MessageHandler = (data: any) => void;
 
-const API_BASE = import.meta.env.VITE_API_URL || 'https://20.40.42.232.nip.io';
-const WS_BASE = import.meta.env.VITE_WS_URL || 'wss://20.40.42.232.nip.io';
+const API_BASE = 'https://20.40.42.232.nip.io';
+const WS_BASE = 'wss://20.40.42.232.nip.io';
 
 export class MarketDataService {
     private ws: WebSocket | null = null;

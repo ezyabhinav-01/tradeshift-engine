@@ -84,6 +84,7 @@ async def execute_trade(
     Execute a new trade (Async).
     """
     user_id = await _get_user_id(request, db, trade_request.session_type)
+    try:
         # 1. Sync Calculation (Fast)
         drafter = await TradeEngine.calculate_execution_draft(trade_request, user_id)
         

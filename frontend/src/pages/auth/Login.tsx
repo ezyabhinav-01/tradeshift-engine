@@ -54,7 +54,9 @@ const Login: React.FC = () => {
         return;
       }
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to login. Please check your credentials.');
+      console.error('Login Error:', err);
+      const detail = err.response?.data?.detail;
+      setError(typeof detail === 'string' ? detail : 'Failed to login. Please check your credentials.');
     } finally {
       setLoading(false);
     }

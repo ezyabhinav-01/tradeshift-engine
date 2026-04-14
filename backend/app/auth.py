@@ -398,9 +398,15 @@ async def logout(request: Request, response: Response, db: AsyncSession = Depend
             await db.commit()
 
     # Clear all auth-related cookies (match the same attributes set on creation)
-    response.delete_cookie("session_id", httponly=True, samesite="lax")
-    response.delete_cookie("access_token", httponly=True, samesite="lax")
-    response.delete_cookie("refresh_token", httponly=True, samesite="lax")
+    # Clear all auth-related cookies (match the same attributes set on creation)
+    # This is critical for cross-site cookie deletion (e.g. Netlify -> Azure)
+    s_site = _cookie_samesite()
+    s_cure = _cookie_secure()
+    
+    response.delete_cookie("session_id", httponly=True, samesite=s_site, secure=s_cure)
+    response.delete_cookie("access_token", httponly=True, samesite=s_site, secure=s_cure)
+    response.delete_cookie("refresh_token", httponly=True, samesite=s_site, secure=s_cure)
+    
     return {"message": "Logged out successfully"}
 
 @router.post("/verify-pin")

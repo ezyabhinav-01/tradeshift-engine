@@ -68,10 +68,10 @@ class UserCreate(UserBase):
     balance: float = 100000.0
 
     @field_validator("email")
-    def validate_gmail(cls, value):
-        if not value.endswith("@gmail.com"):
-            raise ValueError("Only @gmail.com email addresses are allowed.")
-        return value
+    def validate_email_format(cls, value):
+        if "@" not in value:
+            raise ValueError("Invalid email format.")
+        return value.lower().strip()
 
     @field_validator("security_pin")
     def validate_pin(cls, value):

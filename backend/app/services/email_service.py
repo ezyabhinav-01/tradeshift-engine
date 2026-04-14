@@ -6,7 +6,7 @@ All functions are designed to be called via BackgroundTasks (non-blocking).
 import logging
 import os
 from fastapi_mail import FastMail, MessageSchema, MessageType
-from app.config import conf
+from app.config import get_mail_conf
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +93,7 @@ async def _send(to_email: str, subject: str, html: str):
     if os.getenv("DISABLE_EMAIL_DELIVERY", "false").strip().lower() in {"1", "true", "yes", "on"}:
         logger.info(f"📭 Email delivery disabled, skipped {subject} -> {to_email}")
         return
+    
     try:
         message = MessageSchema(
             subject=subject,
@@ -100,11 +101,28 @@ async def _send(to_email: str, subject: str, html: str):
             body=html,
             subtype=MessageType.html,
         )
-        fm = FastMail(conf)
-        await fm.send_message(message)
-        logger.info(f"✅ Email sent to {to_email}: {subject}")
+        
+        # We try port 587 first (Standard for most clouds), then fallback to 2525
+        ports_to_try = [587, 2525]
+        last_exception = None
+        
+        for port in ports_to_try:
+            try:
+                fm = FastMail(get_mail_conf(port))
+                await fm.send_message(message)
+                logger.info(f"✅ Email sent to {to_email} via port {port}: {subject}")
+                return # Success!
+            except Exception as e:
+                last_exception = e
+                logger.warning(f"⚠️ SMTP Send failed on port {port} for {to_email}: {str(e)}")
+                continue # Try next port
+        
+        # If we get here, all ports failed. Raise the last exception to be caught by the outer try-except.
+        if last_exception:
+            raise last_exception
+            
     except Exception as e:
-        logger.warning(f"❌ Failed to send email to {to_email}: {e}")
+        logger.warning(f"❌ Final failure to send email to {to_email}: {e}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════

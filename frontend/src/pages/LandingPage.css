@@ -157,6 +157,11 @@
         display: flex;
     }
 }
+@media (max-width: 1099px) {
+    .landing-page-root .nav-links {
+        display: none;
+    }
+}
 
 .landing-page-root .nav-links a:hover,
 .landing-page-root .nav-link-btn:hover {
@@ -180,7 +185,15 @@
 
 .landing-page-root .nav-actions {
     display: flex;
+    align-items: center;
     gap: 1rem;
+}
+
+.landing-page-root .nav-center-group {
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+    min-width: 0;
 }
 
 .landing-page-root .btn {
@@ -233,6 +246,33 @@
     gap: 4rem;
     align-items: center;
     min-height: 70vh;
+}
+
+@media (max-width: 1023px) {
+    .landing-page-root .nav-container {
+        padding: 0.85rem 1rem;
+    }
+
+    .landing-page-root .nav-center-group {
+        gap: 0.75rem;
+        flex: 1;
+        justify-content: flex-end;
+    }
+
+    .landing-page-root .landing-search-trigger {
+        min-width: 140px;
+        height: 38px;
+        padding: 0.5rem 0.9rem;
+    }
+
+    .landing-page-root .nav-actions {
+        gap: 0.5rem;
+    }
+
+    .landing-page-root .nav-actions .btn {
+        padding: 0.45rem 0.8rem;
+        font-size: 0.85rem;
+    }
 }
 
 @media (min-width: 1024px) {
@@ -1382,6 +1422,77 @@
 }
 
 @media (max-width: 640px) {
+    .landing-page-root .nav-container {
+        gap: 0.5rem;
+    }
+
+    .landing-page-root .brand {
+        font-size: 1.2rem;
+    }
+
+    .landing-page-root .nav-center-group {
+        flex: 0 1 auto;
+        gap: 0.5rem;
+    }
+
+    .landing-page-root .theme-toggle {
+        font-size: 1.25rem;
+    }
+
+    .landing-page-root .nav-actions .btn {
+        padding: 0.42rem 0.72rem;
+        font-size: 0.8rem;
+    }
+
+    .landing-page-root .hero {
+        margin: 6.5rem 0 2.75rem;
+        gap: 2.2rem;
+        min-height: auto;
+    }
+
+    .landing-page-root .hero-title,
+    .landing-page-root .hero-typing-title {
+        font-size: 2rem;
+        line-height: 1.2;
+        letter-spacing: -0.5px;
+        margin-bottom: 1rem;
+    }
+
+    .landing-page-root .typewriter-text {
+        font-size: 1.8rem;
+        white-space: normal;
+        width: 100%;
+    }
+
+    .landing-page-root .hero-subtitle {
+        font-size: 0.95rem;
+        margin-bottom: 1.3rem;
+    }
+
+    .landing-page-root .hero-actions {
+        gap: 0.7rem;
+        margin-bottom: 1.6rem;
+    }
+
+    .landing-page-root .hero-actions .btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .landing-page-root .hero-stats {
+        gap: 1rem;
+        flex-wrap: wrap;
+        padding-top: 1.2rem;
+    }
+
+    .landing-page-root .stat-value {
+        font-size: 1.2rem;
+    }
+
+    .landing-page-root .feature-card {
+        padding: 1.5rem;
+    }
+
     .hero-search-bar {
         padding: 1rem;
         gap: 1rem;

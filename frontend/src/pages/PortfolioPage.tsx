@@ -172,15 +172,24 @@ export default function PortfolioPage() {
     <div className="p-3 md:p-8 w-full max-w-7xl mx-auto space-y-6 md:space-y-8 font-sans pb-24 md:pb-20">
 
       {/* ─── Header & Summary ─── */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-2">
+      <div className="relative overflow-hidden rounded-2xl border border-slate-200 dark:border-white/10 bg-white/90 dark:bg-[#0f1118] p-5 md:p-6 shadow-sm dark:shadow-[0_18px_50px_-28px_rgba(37,99,235,0.45)]">
+        <div className="pointer-events-none absolute inset-0 opacity-70">
+          <div className="absolute -top-16 right-8 h-44 w-44 rounded-full bg-blue-500/10 blur-3xl" />
+          <div className="absolute -bottom-20 left-8 h-44 w-44 rounded-full bg-cyan-400/10 blur-3xl" />
+        </div>
+        <div className="relative flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
         <div className="space-y-1">
           <h2 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-3">
             Trading Portfolio
           </h2>
-          <p className="text-muted-foreground text-[11px] md:text-sm">Professional asset tracking and execution analytics.</p>
+          <p className="text-muted-foreground text-[11px] md:text-sm">Professional asset tracking, risk posture and execution analytics.</p>
         </div>
         <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
           <div className="text-[10px] font-black tracking-wider text-sidebar-primary border border-sidebar-primary/20 px-2 py-1 rounded bg-sidebar-primary/5">REPLAY MODE</div>
+          <div className="hidden sm:flex items-center gap-2 rounded border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-500">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            Live Marking
+          </div>
           <button
             onClick={() => {
               if (checkAccess()) void fetchAll(true);
@@ -193,11 +202,12 @@ export default function PortfolioPage() {
           </button>
         </div>
       </div>
+      </div>
 
       {/* Hero Stats */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main P&L Card */}
-        <div className="lg:col-span-1 border border-gray-200 dark:border-white/10 bg-white dark:bg-[#121212] rounded-md p-8 flex flex-col justify-between overflow-hidden relative group">
+        <div className="lg:col-span-1 border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0f1118] rounded-xl p-8 flex flex-col justify-between overflow-hidden relative group shadow-sm dark:shadow-[0_15px_40px_-30px_rgba(16,185,129,0.8)]">
           <div className="absolute -right-4 -top-4 opacity-[0.03] group-hover:opacity-[0.05] transition-opacity">
             <Briefcase size={140} />
           </div>
@@ -226,7 +236,7 @@ export default function PortfolioPage() {
         </div>
 
         {/* Cash Balance Card */}
-        <div className="lg:col-span-1 border border-gray-200 dark:border-white/10 bg-white dark:bg-[#121212] rounded-md p-8 flex flex-col justify-between overflow-hidden relative group">
+        <div className="lg:col-span-1 border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0f1118] rounded-xl p-8 flex flex-col justify-between overflow-hidden relative group shadow-sm dark:shadow-[0_15px_40px_-30px_rgba(59,130,246,0.8)]">
           <div className="absolute -right-4 -top-4 opacity-[0.03] group-hover:opacity-[0.05] transition-opacity">
             <Zap size={140} />
           </div>
@@ -259,7 +269,7 @@ export default function PortfolioPage() {
         </div>
 
         {/* Equity Curve Chart */}
-        <div className="lg:col-span-2 border border-gray-200 dark:border-white/10 bg-white dark:bg-[#121212] rounded-md p-6 min-h-[300px]">
+        <div className="lg:col-span-2 border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0f1118] rounded-xl p-6 min-h-[300px] shadow-sm dark:shadow-[0_15px_40px_-30px_rgba(59,130,246,0.75)]">
           <div className="flex justify-between items-center mb-6">
             <div className="flex items-center gap-2">
               <BarChart3 className="w-4 h-4 text-sidebar-primary" />

@@ -59,6 +59,14 @@ interface Comment {
   created_at: string;
 }
 
+const getLocalDateKey = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 // ═══════════════════════════════════════════
 // HEADER ACTIONS (Theme, Notifications, User)
 // ═══════════════════════════════════════════
@@ -261,6 +269,15 @@ export default function SubModuleDetailPage() {
     }
   }, [subModuleId]);
 
+  useEffect(() => {
+    if (!data) return;
+    try {
+      localStorage.setItem('learn:last-module-opened-date', getLocalDateKey());
+    } catch {
+      // Ignore storage errors in constrained environments.
+    }
+  }, [data?.id]);
+
   async function fetchComments() {
     try {
       const res = await fetch(`/api/learn/sub-modules/${subModuleId}/comments`);
@@ -302,9 +319,14 @@ export default function SubModuleDetailPage() {
   // #TopicRef — Hydrate topic-tag spans in lesson HTML content
   useTopicPortalHydrator(contentRef);
 
-  const handleLessonComplete = (lessonId: string) => {
+  const handleLessonComplete = async (lessonId: string) => {
     if (data && !completedLessons.includes(lessonId)) {
-      completeLesson(lessonId, data.trackId);
+      await completeLesson(lessonId, data.trackId);
+      try {
+        localStorage.setItem('learn:last-chapter-complete-date', getLocalDateKey());
+      } catch {
+        // Ignore storage errors in constrained environments.
+      }
     }
   };
 

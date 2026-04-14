@@ -108,7 +108,7 @@ function AppContent() {
         </Routes>
       </Suspense>
       <Toaster />
-      <div className="fixed bottom-5 right-5 z-50 pointer-events-none">
+      <div className="fixed right-4 bottom-[calc(5rem+env(safe-area-inset-bottom))] md:right-5 md:bottom-5 z-50 pointer-events-none">
         <div className="flex items-center justify-center rounded-full border border-white/20 bg-black/70 p-2 backdrop-blur-sm">
           <div className="flex h-8 w-8 items-center justify-center rounded-full border border-emerald-500/25 bg-emerald-500/10">
             <Bot size={18} className="text-emerald-400" />

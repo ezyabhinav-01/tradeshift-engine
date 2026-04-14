@@ -79,7 +79,7 @@ const Topbar = () => {
       </div>
 
       {/* Right Section - Settings & Profile (Desktop) */}
-      <div className="hidden lg:flex items-center justify-end gap-5 w-auto shrink-0">
+      <div className="hidden lg:flex items-center justify-end gap-4 xl:gap-5 w-auto shrink-0">
         {/* THEME TOGGLE BUTTON */}
         <button
           onClick={toggleTheme}
@@ -113,6 +113,47 @@ const Topbar = () => {
         </div>
 
         <div className="h-6 w-[1px] bg-tv-border"></div>
+
+        {loading ? (
+          <div className="w-8 h-8 rounded-full animate-pulse bg-slate-200 dark:bg-white/5" />
+        ) : user ? (
+          <div className="relative">
+            <button
+              onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+              className="w-8 h-8 rounded-full bg-tv-primary flex items-center justify-center text-white font-bold text-xs shadow-sm border border-white/10"
+              title="Account"
+            >
+              {(user.full_name || user.email || "U").charAt(0).toUpperCase()}
+            </button>
+            {isUserMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setIsUserMenuOpen(false)}></div>
+                <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-[#1E222D] border border-slate-200 dark:border-white/10 rounded-xl shadow-2xl py-2 z-50">
+                  <div className="px-4 py-3 border-b border-slate-100 dark:border-white/5 mb-1">
+                    <p className="text-sm font-bold dark:text-white truncate">{user.demat_id || 'Account'}</p>
+                    <p className="text-[10px] text-slate-500 truncate">{user.email}</p>
+                  </div>
+                  <Link to="/settings" className="flex items-center gap-3 px-4 py-2 text-sm text-slate-700 dark:text-gray-300" onClick={() => setIsUserMenuOpen(false)}>
+                    <UserCircle size={16} /> Profile
+                  </Link>
+                  <Link to="/news" className="flex items-center gap-3 px-4 py-2 text-sm text-slate-700 dark:text-gray-300" onClick={() => setIsUserMenuOpen(false)}>
+                    <Newspaper size={16} /> News
+                  </Link>
+                  <Link to="/community" className="flex items-center gap-3 px-4 py-2 text-sm text-slate-700 dark:text-gray-300" onClick={() => setIsUserMenuOpen(false)}>
+                    <LayoutDashboard size={16} /> Community
+                  </Link>
+                  <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-600">
+                    <LogOut size={16} /> Sign Out
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        ) : (
+          <Link to="/login" className="text-xs font-bold text-tv-primary px-3 py-1.5 rounded-full bg-tv-primary/10">
+            Log In
+          </Link>
+        )}
       </div>
 
       {/* Mobile Right Section - Profile/Auth (Simplified) */}

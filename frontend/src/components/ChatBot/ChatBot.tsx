@@ -155,7 +155,7 @@ export const ChatBot: React.FC = () => {
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 p-4 rounded-full bg-emerald-500 hover:bg-emerald-600 shadow-xl shadow-emerald-500/20 text-white transition-all hover:scale-110 z-50 flex items-center justify-center group"
+        className="fixed right-4 bottom-[calc(5rem+env(safe-area-inset-bottom))] md:right-6 md:bottom-6 p-4 rounded-full bg-emerald-500 hover:bg-emerald-600 shadow-xl shadow-emerald-500/20 text-white transition-all hover:scale-110 z-50 flex items-center justify-center group"
       >
         <MessageCircle size={28} className="group-hover:rotate-12 transition-transform" />
       </button>
@@ -164,8 +164,8 @@ export const ChatBot: React.FC = () => {
 
   return (
     <div 
-      className={`fixed bottom-6 right-6 flex flex-col bg-[#0f0f0f] border border-gray-800 rounded-md shadow-2xl z-50 transition-all duration-300 overflow-hidden
-        ${isExpanded ? 'w-[800px] h-[80vh] right-1/2 translate-x-1/2 bottom-[10vh]' : 'w-[400px] h-[600px]'}
+      className={`fixed left-4 right-4 bottom-[calc(5rem+env(safe-area-inset-bottom))] md:left-auto md:right-6 md:bottom-6 flex flex-col bg-[#0f0f0f] border border-gray-800 rounded-md shadow-2xl z-50 transition-all duration-300 overflow-hidden
+        ${isExpanded ? 'md:w-[800px] md:h-[80vh] md:right-1/2 md:translate-x-1/2 md:bottom-[10vh]' : 'w-auto md:w-[400px] h-[min(70vh,560px)] md:h-[600px]'}
       `}
     >
       {/* Header */}

@@ -9,7 +9,7 @@ import { useGame } from '../context/GameContext';
 import { useTheme } from '../context/ThemeContext';
 import { useMultiChartStore } from '../store/useMultiChartStore';
 import { SymbolSearch } from '../components/features/SymbolSearch';
-import { LogOut, ChevronLeft, ChevronRight, ChevronDown, UserCircle, BarChart2, Globe, Search, PieChart, BookOpen, Activity, MoreHorizontal, CheckCircle2, Newspaper, HelpCircle, LayoutDashboard, Sun, Moon } from 'lucide-react';
+import { LogOut, ChevronLeft, ChevronRight, ChevronDown, UserCircle, BarChart2, Globe, Search, PieChart, BookOpen, Activity, MoreHorizontal, CheckCircle2, Newspaper, HelpCircle, LayoutDashboard, Sun, Moon, Bell } from 'lucide-react';
 import './LandingPage.css';
 
 gsap.registerPlugin(ScrollTrigger);
@@ -1449,7 +1449,7 @@ export default function LandingPage() {
         <div className="nav-container">
           <Link to="/" className="brand">TRADE<span className="accent">SHIFT</span></Link>
 
-          <div className="nav-center-group" style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
+          <div className="nav-center-group">
             {/* SEARCH BAR TRIGGER */}
             <div
               onClick={() => setIsSearchOpen(true)}
@@ -1528,7 +1528,7 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <div className="nav-actions" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div className="nav-actions">
             <button
               onClick={() => setTheme(isLightMode ? 'dark' : 'light')}
               className="theme-toggle"
@@ -1539,7 +1539,23 @@ export default function LandingPage() {
             </button>
 
             {user ? (
-              <div className="relative" style={{ marginLeft: '0.5rem' }}>
+              <div className="relative flex items-center">
+                <div
+                  className={`${isLightMode ? 'bg-slate-300/80' : 'bg-white/15'}`}
+                  style={{ width: '1px', height: '24px', margin: '0 0.65rem' }}
+                />
+                <Link
+                  to="/notifications"
+                  className={`inline-flex items-center justify-center p-2 rounded-full transition-colors ${isLightMode ? 'text-slate-700 hover:bg-slate-100' : 'text-slate-200 hover:bg-white/10'}`}
+                  title="Notifications"
+                  aria-label="Notifications"
+                >
+                  <Bell size={20} />
+                </Link>
+                <div
+                  className={`${isLightMode ? 'bg-slate-300/80' : 'bg-white/15'}`}
+                  style={{ width: '1px', height: '24px', margin: '0 0.65rem' }}
+                />
                 <button
                   onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
                   className="flex items-center gap-2 p-1 pl-2 rounded-full hover:bg-white/5 transition-all border border-transparent hover:border-white/10"

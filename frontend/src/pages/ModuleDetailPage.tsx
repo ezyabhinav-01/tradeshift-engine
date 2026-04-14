@@ -24,6 +24,14 @@ interface ModuleDetail {
   subModules: SubModule[];
 }
 
+const getLocalDateKey = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 // ═══════════════════════════════════════════
 // HEADER ACTIONS (Theme, Notifications, User)
 // ═══════════════════════════════════════════
@@ -120,6 +128,15 @@ export default function ModuleDetailPage() {
     }
     fetchModule();
   }, [moduleId]);
+
+  useEffect(() => {
+    if (!module) return;
+    try {
+      localStorage.setItem('learn:last-module-opened-date', getLocalDateKey());
+    } catch {
+      // Ignore storage errors in private mode/restricted browsers.
+    }
+  }, [module?.id]);
 
   if (loading) {
     return (

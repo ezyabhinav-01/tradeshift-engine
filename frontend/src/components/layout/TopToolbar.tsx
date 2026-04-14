@@ -166,24 +166,26 @@ const TopToolbar = ({
                     <span className="text-sm">Alert</span>
                 </Button>
 
-                {/* Replay & Status Indicator */}
-                <div className="flex items-center gap-2 ml-2">
-                    <Button
-                        variant="ghost"
-                        onClick={() => {
-                            if (checkAccess()) toggleReplay();
-                        }}
-                        className={`h-8 gap-2 px-2 border border-tv-border text-tv-text-primary hover:opacity-90 ${isReplayActive ? 'bg-gradient-to-r from-blue-600/20 to-blue-700/20 text-blue-500 border-blue-500/50' : 'bg-tv-bg-pane'
-                            } ${isGuest ? 'opacity-40 cursor-not-allowed' : ''}`}
-                    >
-                        <Rewind size={18} />
-                        <span className="text-sm font-bold">Replay</span>
-                    </Button>
-                </div>
             </div>
 
             {/* RIGHT CONTROLS */}
             <div className="flex items-center space-x-1 h-full">
+                {/* Replay Control (Pinned to right controls beside publish) */}
+                <Button
+                    variant="ghost"
+                    onClick={() => {
+                        if (checkAccess()) toggleReplay();
+                    }}
+                    className={`h-8 gap-2 px-3 mr-1 border border-tv-border text-tv-text-primary hover:opacity-90 ${
+                        isReplayActive
+                            ? 'bg-gradient-to-r from-blue-600/20 to-blue-700/20 text-blue-500 border-blue-500/50'
+                            : 'bg-tv-bg-pane'
+                    } ${isGuest ? 'opacity-40 cursor-not-allowed' : ''}`}
+                >
+                    <Rewind size={18} />
+                    <span className="text-sm font-bold">Replay</span>
+                </Button>
+
                 {/* News Panel Toggle */}
                 <Button
                     variant="ghost"

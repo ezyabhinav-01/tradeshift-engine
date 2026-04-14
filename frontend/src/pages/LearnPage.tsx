@@ -30,7 +30,16 @@ const DIFFICULTY_COLORS: Record<string, string> = {
   Advanced: 'bg-rose-500/10 text-rose-500 border-rose-500/20',
 };
 
-// Constants removed as they are now used in TrackDetailPage.tsx
+const MODULE_OPENED_DATE_KEY = 'learn:last-module-opened-date';
+const CHAPTER_COMPLETED_DATE_KEY = 'learn:last-chapter-complete-date';
+
+const getLocalDateKey = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 // ═══════════════════════════════════════════
 // XP RING COMPONENT
@@ -70,7 +79,7 @@ const XPRing: React.FC<{ xp: number; level: number }> = ({ xp, level }) => {
 // ═══════════════════════════════════════════
 // STREAK CALENDAR COMPONENT
 // ═══════════════════════════════════════════
-const StreakCalendar: React.FC<{ weeklyHistory: boolean[] }> = ({ weeklyHistory }) => {
+const StreakCalendar: React.FC<{ weeklyHistory: boolean[]; armedToday: boolean }> = ({ weeklyHistory, armedToday }) => {
   const dayNames = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
   
   // Calculate labels for the last 7 days (including today)
@@ -92,11 +101,13 @@ const StreakCalendar: React.FC<{ weeklyHistory: boolean[] }> = ({ weeklyHistory 
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all streak-day ${
               isActiveDay
                 ? 'bg-emerald-500 text-white active'
+                : isToday && armedToday
+                  ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-300 ring-2 ring-amber-400/60 streak-day-armed'
                 : isToday
                   ? 'bg-slate-200 dark:bg-white/10 text-slate-400 dark:text-slate-500 ring-2 ring-emerald-500/30'
                   : 'bg-slate-100 dark:bg-white/5 text-slate-300 dark:text-slate-600'
             }`}>
-              {isActiveDay ? '✓' : ''}
+              {isActiveDay ? '✓' : isToday && armedToday ? '•' : ''}
             </div>
           </div>
         );
@@ -458,7 +469,7 @@ const TrackCard: React.FC<{
 export default function LearnPage() {
   const {
     tracks, badges, secrets, completedLessons, totalXP, level,
-    currentStreak, learningMinutes,
+    currentStreak, longestStreak, lastActiveDate, learningMinutes,
     weeklyHistory,
     secretsRevealed, secretsTotal,
     getTrackProgress,
@@ -472,6 +483,13 @@ export default function LearnPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [xpPopups, setXpPopups] = useState<{ id: number; xp: number; x: number; y: number }[]>([]);
   const [selectedBadge, setSelectedBadge] = useState<Badge | null>(null);
+  const [sessionBaseMinutes, setSessionBaseMinutes] = useState(learningMinutes);
+  const [liveSessionSeconds, setLiveSessionSeconds] = useState(0);
+  const [monitorVisible, setMonitorVisible] = useState(() =>
+    typeof document === 'undefined' ? true : !document.hidden
+  );
+  const [moduleOpenedToday, setModuleOpenedToday] = useState(false);
+  const [chapterCompletedToday, setChapterCompletedToday] = useState(false);
 
   // Check streak and fetch tracks on mount
   useEffect(() => {
@@ -484,6 +502,13 @@ export default function LearnPage() {
   const unlockedBadges = badges.filter(b => b.unlocked);
   const totalLessons = useMemo(() => tracks.reduce((s, t) => s + t.totalLessons, 0), [tracks]);
   const nextLevelXP = getXPForLevel(level);
+  const todayDateKey = getLocalDateKey();
+  const completedTodayFromServer = !isGuest && lastActiveDate === todayDateKey;
+  const streakArmedToday = !isGuest && (moduleOpenedToday || chapterCompletedToday || completedTodayFromServer);
+  const streakReadyToday = !isGuest && (chapterCompletedToday || completedTodayFromServer);
+  const liveLearningMinutes = isGuest
+    ? 0
+    : sessionBaseMinutes + Math.floor(liveSessionSeconds / 60);
 
   const formatMinutes = (minutes: number) => {
     if (minutes < 60) return `${minutes}m`;
@@ -491,6 +516,62 @@ export default function LearnPage() {
     const m = minutes % 60;
     return m > 0 ? `${h}h ${m}m` : `${h}h`;
   };
+
+  const formatLiveDuration = (seconds: number) => {
+    const mm = String(Math.floor(seconds / 60)).padStart(2, '0');
+    const ss = String(seconds % 60).padStart(2, '0');
+    return `${mm}:${ss}`;
+  };
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      setMonitorVisible(!document.hidden);
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isGuest) return;
+
+    try {
+      const openedDate = localStorage.getItem(MODULE_OPENED_DATE_KEY);
+      const completedDate = localStorage.getItem(CHAPTER_COMPLETED_DATE_KEY);
+      setModuleOpenedToday(openedDate === todayDateKey);
+      setChapterCompletedToday(completedDate === todayDateKey);
+    } catch {
+      // Ignore storage errors.
+    }
+  }, [isGuest, todayDateKey, completedLessons.length]);
+
+  useEffect(() => {
+    setSessionBaseMinutes(learningMinutes);
+    setLiveSessionSeconds(0);
+  }, [learningMinutes]);
+
+  useEffect(() => {
+    if (isGuest) return;
+
+    const secondTicker = window.setInterval(() => {
+      if (!document.hidden) {
+        setLiveSessionSeconds((prev) => prev + 1);
+      }
+    }, 1000);
+
+    const statsHeartbeat = window.setInterval(() => {
+      if (!document.hidden) {
+        void fetchUserStats();
+      }
+    }, 20000);
+
+    return () => {
+      window.clearInterval(secondTicker);
+      window.clearInterval(statsHeartbeat);
+    };
+  }, [isGuest, fetchUserStats]);
 
   // Find continue learning suggestion
   const continueSuggestion = useMemo(() => {
@@ -578,6 +659,17 @@ export default function LearnPage() {
                   <span className="text-2xl font-black text-slate-800 dark:text-white">{isGuest ? 0 : currentStreak}</span>
                   <span className="text-lg">🔥</span>
                 </div>
+                <div className="mt-1 text-[9px] font-bold uppercase tracking-wider">
+                  {isGuest ? (
+                    <span className="text-slate-400 dark:text-slate-500">Sign in to activate</span>
+                  ) : streakReadyToday ? (
+                    <span className="text-emerald-500">Today completed</span>
+                  ) : streakArmedToday ? (
+                    <span className="text-amber-500">Armed: complete 1 chapter</span>
+                  ) : (
+                    <span className="text-slate-400 dark:text-slate-500">Open any module to arm</span>
+                  )}
+                </div>
               </div>
 
               {/* Badges Count */}
@@ -609,9 +701,16 @@ export default function LearnPage() {
                   <Clock size={12} className="text-emerald-500" /> Time Spent
                 </div>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-3xl font-black text-slate-800 dark:text-white group-hover:text-emerald-500 transition-colors uppercase tracking-tight">{isGuest ? "0m" : formatMinutes(learningMinutes)}</span>
+                  <span className="text-3xl font-black text-slate-800 dark:text-white group-hover:text-emerald-500 transition-colors uppercase tracking-tight">
+                    {isGuest ? "0m" : formatMinutes(liveLearningMinutes)}
+                  </span>
                 </div>
-                <div className="text-[9px] text-slate-400 dark:text-slate-600 mt-1">Active Learning</div>
+                <div className="mt-1 flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider">
+                  <span className={`inline-block w-1.5 h-1.5 rounded-full ${monitorVisible ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+                  <span className={monitorVisible ? 'text-emerald-500' : 'text-slate-400 dark:text-slate-600'}>
+                    {monitorVisible ? `Live ${formatLiveDuration(liveSessionSeconds)}` : 'Paused in background'}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -630,10 +729,21 @@ export default function LearnPage() {
                 {currentStreak} Day Streak
               </span>
             </div>
-            <StreakCalendar weeklyHistory={weeklyHistory} />
+            <StreakCalendar weeklyHistory={weeklyHistory} armedToday={streakArmedToday && !streakReadyToday} />
             <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-4 leading-relaxed">
-              Complete at least one lesson each day to maintain your streak. Consistency compounds knowledge. 💪
+              {isGuest
+                ? 'Sign in to activate your live streak monitor and progress tracking.'
+                : streakReadyToday
+                  ? 'Chapter done today. Your streak is protected and counted.'
+                  : streakArmedToday
+                    ? 'Module opened. Finish one chapter today to lock in the streak.'
+                    : 'Open any module, then complete one chapter to activate today’s streak.'}
             </p>
+            {!isGuest && (
+              <div className="mt-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                Best streak: <span className="text-indigo-500">{longestStreak} days</span>
+              </div>
+            )}
           </div>
 
           {/* Badge Gallery */}
@@ -838,7 +948,9 @@ export default function LearnPage() {
             </p>
           </div>
           <div className="px-4 py-2 bg-slate-100 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-white/10 text-center">
-            <div className="text-2xl font-black text-indigo-500">{Math.round((completedLessons.length / totalLessons) * 100)}%</div>
+            <div className="text-2xl font-black text-indigo-500">
+              {totalLessons > 0 ? Math.round((completedLessons.length / totalLessons) * 100) : 0}%
+            </div>
             <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">Overall</div>
           </div>
         </div>

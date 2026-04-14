@@ -155,19 +155,19 @@ const SettingsPage = () => {
 
   return (
     <div className="min-h-screen bg-transparent dark:bg-[#0b0e11] font-sans pb-20">
-      <div className="max-w-6xl mx-auto px-4 pt-8 md:pt-12">
+      <div className="max-w-6xl mx-auto px-4 pt-4 sm:pt-8 md:pt-12">
 
-        <div className="mb-10 text-center md:text-left">
-          <h2 className="text-4xl font-black text-slate-800 dark:text-white tracking-tight">Settings</h2>
-          <p className="text-slate-500 dark:text-gray-400 mt-1">Manage your account preferences and security.</p>
+        <div className="mb-6 sm:mb-10 text-center md:text-left">
+          <h2 className="text-3xl sm:text-4xl font-black text-slate-800 dark:text-white tracking-tight">Settings</h2>
+          <p className="text-sm text-slate-500 dark:text-gray-400 mt-1">Manage your account preferences and security.</p>
         </div>
 
         <div className="flex flex-col md:flex-row gap-8 items-start">
 
           {/* GROWW STYLE SIDEBAR */}
           <div className="w-full md:w-72 bg-white dark:bg-[#1e222d] rounded-2xl shadow-sm overflow-hidden border border-slate-200 dark:border-white/5 sticky top-8">
-            <div className="p-8 text-center border-b border-slate-100 dark:border-white/5">
-              <div className="w-24 h-24 rounded-full bg-linear-to-br from-[#00d09c] to-[#00a37b] mx-auto mb-4 flex items-center justify-center text-3xl font-black text-white shadow-lg ring-4 ring-[#00d09c]/20">
+            <div className="p-6 sm:p-8 text-center border-b border-slate-100 dark:border-white/5">
+              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-linear-to-br from-[#00d09c] to-[#00a37b] mx-auto mb-4 flex items-center justify-center text-3xl font-black text-white shadow-lg ring-4 ring-[#00d09c]/20">
                 {user?.full_name?.charAt(0) || 'U'}
               </div>
               <h3 className="font-bold text-lg text-slate-800 dark:text-white">{user?.full_name}</h3>
@@ -181,7 +181,7 @@ const SettingsPage = () => {
           </div>
 
           {/* CONTENT AREA */}
-          <div className="flex-1 w-full bg-white dark:bg-[#1e222d] rounded-2xl shadow-sm border border-slate-200 dark:border-white/5 p-8 md:p-10 min-h-[600px]">
+          <div className="flex-1 w-full bg-white dark:bg-[#1e222d] rounded-2xl shadow-sm border border-slate-200 dark:border-white/5 p-6 sm:p-8 md:p-10 min-h-[600px]">
 
             {activeTab === 'basic' && (
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">

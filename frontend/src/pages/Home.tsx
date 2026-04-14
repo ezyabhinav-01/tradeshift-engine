@@ -237,19 +237,21 @@ const Home = () => {
   return (
     <div className="flex flex-col flex-1 min-h-0 w-full bg-transparent text-tv-text-primary overflow-hidden font-sans border-t-3 border-tv-border">
       {/* TOP TOOLBAR */}
-      <TopToolbar
-        isNewsOpen={isNewsOpen}
-        onToggleNews={() => setIsNewsOpen(prev => !prev)}
-        isObjectTreeOpen={isObjectTreeOpen}
-        onToggleObjectTree={() => setIsObjectTreeOpen(prev => !prev)}
-        onToggleIndicators={() => setIsIndicatorsOpen(prev => !prev)}
-        onOpenAlerts={() => {
-          if (checkAccess()) setIsAlertsOpen(true);
-        }}
-        activeIndicatorIds={activeIndicatorIds}
-        onApplyIndicatorTemplate={onApplyIndicatorTemplate}
-        isGuest={isGuest}
-      />
+      <div className="h-12 border-b border-tv-border flex items-center overflow-x-auto no-scrollbar lg:overflow-visible">
+        <TopToolbar
+          isNewsOpen={isNewsOpen}
+          onToggleNews={() => setIsNewsOpen(prev => !prev)}
+          isObjectTreeOpen={isObjectTreeOpen}
+          onToggleObjectTree={() => setIsObjectTreeOpen(prev => !prev)}
+          onToggleIndicators={() => setIsIndicatorsOpen(prev => !prev)}
+          onOpenAlerts={() => {
+            if (checkAccess()) setIsAlertsOpen(true);
+          }}
+          activeIndicatorIds={activeIndicatorIds}
+          onApplyIndicatorTemplate={onApplyIndicatorTemplate}
+          isGuest={isGuest}
+        />
+      </div>
 
       <div className="flex flex-1 min-h-0 relative">
         {/* CENTER CHART AREA */}
@@ -538,15 +540,15 @@ const Home = () => {
 
 
       {/* BOTTOM FOOTER */}
-      <div className="h-8 border-t-4 border-tv-border bg-tv-bg-base flex items-center justify-between px-4 text-xs font-semibold text-tv-text-secondary select-none flex-shrink-0">
-        {/* Bottom Left: Timeframe Intervals */}
-        <div className="flex items-center space-x-1">
+      <div className="h-10 border-t border-tv-border bg-tv-bg-base flex items-center justify-between px-2 text-xs font-semibold text-tv-text-secondary select-none flex-shrink-0 overflow-hidden">
+        {/* Bottom Left: Timeframe Intervals (Scrollable on mobile) */}
+        <div className="flex-1 flex items-center space-x-0.5 overflow-x-auto no-scrollbar py-1">
           {(['1min', '3min', '5min', '15min', '30min', '1hr'] as TimeframeId[]).map((tf) => (
             <span
               key={tf}
               onClick={() => setActiveTimeframe(tf)}
-              className={`px-2 py-0.5 rounded cursor-pointer transition-all duration-200 font-semibold text-[11px] uppercase tracking-wider ${activeTimeframe === tf
-                ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40 shadow-[0_0_8px_rgba(59,130,246,0.15)]'
+              className={`px-2.5 py-1.5 rounded-md cursor-pointer transition-all duration-200 font-bold text-[10px] uppercase tracking-wider whitespace-nowrap ${activeTimeframe === tf
+                ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
                 : 'hover:text-blue-400 hover:bg-white/5 text-tv-text-secondary'
                 }`}
             >
@@ -555,10 +557,10 @@ const Home = () => {
           ))}
         </div>
 
-        {/* Bottom Right: Time Info */}
-        <div className="flex items-center space-x-4 pr-1">
-          <span className="text-tv-text-primary border-b-2 border-blue-500 pb-[6px] cursor-pointer font-bold">Trade</span>
-          <span className="ml-4 tabular-nums">{new Date().toLocaleTimeString()} UTC+5:30</span>
+        {/* Bottom Right: Status Info (Hidden or minimal on tiny screens) */}
+        <div className="flex items-center space-x-3 pr-1 shrink-0 ml-2">
+          <span className="text-tv-primary font-black uppercase text-[10px] tracking-tighter hidden xs:block">LIVE</span>
+          <span className="tabular-nums opacity-60 text-[10px]">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
         </div>
       </div>
     </div>

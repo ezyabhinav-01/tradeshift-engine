@@ -458,7 +458,7 @@ const TrackCard: React.FC<{
 export default function LearnPage() {
   const {
     tracks, badges, secrets, completedLessons, totalXP, level,
-    currentStreak, longestStreak, learningMinutes,
+    currentStreak, learningMinutes,
     weeklyHistory,
     secretsRevealed, secretsTotal,
     getTrackProgress,
@@ -539,23 +539,22 @@ export default function LearnPage() {
 
           <div className="relative z-10 flex flex-col lg:flex-row items-center lg:items-start justify-between gap-8">
             {/* Left: Title */}
-            <div className="space-y-4 text-center lg:text-left flex-1">
+            <div className="space-y-3 text-center lg:text-left flex-1">
               <div className="flex items-center justify-center lg:justify-start gap-2">
-                <div className="px-2.5 py-1 bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 rounded-lg text-[10px] font-black uppercase tracking-widest border border-indigo-500/30 flex items-center gap-1">
-                  <GraduationCap size={12} />
+                <div className="px-2 py-0.5 bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 rounded-lg text-[9px] font-black uppercase tracking-widest border border-indigo-500/30 flex items-center gap-1">
+                  <GraduationCap size={10} />
                   Academy
                 </div>
-                <span className="text-slate-400 dark:text-slate-500 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1">
-                  <Sparkles className="w-3 h-3" />
-                  Financial Education Hub
+                <span className="text-slate-400 dark:text-slate-500 text-[9px] font-bold uppercase tracking-widest flex items-center gap-1">
+                  <Sparkles className="w-2.5 h-2.5" />
+                  Learning Hub
                 </span>
               </div>
-              <h1 className="text-4xl lg:text-5xl font-black tracking-tighter text-slate-900 dark:text-white leading-[1.15] py-1">
-                TradeShift <span className="inline-block text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-purple-600 italic px-2 pb-2">Academy</span>
+              <h1 className="text-3xl lg:text-5xl font-black tracking-tighter text-slate-900 dark:text-white leading-tight py-1">
+                TradeShift <span className="inline-block text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-purple-600 italic px-1 pb-1">Academy</span>
               </h1>
-              <p className="text-slate-500 dark:text-slate-400 max-w-lg text-sm leading-relaxed">
-                Master the markets with structured courses. From stock basics to advanced options —
-                earn XP, maintain streaks, and unlock badges as you progress.
+              <p className="text-slate-500 dark:text-slate-400 max-w-lg text-[13px] leading-relaxed mx-auto lg:mx-0">
+                Master the markets with structured courses. From stock basics to advanced options.
               </p>
             </div>
 
@@ -571,27 +570,25 @@ export default function LearnPage() {
               </div>
 
               {/* Streak */}
-              <div className="p-5 bg-white/80 dark:bg-black/40 border border-slate-200 dark:border-white/10 rounded-2xl backdrop-blur-xl group hover:border-emerald-500/30 transition-all">
-                <div className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase mb-2 flex items-center gap-1.5">
-                  <Flame size={12} className="text-orange-500" /> Current Streak
+              <div className="p-4 bg-white/80 dark:bg-black/40 border border-slate-200 dark:border-white/10 rounded-2xl backdrop-blur-xl group hover:border-emerald-500/30 transition-all flex-1 min-w-[120px]">
+                <div className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase mb-1 flex items-center gap-1.5">
+                  <Flame size={10} className="text-orange-500" /> Streak
                 </div>
                 <div className="flex items-baseline gap-1.5">
-                  <span className="text-3xl font-black text-slate-800 dark:text-white group-hover:text-emerald-500 transition-colors">{isGuest ? 0 : currentStreak}</span>
-                  <span className="streak-flame text-xl">🔥</span>
+                  <span className="text-2xl font-black text-slate-800 dark:text-white">{isGuest ? 0 : currentStreak}</span>
+                  <span className="text-lg">🔥</span>
                 </div>
-                <div className="text-[9px] text-slate-400 dark:text-slate-600 mt-1">Best: {isGuest ? 0 : longestStreak} days</div>
               </div>
 
               {/* Badges Count */}
-              <div className="p-5 bg-white/80 dark:bg-black/40 border border-slate-200 dark:border-white/10 rounded-2xl backdrop-blur-xl group hover:border-amber-500/30 transition-all">
-                <div className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase mb-2 flex items-center gap-1.5">
-                  <Trophy size={12} className="text-amber-500" /> Badges
+              <div className="p-4 bg-white/80 dark:bg-black/40 border border-slate-200 dark:border-white/10 rounded-2xl backdrop-blur-xl group hover:border-amber-500/30 transition-all flex-1 min-w-[120px]">
+                <div className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase mb-1 flex items-center gap-1.5">
+                  <Trophy size={10} className="text-amber-500" /> Badges
                 </div>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-3xl font-black text-slate-800 dark:text-white group-hover:text-amber-500 transition-colors">{unlockedBadges.length}</span>
-                  <span className="text-sm font-bold text-slate-300 dark:text-slate-600">/{badges.length}</span>
+                  <span className="text-2xl font-black text-slate-800 dark:text-white">{unlockedBadges.length}</span>
+                  <span className="text-[10px] font-bold text-slate-400">/{badges.length}</span>
                 </div>
-                <div className="text-[9px] text-slate-400 dark:text-slate-600 mt-1">Earned</div>
               </div>
 
               {/* Lessons Progress */}

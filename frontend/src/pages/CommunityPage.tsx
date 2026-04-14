@@ -269,6 +269,7 @@ const CommunityPage = () => {
   const [isInitializing, setIsInitializing] = useState(true);
   const [showNewDM, setShowNewDM] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Mobile sidebar state
 
   const ws = useRef<WebSocket | null>(null);
   const messageEndRef = useRef<HTMLDivElement>(null);
@@ -524,7 +525,9 @@ const CommunityPage = () => {
 
       {/* ── Sidebar ─────────────────────────────────────────────────────────── */}
       <aside
-        className="w-[260px] flex flex-col shrink-0 border-r border-slate-200 dark:border-white/5 bg-slate-50 dark:bg-[#0a0a0a]"
+        className={`fixed inset-y-0 left-0 z-40 w-[260px] flex flex-col shrink-0 border-r border-slate-200 dark:border-white/5 bg-slate-50 dark:bg-[#0a0a0a] transition-transform duration-300 lg:relative lg:translate-x-0 ${
+          isSidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
+        }`}
       >
         {/* Workspace header */}
         <div
@@ -566,6 +569,7 @@ const CommunityPage = () => {
                     onClick={() => {
                       setActiveChannel(ch);
                       setActiveDMUser(null);
+                      setIsSidebarOpen(false); // Close sidebar on mobile
                       setChannels((prev) => prev.map((c) => (c.id === ch.id ? { ...c, unread: 0 } : c)));
                     }}
                     className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-left transition-all cursor-pointer text-sm font-black group/ch ${
@@ -614,7 +618,10 @@ const CommunityPage = () => {
                   {dmHistory.map((u) => (
                     <button
                       key={u.id}
-                      onClick={() => openDM(u)}
+                      onClick={() => {
+                        openDM(u);
+                        setIsSidebarOpen(false); // Close sidebar on mobile
+                      }}
                       className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-left transition-all cursor-pointer text-sm font-black ${
                         activeDMUser?.id === u.id 
                           ? 'text-white bg-indigo-500 shadow-lg shadow-indigo-500/20' 
@@ -670,9 +677,17 @@ const CommunityPage = () => {
       <main className="flex-1 flex flex-col min-w-0 bg-white dark:bg-[#0f1117]">
         {/* Chat header */}
         <div
-          className="h-13 flex items-center justify-between px-5 py-3 border-b shrink-0 border-slate-200 dark:border-white/5 bg-white/50 dark:bg-white/2"
+          className="h-13 flex items-center justify-between px-4 sm:px-5 py-3 border-b shrink-0 border-slate-200 dark:border-white/5 bg-white/50 dark:bg-white/2"
         >
           <div className="flex items-center gap-3 min-w-0">
+            {/* Mobile Menu Toggle */}
+            <button 
+              onClick={() => setIsSidebarOpen(true)}
+              className="lg:hidden p-1.5 -ml-1 text-slate-500 hover:text-indigo-500 transition-colors"
+            >
+              <Hash size={20} />
+            </button>
+
             {activeChannel ? (
               <>
                 <Hash size={18} className="text-indigo-500 dark:text-indigo-400 shrink-0" />
@@ -789,6 +804,14 @@ const CommunityPage = () => {
                         isMe ? 'flex-row-reverse' : 'flex-row'
                       } ${isConsecutive ? 'mt-[2px]' : 'mt-3'}`}
                     >
+                      {/* Overlay for mobile sidebar */}
+                      {isSidebarOpen && (
+                        <div 
+                          className="fixed inset-0 z-30 bg-black/40 backdrop-blur-sm lg:hidden"
+                          onClick={() => setIsSidebarOpen(false)}
+                        />
+                      )}
+                      
                       {/* Avatar placeholder (others only) */}
                       {!isMe && (
                         <div className="w-7 h-7 shrink-0">

@@ -206,9 +206,9 @@ const ScreenerPage: React.FC = () => {
   }
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20 px-4 lg:px-6 bg-transparent">
+    <div className="space-y-6 sm:space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20 px-4 lg:px-6 bg-transparent">
       {/* Header Banner */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary/10 via-blue-500/5 to-transparent border border-slate-200 dark:border-white/5 p-8 shadow-sm dark:shadow-2xl">
+      <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-br from-primary/10 via-blue-500/5 to-transparent border border-slate-200 dark:border-white/5 p-5 sm:p-8 shadow-sm dark:shadow-2xl">
         <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8">
           <div className="space-y-4 text-center md:text-left">
             <div className="flex items-center justify-center md:justify-start gap-2">
@@ -220,10 +220,10 @@ const ScreenerPage: React.FC = () => {
                 Adaptive Learning Engine
               </span>
             </div>
-            <h1 className="text-5xl font-black tracking-tighter text-slate-900 dark:text-white leading-none">
+            <h1 className="text-3xl sm:text-5xl font-black tracking-tighter text-slate-900 dark:text-white leading-none">
               <span className="shimmer-text inline-block">Multibagger</span> <span className="text-primary italic">Academy</span>
             </h1>
-            <p className="text-slate-500 dark:text-gray-400 max-w-xl text-sm leading-relaxed">
+            <p className="text-slate-500 dark:text-gray-400 max-w-xl text-xs sm:text-sm leading-relaxed">
               Unlock potential 10x picks with our AI-driven fundamental scanner.
               We analyze 10+ years of financials and market data to surface
               high-efficiency compounders before they go mainstream.
@@ -318,7 +318,7 @@ const ScreenerPage: React.FC = () => {
               </p>
             </div>
           ) : (
-            <div ref={containerRef} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 m-3 screener-grid-group">
+            <div ref={containerRef} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:m-3 screener-grid-group">
               {filteredCandidates.map((stock) => (
                 <div
                   key={stock.symbol}

@@ -20,9 +20,9 @@ const SimulationHeader: React.FC<SimulationHeaderProps> = ({
   const { isPlaying, currentTime } = useGamePlayback();
 
   return (
-    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 p-6 rounded-xl backdrop-blur-md">
+    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 p-4 sm:p-6 rounded-xl backdrop-blur-md">
       <div>
-        <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white mb-1 font-['Montserrat']">Markets Overview</h1>
+        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white mb-1 font-['Montserrat']">Markets Overview</h1>
         <div className="flex items-center gap-2 text-xs font-medium mt-2">
           {isPlaying ? (
             <>

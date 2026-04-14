@@ -111,7 +111,7 @@ const ResearchHub: React.FC = () => {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-5 bg-white dark:bg-white/[0.02] p-6 rounded-2xl border border-gray-200 dark:border-white/10 shadow-sm dark:shadow-[0_20px_40px_-20px_rgba(0,0,0,0.5)] backdrop-blur-md">
           <div className="space-y-2">
           <div className="flex items-center gap-3">
-            <h1 className="text-4xl font-bold tracking-tight text-gray-900 dark:text-white">{symbol}</h1>
+            <h1 className="text-2xl sm:text-4xl font-bold tracking-tight text-gray-900 dark:text-white">{symbol}</h1>
             <span className="px-3 py-1 bg-primary/10 dark:bg-primary/20 text-primary rounded-full text-xs font-medium border border-primary/20 dark:border-primary/30">
               EQUITY
             </span>
@@ -143,7 +143,7 @@ const ResearchHub: React.FC = () => {
              {/* Title & Actions */}
              <div className="flex justify-between flex-wrap gap-4 items-center border-b border-tv-border dark:border-white/5 pb-6 mb-6">
                 <div>
-                   <h2 className="text-2xl font-black tracking-tight text-tv-text-primary dark:text-white flex items-center gap-3">
+                   <h2 className="text-xl sm:text-2xl font-black tracking-tight text-tv-text-primary dark:text-white flex items-center gap-3">
                      {f.current_price ? `₹${formatNumber(f.current_price)}` : 'N/A'}
                      {f.daily_change_percent !== null && f.daily_change_percent !== undefined && (
                        <span className={`text-sm font-medium px-2 py-0.5 rounded-md border ${

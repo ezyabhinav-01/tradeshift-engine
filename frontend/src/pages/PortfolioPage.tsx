@@ -169,27 +169,29 @@ export default function PortfolioPage() {
   const s = liveSummary;
 
   return (
-    <div className="p-4 md:p-8 w-full max-w-7xl mx-auto space-y-8 font-sans pb-20">
+    <div className="p-3 md:p-8 w-full max-w-7xl mx-auto space-y-6 md:space-y-8 font-sans pb-24 md:pb-20">
 
       {/* ─── Header & Summary ─── */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-4">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-2">
         <div className="space-y-1">
-          <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-3">
+          <h2 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-3">
             Trading Portfolio
           </h2>
-          <p className="text-muted-foreground text-sm">Professional asset tracking and execution analytics.</p>
+          <p className="text-muted-foreground text-[11px] md:text-sm">Professional asset tracking and execution analytics.</p>
         </div>
-        <button
-          onClick={() => {
-            if (checkAccess()) void fetchAll(true);
-          }}
-          disabled={isLoading || isRefreshing}
-          className="p-2.5 rounded-full bg-sidebar-accent/50 hover:bg-sidebar-accent text-sidebar-primary transition-colors disabled:opacity-50"
-          title={isGuest ? "Sign in to refresh live data" : "Refresh Portfolio"}
-        >
-          <RefreshCw className={`w-5 h-5 ${(isLoading || isRefreshing) ? 'animate-spin' : ''}`} />
-        </button>
-        <div className="text-[11px] font-black tracking-wider text-sidebar-primary">REPLAY MODE</div>
+        <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
+          <div className="text-[10px] font-black tracking-wider text-sidebar-primary border border-sidebar-primary/20 px-2 py-1 rounded bg-sidebar-primary/5">REPLAY MODE</div>
+          <button
+            onClick={() => {
+              if (checkAccess()) void fetchAll(true);
+            }}
+            disabled={isLoading || isRefreshing}
+            className="p-2.5 rounded-full bg-sidebar-accent/50 hover:bg-sidebar-accent text-sidebar-primary transition-colors disabled:opacity-50"
+            title={isGuest ? "Sign in to refresh live data" : "Refresh Portfolio"}
+          >
+            <RefreshCw className={`w-5 h-5 ${(isLoading || isRefreshing) ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
       </div>
 
       {/* Hero Stats */}
@@ -200,15 +202,15 @@ export default function PortfolioPage() {
             <Briefcase size={140} />
           </div>
           <div className="space-y-1 z-10">
-            <p className="text-[10px] uppercase font-black tracking-widest text-gray-500 dark:text-muted-foreground">Current Value</p>
-            <h3 className="text-5xl font-black text-slate-800 dark:text-white font-mono tracking-tighter">
+            <p className="text-[9px] md:text-[10px] uppercase font-black tracking-widest text-gray-500 dark:text-muted-foreground">Current Value</p>
+            <h3 className="text-4xl md:text-5xl font-black text-slate-800 dark:text-white font-mono tracking-tighter">
               ₹{s.current_value.toLocaleString('en-IN')}
             </h3>
           </div>
-          <div className="mt-8 space-y-4 z-10">
-            <div className="flex justify-between items-end border-b border-sidebar-border/30 pb-3">
-              <span className="text-xs text-gray-500 dark:text-muted-foreground">Total Invested</span>
-              <span className="font-bold text-slate-900 dark:text-white font-mono">₹{s.total_invested.toLocaleString('en-IN')}</span>
+          <div className="mt-6 md:mt-8 space-y-3 md:space-y-4 z-10">
+            <div className="flex justify-between items-end border-b border-sidebar-border/30 pb-2 md:pb-3">
+              <span className="text-[11px] md:text-xs text-gray-500 dark:text-muted-foreground">Total Invested</span>
+              <span className="font-bold text-slate-900 dark:text-white font-mono text-sm">₹{s.total_invested.toLocaleString('en-IN')}</span>
             </div>
             <div className="flex justify-between items-end">
               <span className="text-xs text-gray-500 dark:text-muted-foreground">Total Profit/Loss</span>
@@ -229,12 +231,12 @@ export default function PortfolioPage() {
             <Zap size={140} />
           </div>
           <div className="space-y-1 z-10">
-            <p className="text-[10px] uppercase font-black tracking-widest text-gray-500 dark:text-muted-foreground">Available Cash</p>
-            <h3 className="text-4xl font-black text-slate-800 dark:text-white font-mono tracking-tighter">
+            <p className="text-[9px] md:text-[10px] uppercase font-black tracking-widest text-gray-500 dark:text-muted-foreground">Available Cash</p>
+            <h3 className="text-3xl md:text-4xl font-black text-slate-800 dark:text-white font-mono tracking-tighter">
               ₹{s.cash_balance?.toLocaleString('en-IN') || '0'}
             </h3>
           </div>
-          <div className="mt-8 space-y-4 z-10">
+          <div className="mt-6 md:mt-8 space-y-3 md:space-y-4 z-10">
             <div className="flex justify-between items-end border-b border-sidebar-border/30 pb-3">
               <span className="text-xs text-gray-500 dark:text-muted-foreground">Bonus Amount</span>
               <span className="font-bold text-slate-900 dark:text-white font-mono">₹100,000</span>

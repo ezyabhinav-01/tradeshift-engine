@@ -320,7 +320,7 @@ const MarketPage: React.FC = () => {
               title="Market Pulse"
               scriptUrl="https://s3.tradingview.com/external-embedding/embed-widget-market-overview.js"
               config={marketPulseConfig}
-              height={500}
+              height={window.innerWidth < 768 ? 350 : 500}
             />
           </div>
           {/* Indices Cards */}
@@ -360,7 +360,7 @@ const MarketPage: React.FC = () => {
               title="Global Equity Heatmap"
               scriptUrl="https://s3.tradingview.com/external-embedding/embed-widget-stock-heatmap.js"
               config={heatmapConfig}
-              height={700}
+              height={window.innerWidth < 768 ? 400 : 700}
             />
           </div>
         </TabsContent>

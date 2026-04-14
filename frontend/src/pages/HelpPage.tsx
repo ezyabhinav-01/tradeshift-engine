@@ -81,13 +81,13 @@ const HelpPage = () => {
     <div className="min-h-screen bg-slate-50 dark:bg-[#0b0e11] text-slate-900 dark:text-slate-100 pb-20 font-sans">
       
       {/* Hero Section */}
-      <div className="relative overflow-hidden bg-white dark:bg-[#131722] border-b border-slate-200 dark:border-white/5 pt-28 pb-32 px-4 transition-colors">
+      <div className="relative overflow-hidden bg-white dark:bg-[#131722] border-b border-slate-200 dark:border-white/5 pt-20 pb-24 sm:pt-28 sm:pb-32 px-4 transition-colors">
         <div className="absolute inset-0 bg-gradient-to-br from-tv-primary/5 to-transparent dark:from-tv-primary/10 dark:to-transparent pointer-events-none" />
         <div className="max-w-4xl mx-auto text-center relative z-10">
-          <h1 className="text-5xl md:text-6xl font-black mb-6 tracking-tight text-slate-900 dark:text-white">
+          <h1 className="text-3xl sm:text-5xl md:text-6xl font-black mb-4 sm:mb-6 tracking-tight text-slate-900 dark:text-white">
             How can we <span className="text-tv-primary">help?</span>
           </h1>
-          <p className="text-lg md:text-xl text-slate-500 dark:text-slate-400 mb-12 max-w-2xl mx-auto leading-relaxed">
+          <p className="text-sm sm:text-lg md:text-xl text-slate-500 dark:text-slate-400 mb-8 sm:mb-12 max-w-2xl mx-auto leading-relaxed">
             Search our knowledge base, explore specialized guides, or get in touch with our fast-response support team.
           </p>
           
@@ -97,11 +97,11 @@ const HelpPage = () => {
             </div>
             <input 
               type="text" 
-              placeholder="Search for answers, guides, or keywords..." 
-              className="w-full pl-14 pr-32 py-5 rounded-3xl bg-slate-50 dark:bg-[#0b0e11] border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-tv-primary/50 focus:border-tv-primary/50 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 shadow-sm text-lg transition-all"
+              placeholder="Search for answers..." 
+              className="w-full pl-12 sm:pl-14 pr-24 sm:pr-32 py-4 sm:py-5 rounded-2xl sm:rounded-3xl bg-slate-50 dark:bg-[#0b0e11] border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-tv-primary/50 focus:border-tv-primary/50 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 shadow-sm text-base sm:text-lg transition-all"
             />
-            <div className="absolute inset-y-2 right-2 flex items-center">
-              <button className="px-8 py-3 bg-tv-primary text-white rounded-2xl font-bold hover:bg-tv-primary/90 transition-all shadow-sm group-focus-within:shadow-md active:scale-95">
+            <div className="absolute inset-y-1.5 right-1.5 flex items-center">
+              <button className="px-5 sm:px-8 py-2.5 sm:py-3 bg-tv-primary text-white rounded-xl sm:rounded-2xl font-bold hover:bg-tv-primary/90 transition-all shadow-sm group-focus-within:shadow-md active:scale-95 text-sm sm:text-base">
                 Search
               </button>
             </div>

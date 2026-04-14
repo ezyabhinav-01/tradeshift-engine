@@ -4,6 +4,7 @@ import Topbar from './Header';
 import { GlobalTicker } from '../market/GlobalTicker';
 import { useAuth } from '../../context/AuthContext';
 import ReplayToolbar from '../features/ReplayToolbar';
+import BottomNavbar from './BottomNavbar';
 
 const Layout = () => {
     const { user } = useAuth();
@@ -42,15 +43,18 @@ const Layout = () => {
                     </div>
                 )}
                 
-                <div className="flex-1 flex min-h-0 overflow-hidden">
+                <div className="flex-1 flex min-h-0 overflow-hidden relative">
                     <div 
                         ref={scrollRef}
-                        className="flex-1 flex flex-col min-h-0 overflow-y-auto custom-scrollbar"
+                        className="flex-1 flex flex-col min-h-0 overflow-y-auto custom-scrollbar pb-16 lg:pb-0"
                     >
                         <Outlet context={{ scrollRef }} />
                     </div>
                     {!isGuest && isTradePage && <ReplayToolbar />}
                 </div>
+
+                {/* Mobile Bottom Navigation */}
+                <BottomNavbar />
             </div>
         </main>
     );

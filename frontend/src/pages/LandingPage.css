@@ -378,10 +378,16 @@
 }
 
 .landing-page-root .hero-subtitle {
-    font-size: 1.125rem;
+    font-size: 0.95rem;
     color: var(--text-secondary);
     margin-bottom: 2.5rem;
     max-width: 500px;
+}
+
+@media (min-width: 640px) {
+    .landing-page-root .hero-subtitle {
+        font-size: 1.125rem;
+    }
 }
 
 .landing-page-root .hero-actions {
@@ -1134,6 +1140,20 @@
     overflow: hidden;
     white-space: nowrap;
     display: inline-block;
+    font-size: 2rem;
+    line-height: 1.1;
+}
+
+@media (min-width: 640px) {
+    .landing-page-root .typewriter-text {
+        font-size: 3rem;
+    }
+}
+
+@media (min-width: 1024px) {
+    .landing-page-root .typewriter-text {
+        font-size: 4rem;
+    }
 }
 
 .landing-page-root .typewriter-text.animate {

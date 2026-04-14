@@ -38,12 +38,12 @@ const NotificationsPage: React.FC = () => {
   const unreadPersonal = notifications.filter(n => n.category === 'personal' && !n.is_read).length;
 
   return (
-    <div className="max-w-5xl mx-auto py-10 px-4 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 min-h-screen">
+    <div className="max-w-5xl mx-auto py-6 sm:py-10 px-4 space-y-6 sm:space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 min-h-screen">
       {/* Header Section */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-white dark:bg-[#111111]/80 border border-slate-200 dark:border-white/5 p-8 rounded-2xl backdrop-blur-xl shadow-xl">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-white dark:bg-[#111111]/80 border border-slate-200 dark:border-white/5 p-5 sm:p-8 rounded-2xl backdrop-blur-xl shadow-xl">
         <div>
-          <h1 className="text-3xl font-black tracking-tight text-slate-900 dark:text-white mb-2 flex items-center gap-3">
-             <Bell className="w-8 h-8 text-indigo-500" /> Notifications
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 dark:text-white mb-2 flex items-center gap-3">
+             <Bell className="w-6 h-6 sm:w-8 sm:h-8 text-indigo-500" /> Notifications
           </h1>
           <p className="text-sm text-slate-500 dark:text-gray-400">
             Stay informed with official updates and track your real-time account activity.

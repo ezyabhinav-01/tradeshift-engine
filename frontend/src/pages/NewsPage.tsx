@@ -157,7 +157,7 @@ const NewsPage: React.FC = () => {
               </div>
               <span className="text-xs font-black uppercase tracking-[0.2em]">Live Intelligence Feed</span>
             </div>
-            <h1 className="text-4xl md:text-5xl font-black text-black dark:text-white mb-4 tracking-tight">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-black dark:text-white mb-4 tracking-tight">
               Market <span className="text-transparent bg-clip-text bg-gradient-to-r from-tv-primary to-cyan-400">Pulse</span>
             </h1>
             <p className="text-slate-600 dark:text-slate-400 max-w-xl text-lg font-medium leading-relaxed">
@@ -240,7 +240,7 @@ const NewsPage: React.FC = () => {
                       })}
                     </span>
                   </div>
-                  <h2 className="text-3xl md:text-5xl lg:text-5xl font-black text-white mb-5 leading-[1.1] tracking-tight group-hover:text-emerald-400 transition-colors cursor-pointer">
+                  <h2 className="text-2xl sm:text-3xl md:text-5xl lg:text-5xl font-black text-white mb-5 leading-[1.1] tracking-tight group-hover:text-emerald-400 transition-colors cursor-pointer">
                     {featuredNews.title}
                   </h2>
                   <p className="text-slate-300 text-base md:text-lg lg:text-xl font-medium mb-8 max-w-3xl opacity-90 leading-relaxed">
@@ -259,7 +259,7 @@ const NewsPage: React.FC = () => {
                       href={featuredNews.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-2 px-8 py-4 rounded-2xl font-black text-sm uppercase tracking-widest text-white border border-white/20 hover:bg-white/10 transition-all"
+                      className="flex items-center justify-center gap-2 px-6 sm:px-8 py-3 sm:py-4 rounded-2xl font-black text-xs sm:text-sm uppercase tracking-widest text-white border border-white/20 hover:bg-white/10 transition-all"
                     >
                       Read Article <ExternalLink size={18} />
                     </a>
@@ -441,7 +441,7 @@ const NewsPage: React.FC = () => {
             <div className="p-8 border-t border-white/5 bg-[#1e222d] flex justify-end">
               <button
                 onClick={() => { setExplanation(null); setSelectedNewsTitle(null); }}
-                className="group flex items-center gap-3 px-10 py-5 bg-tv-primary text-white text-sm font-black uppercase tracking-[0.2em] rounded-[1.5rem] hover:bg-tv-primary-dark transition-all shadow-2xl active:scale-95"
+                className="group flex items-center gap-3 px-6 sm:px-10 py-3 sm:py-5 bg-tv-primary text-white text-xs sm:text-sm font-black uppercase tracking-[0.2em] rounded-2xl sm:rounded-[1.5rem] hover:bg-tv-primary-dark transition-all shadow-2xl active:scale-95"
               >
                 Acknowledge Pulse <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
               </button>

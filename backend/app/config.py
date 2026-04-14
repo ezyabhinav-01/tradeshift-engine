@@ -64,3 +64,24 @@ def get_mail_conf(port: int = None) -> ConnectionConfig:
 
 # Legacy support: default conf
 conf = get_mail_conf()
+
+# ── Startup Connectivity Diagnostics ──────────────────────────────────────
+import socket
+def check_smtp_connectivity():
+    print(f"🔍 Diagnostic: Testing connection to {MAIL_SERVER}...")
+    try:
+        # Check DNS resolution
+        host_ip = socket.gethostbyname(MAIL_SERVER)
+        print(f"✅ DNS: {MAIL_SERVER} resolved to {host_ip}")
+        
+        # Check if username looks valid
+        if not MAIL_USERNAME or "@" not in MAIL_USERNAME:
+            print(f"❌ Config: MAIL_USERNAME '{MAIL_USERNAME}' looks invalid!")
+        else:
+            print(f"✅ Config: Using SMTP user {MAIL_USERNAME}")
+            
+    except Exception as e:
+        print(f"❌ DNS Error: Could not resolve {MAIL_SERVER}. Check your internet/DNS settings. Error: {e}")
+
+if os.getenv("RUN_DIAGNOSTICS", "true").lower() == "true":
+    check_smtp_connectivity()

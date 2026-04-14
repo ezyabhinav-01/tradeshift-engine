@@ -133,7 +133,17 @@ const Signup: React.FC = () => {
       await register(submissionData);
       setStep(2);
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to initiate signup. Please try again.');
+      console.error('Signup Error:', err);
+      const detail = err.response?.data?.detail;
+      
+      if (Array.isArray(detail)) {
+        // Handle Pydantic validation error list
+        setError(detail.map(d => `${d.loc.join('.')}: ${d.msg}`).join('; '));
+      } else if (typeof detail === 'string') {
+        setError(detail);
+      } else {
+        setError('Failed to initiate signup. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -152,7 +162,9 @@ const Signup: React.FC = () => {
       await verifySignupOtp(formData.email, finalOtp);
       setStep(3);
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Invalid or expired code.');
+      console.error('OTP Verification Error:', err);
+      const detail = err.response?.data?.detail;
+      setError(typeof detail === 'string' ? detail : 'Invalid or expired code.');
       otpRef.current?.reset();
     } finally {
       setLoading(false);
@@ -177,7 +189,9 @@ const Signup: React.FC = () => {
       }
       navigate(from, { replace: true });
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to setup PIN.');
+      console.error('Finalize PIN Error:', err);
+      const detail = err.response?.data?.detail;
+      setError(typeof detail === 'string' ? detail : 'Failed to setup PIN.');
       pinRef.current?.reset();
     } finally {
       setLoading(false);

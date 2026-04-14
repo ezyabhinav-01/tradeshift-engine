@@ -844,7 +844,7 @@ const CommunityPage = () => {
                           style={{ color: isMe ? 'rgba(255,255,255,0.55)' : 'rgba(148,163,184,0.8)' }}
                         >
                           {formatTime(msg.timestamp)}
-                          {isMe && msg.delivery_status === 'sending' ? ' • Sending' : ''}
+                          
                           {isMe && msg.delivery_status === 'failed' ? ' • Failed' : ''}
                         </span>
                       </div>

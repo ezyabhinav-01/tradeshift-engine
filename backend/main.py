@@ -835,15 +835,6 @@ async def replay_status(_: None = Depends(admin_or_internal)):
         "checked_at": datetime.datetime.utcnow().isoformat(),
     }
 
-@app.get("/api/admin/test-email")
-async def test_email_endpoint(email: str):
-    """
-    Diagnostic endpoint to verify SMTP connectivity on Azure.
-    Usage: GET /api/admin/test-email?email=your@email.com
-    """
-    from app.services.email_service import send_test_email
-    return await send_test_email(email)
-
 @app.middleware("http")
 async def runtime_hardening_middleware(request: Request, call_next):
     try:

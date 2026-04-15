@@ -572,14 +572,16 @@ export const useDrawingTools = (
           if (toolId) {
             const tool = managerRef.current.getAllTools().get(toolId);
             if (tool) {
-              (tool as any)._private__rulerOptions.point2Time = point.time;
-              (tool as any)._private__rulerOptions.point2Price = point.price;
-              (tool as any)._custom_preview = undefined;
-              (tool as any)._private__isComplete = true;
-              
-              if (typeof (tool as any)._private__requestUpdate === 'function') {
-                (tool as any)._private__requestUpdate();
+              if (typeof (tool as any).updatePoints === 'function') {
+                const p1 = rulerPointsRef.current[0];
+                (tool as any).updatePoints(p1.time, p1.price, point.time, point.price);
+              } else if (typeof (tool as any).applyOptions === 'function') {
+                (tool as any).applyOptions({ point2Time: point.time, point2Price: point.price });
               }
+              (tool as any)._custom_preview = undefined;
+              
+              if (typeof (tool as any)._requestUpdate === 'function') (tool as any)._requestUpdate();
+              if (typeof (tool as any)._private__requestUpdate === 'function') (tool as any)._private__requestUpdate();
             }
           }
         }
@@ -741,7 +743,10 @@ export const useDrawingTools = (
       } else if (activeTool === 'ruler' && rulerToolIdRef.current) {
         const tool = managerRef.current.getAllTools().get(rulerToolIdRef.current);
         if (tool && rulerPointsRef.current.length === 1) {
-          // Bypass internal updatePoints during preview to avoid crashing library's internal calculator on future coordinates
+          const p1 = rulerPointsRef.current[0];
+          if (typeof (tool as any).updatePoints === 'function') {
+            (tool as any).updatePoints(p1.time, p1.price, time, price);
+          }
           const logical = chart.timeScale().coordinateToLogical(param.point.x);
           (tool as any)._custom_preview = { 
             time: param.time || param.point.x, // fallback structure 
@@ -749,9 +754,8 @@ export const useDrawingTools = (
             _internal_price: price, 
             _custom_logical: logical !== null ? logical : undefined
           };
-          if (typeof (tool as any)._private__requestUpdate === 'function') {
-            (tool as any)._private__requestUpdate();
-          }
+          if (typeof (tool as any)._requestUpdate === 'function') (tool as any)._requestUpdate();
+          if (typeof (tool as any)._private__requestUpdate === 'function') (tool as any)._private__requestUpdate();
         }
       } else if (activeTool === 'zoom_in' && zoomToolIdRef.current) {
         const tool = managerRef.current.getAllTools().get(zoomToolIdRef.current);
@@ -939,76 +943,94 @@ export const useDrawingTools = (
             };
 
             tool.drawToCanvas = function(ctx: CanvasRenderingContext2D, hRatio: number, vRatio: number) {
-              
-              // --- Fibonacci Fill Zones ---
-              // Check if this is a Fibonacci tool by looking for internal metrics
-              const fibMetrics = (this as any)._private__metrics;
-              const fibOptions = (this as any)._private__fibOptions;
-              if (fibMetrics && fibMetrics.levels && fibOptions && fibOptions.point1Time && fibOptions.point2Time) {
-                const timeScale = (this as any)._chart.timeScale();
-                const series = (this as any)._series;
-                const x1 = (timeScale.timeToCoordinate(fibOptions.point1Time) ?? 0) * hRatio;
-                const x2 = (timeScale.timeToCoordinate(fibOptions.point2Time) ?? 0) * hRatio;
-                const xMin = Math.min(x1, x2);
-                // Extend fill to the right edge of the chart
-                const chartWidth = (this as any)._chart.chartElement().clientWidth * hRatio;
+              const chartApi = chart;
+              const seriesApi = series;
+              const toolType = (this as any).type;
+              const toNumber = (v: any, fallback = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
+              const ratioToColor = (ratioInput: any): string => {
+                const ratio = Math.abs(toNumber(ratioInput, 0));
+                if (ratio < 0.236) return '#f23645';
+                if (ratio < 0.382) return '#ff9800';
+                if (ratio < 0.5) return '#8bc34a';
+                if (ratio < 0.618) return '#089981';
+                if (ratio < 0.786) return '#00bcd4';
+                if (ratio < 1) return '#90a4ae';
+                if (ratio < 1.618) return '#2962ff';
+                if (ratio < 2.618) return '#9c27b0';
+                return '#f23645';
+              };
+              const applyBandFill = (xStart: number, xEnd: number, yA: number, yB: number, ratioInput: any) => {
+                const base = ratioToColor(ratioInput);
+                const top = `${base}44`;
+                const bottom = `${base}22`;
+                const yTop = Math.min(yA, yB);
+                const yBottom = Math.max(yA, yB);
+                const w = Math.max(0, xEnd - xStart);
+                const h = Math.max(0, yBottom - yTop);
+                if (w <= 0 || h <= 0) return;
+                const grad = ctx.createLinearGradient(0, yTop, 0, yBottom);
+                grad.addColorStop(0, top);
+                grad.addColorStop(1, bottom);
+                ctx.fillStyle = grad;
+                ctx.fillRect(xStart, yTop, w, h);
+              };
 
-                const sortedLevels = [...fibMetrics.levels].sort((a: any, b: any) => {
-                  const aPrice = a.price ?? a._internal_price ?? 0;
-                  const bPrice = b.price ?? b._internal_price ?? 0;
-                  return aPrice - bPrice;
-                });
+              // --- Fibonacci Fill Zones (use public API; avoid private internals) ---
+              if (
+                (
+                  toolType === 'fibonacci' ||
+                  toolType === 'fib' ||
+                  toolType === 'fibonacci-tool' ||
+                  (typeof (this as any).getLevels === 'function' && typeof (this as any).getMetrics === 'function')
+                ) &&
+                chartApi &&
+                seriesApi &&
+                typeof (this as any).getMetrics === 'function'
+              ) {
+                const metrics = (this as any).getMetrics();
+                if (metrics?.point1?.time !== undefined && metrics?.point2?.time !== undefined && Array.isArray(metrics?.levels)) {
+                  const timeScale = chartApi.timeScale();
+                  const x1 = toNumber(timeScale.timeToCoordinate(metrics.point1.time), 0) * hRatio;
+                  const x2 = toNumber(timeScale.timeToCoordinate(metrics.point2.time), 0) * hRatio;
+                  const xMin = Math.min(x1, x2);
+                  const xMax = Math.max(x1, x2);
+                  const sortedLevels = [...metrics.levels].sort((a: any, b: any) => toNumber(a.price) - toNumber(b.price));
 
-                for (let i = 0; i < sortedLevels.length - 1; i++) {
-                  const lower = sortedLevels[i];
-                  const upper = sortedLevels[i + 1];
-                  const lowerPrice = lower.price ?? lower._internal_price;
-                  const upperPrice = upper.price ?? upper._internal_price;
-                  const lowerRatio = lower.ratio ?? lower._internal_ratio;
-                  if (lowerPrice === undefined || upperPrice === undefined) continue;
+                  for (let i = 0; i < sortedLevels.length - 1; i++) {
+                    const lower = sortedLevels[i];
+                    const upper = sortedLevels[i + 1];
+                    const y1 = toNumber(seriesApi.priceToCoordinate(lower.price), 0) * vRatio;
+                    const y2 = toNumber(seriesApi.priceToCoordinate(upper.price), 0) * vRatio;
+                    const ratioKey = (lower.ratio ?? '').toString();
+                    applyBandFill(xMin, xMax, y1, y2, lower.ratio);
 
-                  const y1 = (series.priceToCoordinate(lowerPrice) ?? 0) * vRatio;
-                  const y2 = (series.priceToCoordinate(upperPrice) ?? 0) * vRatio;
-                  
-                  const ratioKey = lowerRatio?.toString() ?? '';
-                  const fillColor = fibFillColors[ratioKey] || 'rgba(255,255,255,0.05)';
-                  
-                  ctx.fillStyle = fillColor;
-                  ctx.fillRect(xMin, Math.min(y1, y2), chartWidth - xMin, Math.abs(y2 - y1));
+                    // fallback flat fill path in case gradient is unsupported in specific browsers
+                    if (!ctx.fillStyle) {
+                      const fillColor = fibFillColors[ratioKey] || 'rgba(255,255,255,0.08)';
+                      ctx.fillStyle = fillColor;
+                      ctx.fillRect(xMin, Math.min(y1, y2), Math.max(0, xMax - xMin), Math.abs(y2 - y1));
+                    }
+                  }
                 }
               }
 
-              // --- Fibonacci Extension Fill Zones ---
-              // Extension tools use point1/point2/point3 objects and getExtensionLevels()
-              const fibExtOptions = (this as any)._private__fibOptions;
-              if (!fibMetrics && fibExtOptions && fibExtOptions.point1 && fibExtOptions.point2 && fibExtOptions.point3 && typeof (this as any).getExtensionLevels === 'function') {
+              // --- Fibonacci Extension Fill Zones (public methods) ---
+              if (
+                (toolType === 'fib_ext' || toolType === 'fibonacci_extension' || toolType === 'fibonacci-extension') &&
+                chartApi &&
+                seriesApi &&
+                typeof (this as any).getExtensionLevels === 'function'
+              ) {
                 const extLevels = (this as any).getExtensionLevels();
-                if (extLevels && extLevels.length > 1) {
-                  const series = (this as any)._series;
-                  const chartWidth = (this as any)._chart.chartElement().clientWidth * hRatio;
-
-                  const sorted = [...extLevels].sort((a: any, b: any) => {
-                    const aP = a._internal_price ?? a.price ?? 0;
-                    const bP = b._internal_price ?? b.price ?? 0;
-                    return aP - bP;
-                  });
-
+                if (Array.isArray(extLevels) && extLevels.length > 1) {
+                  const chartWidth = chartApi.chartElement().clientWidth * hRatio;
+                  const sorted = [...extLevels].sort((a: any, b: any) => toNumber(a.price) - toNumber(b.price));
                   for (let i = 0; i < sorted.length - 1; i++) {
                     const lower = sorted[i];
                     const upper = sorted[i + 1];
-                    const lowerPrice = lower._internal_price ?? lower.price;
-                    const upperPrice = upper._internal_price ?? upper.price;
-                    const lowerLevel = lower._internal_level ?? lower.level;
-                    if (lowerPrice === undefined || upperPrice === undefined) continue;
-
-                    const y1 = (series.priceToCoordinate(lowerPrice) ?? 0) * vRatio;
-                    const y2 = (series.priceToCoordinate(upperPrice) ?? 0) * vRatio;
-
-                    const ratioKey = lowerLevel?.toString() ?? '';
-                    const fillColor = fibFillColors[ratioKey] || 'rgba(255,255,255,0.05)';
-
-                    ctx.fillStyle = fillColor;
-                    ctx.fillRect(0, Math.min(y1, y2), chartWidth, Math.abs(y2 - y1));
+                    const y1 = toNumber(seriesApi.priceToCoordinate(lower.price), 0) * vRatio;
+                    const y2 = toNumber(seriesApi.priceToCoordinate(upper.price), 0) * vRatio;
+                    applyBandFill(0, chartWidth, y1, y2, lower.level);
                   }
                 }
               }
@@ -1059,14 +1081,18 @@ export const useDrawingTools = (
               }
 
               // --- Ruler Tool Visuals ---
-              const rulerOptions = (this as any)._private__rulerOptions;
-              if (rulerOptions && (rulerOptions.point1Time || rulerOptions.point1Time === 0)) {
-                const timeScale = (this as any)._chart.timeScale();
-                const series = (this as any)._series;
+              if ((toolType === 'ruler' || toolType === 'ruler-tool') && chartApi && seriesApi && typeof (this as any).getMetrics === 'function') {
+                const timeScale = chartApi.timeScale();
+                const metrics = (this as any).getMetrics?.();
+                const point1 = metrics?.point1;
+                if (!point1 || point1.time === undefined || point1.price === undefined) {
+                  originalDraw.call(this, ctx, hRatio, vRatio);
+                  return;
+                }
 
                 let point1X = null;
                 let logical1 = null;
-                const targetTime1 = rulerOptions.point1Time;
+                const targetTime1 = point1.time;
                 
                 if (targetTime1 && typeof targetTime1 === 'object' && '_internal_logical' in targetTime1) {
                   logical1 = (targetTime1 as any)._internal_logical;
@@ -1081,10 +1107,10 @@ export const useDrawingTools = (
                 }
                 
                 const x1 = (point1X ?? 0) * hRatio;
-                const y1 = (series.priceToCoordinate(rulerOptions.point1Price) ?? 0) * vRatio;
+                const y1 = (seriesApi.priceToCoordinate(point1.price) ?? 0) * vRatio;
                 
                 // Allow our Custom React hook to inject _custom_preview object
-                const p2 = (this as any)._custom_preview || (rulerOptions.point2Time ? { time: rulerOptions.point2Time, price: rulerOptions.point2Price } : (this as any)._private__previewPoint);
+                const p2 = (this as any)._custom_preview || (metrics?.point2 ? { time: metrics.point2.time, price: metrics.point2.price } : undefined);
                 
                 if (p2 && point1X !== null) {
                   let point2X = null;
@@ -1107,10 +1133,10 @@ export const useDrawingTools = (
                   }
                   
                   const x2 = (point2X ?? 0) * hRatio;
-                  const rawP2Price = p2.price !== undefined ? p2.price : (p2._internal_price !== undefined ? p2._internal_price : rulerOptions.point1Price);
-                  const y2 = (series.priceToCoordinate(rawP2Price) ?? 0) * vRatio;
+                  const rawP2Price = p2.price !== undefined ? p2.price : (p2._internal_price !== undefined ? p2._internal_price : point1.price);
+                  const y2 = (seriesApi.priceToCoordinate(rawP2Price) ?? 0) * vRatio;
                   
-                  const isUp = rawP2Price >= rulerOptions.point1Price;
+                  const isUp = rawP2Price >= point1.price;
                   const solidColor = isUp ? '#2962FF' : '#f23645';
                   const bgColor = isUp ? 'rgba(41, 98, 255, 0.15)' : 'rgba(242, 54, 69, 0.15)';
 
@@ -1150,19 +1176,22 @@ export const useDrawingTools = (
                   drawArrowHead(midX, y2, angleV);
 
                   // 3. Draw High-Fidelity Label (Calculated Natively)
-                  const priceDiffNum = rawP2Price - rulerOptions.point1Price;
+                  const priceDiffNum = rawP2Price - point1.price;
                   const priceText = `${priceDiffNum.toFixed(2)}`;
-                  const safePercent = rulerOptions.point1Price ? (priceDiffNum / rulerOptions.point1Price) * 100 : 0;
+                  const safePercent = typeof metrics?.pricePercent === 'number'
+                    ? metrics.pricePercent
+                    : (point1.price ? (priceDiffNum / point1.price) * 100 : 0);
                   const pctText = `(${safePercent.toFixed(2)}%)`;
                   
-                  // Compute Pips natively (assuming pip size is typically configured, fallback to standard multiplier)
-                  const pipMultiplier = rulerOptions.pipConfig?.multiplier || 10000;
-                  const safePips = Math.abs(priceDiffNum * pipMultiplier);
-                  const pipsVal = safePips * (priceDiffNum >= 0 ? 1 : -1);
+                  const pipsVal = typeof metrics?.pips === 'number'
+                    ? metrics.pips
+                    : Math.abs(priceDiffNum * 10000) * (priceDiffNum >= 0 ? 1 : -1);
                   
                   const line1 = `${priceText} ${pctText} ${pipsVal.toFixed(0)}`;
                   
-                  const safeBars = (logical1 !== null && logical2 !== null) ? Math.max(0, Math.abs(Math.round(logical2 - logical1))) : 0;
+                  const safeBars = typeof metrics?.barCount === 'number'
+                    ? metrics.barCount
+                    : ((logical1 !== null && logical2 !== null) ? Math.max(0, Math.abs(Math.round(logical2 - logical1))) : 0);
                   const barsText = `${safeBars} bars`;
                   
                   const text = `${line1}\n${barsText}`;

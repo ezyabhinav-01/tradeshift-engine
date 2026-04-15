@@ -260,6 +260,16 @@ class HelpRequest(Base):
     status = Column(String, default="OPEN") # OPEN, CLOSED
     created_at = Column(DateTime, default=datetime.utcnow)
 
+class UserFeedback(Base):
+    __tablename__ = "user_feedback"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    feedback_type = Column(String(100), default="general", nullable=False)
+    rating = Column(Integer, nullable=False)
+    comment = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 # ═══════════════════════════════════════════
 # ═══════════════════════════════════════════
 # LEARNING / ACADEMY MODELS

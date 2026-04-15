@@ -3,11 +3,11 @@ import logging
 import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 from typing import List
 from app.database import get_db
-from app.models import UserSettings as UserSettingsModel, UserChartSettings as ChartSettingsModel, DrawingTemplate as TemplateModel, HelpRequest as HelpRequestModel
-from app.schemas import UserSettings, UserSettingsUpdate, ChartSettings, ChartSettingsUpdate, DrawingTemplateCreate, DrawingTemplateResponse, HelpRequestCreate, HelpRequestResponse
+from app.models import UserSettings as UserSettingsModel, UserChartSettings as ChartSettingsModel, DrawingTemplate as TemplateModel, HelpRequest as HelpRequestModel, UserFeedback as UserFeedbackModel
+from app.schemas import UserSettings, UserSettingsUpdate, ChartSettings, ChartSettingsUpdate, DrawingTemplateCreate, DrawingTemplateResponse, HelpRequestCreate, HelpRequestResponse, UserFeedbackCreate, UserFeedbackResponse
 from app.routers.trading import _get_user_id
 from app.services.risk_engine import risk_engine
 from app.config import conf, MAIL_USERNAME, MAIL_PASSWORD, MAIL_SERVER, MAIL_PORT, MAIL_FROM, MAIL_FROM_NAME
@@ -15,6 +15,25 @@ from app.config import conf, MAIL_USERNAME, MAIL_PASSWORD, MAIL_SERVER, MAIL_POR
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/user", tags=["user"])
+
+
+async def _ensure_user_feedback_table(db: AsyncSession) -> None:
+    # Keep production resilient even when explicit SQL migrations were skipped.
+    await db.execute(text("""
+        CREATE TABLE IF NOT EXISTS user_feedback (
+            id SERIAL PRIMARY KEY,
+            user_id INT REFERENCES users(id) ON DELETE CASCADE,
+            feedback_type VARCHAR(100),
+            rating INT CHECK (rating >= 1 AND rating <= 5),
+            comment TEXT,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+    await db.execute(text("""
+        CREATE INDEX IF NOT EXISTS idx_user_feedback_created_at
+        ON user_feedback(created_at DESC)
+    """))
+    await db.commit()
 
 @router.get("/settings", response_model=UserSettings)
 async def get_user_settings(request: Request, db: AsyncSession = Depends(get_db)):
@@ -259,3 +278,50 @@ async def submit_help_request(
     background_tasks.add_task(send_help_email, user_id, help_request.message)
     
     return db_request
+
+
+@router.post("/feedback", response_model=UserFeedbackResponse)
+async def submit_user_feedback(
+    payload: UserFeedbackCreate,
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    """Submit a help-page user feedback entry for admin review."""
+    user_id = await _get_user_id(request, db)
+    await _ensure_user_feedback_table(db)
+
+    comment = payload.comment.strip()
+    feedback_type = (payload.feedback_type or "help_page").strip()[:100]
+    if not comment:
+        raise HTTPException(status_code=400, detail="Comment cannot be empty.")
+    if payload.rating < 1 or payload.rating > 5:
+        raise HTTPException(status_code=400, detail="Rating must be between 1 and 5.")
+
+    row = UserFeedbackModel(
+        user_id=user_id,
+        feedback_type=feedback_type,
+        rating=payload.rating,
+        comment=comment,
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return row
+
+
+@router.get("/feedback", response_model=List[UserFeedbackResponse])
+async def list_user_feedback(
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    """List authenticated user's feedback history."""
+    user_id = await _get_user_id(request, db)
+    await _ensure_user_feedback_table(db)
+
+    result = await db.execute(
+        select(UserFeedbackModel)
+        .filter(UserFeedbackModel.user_id == user_id)
+        .order_by(UserFeedbackModel.created_at.desc())
+        .limit(20)
+    )
+    return result.scalars().all()

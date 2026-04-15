@@ -430,6 +430,25 @@ class HelpRequestResponse(HelpRequestBase):
     status: str
     created_at: datetime
 
+
+class UserFeedbackBase(BaseModel):
+    feedback_type: str = "help_page"
+    rating: int
+    comment: str
+
+
+class UserFeedbackCreate(UserFeedbackBase):
+    pass
+
+
+class UserFeedbackResponse(UserFeedbackBase):
+    id: int
+    user_id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
 # ─── Notification Schemas ──────────────────────────────────────
 
 class NotificationBase(BaseModel):

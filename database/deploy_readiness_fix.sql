@@ -76,6 +76,5 @@ CREATE INDEX IF NOT EXISTS idx_trade_logs_parent_trade_id ON trade_logs(parent_t
 
 -- Remove drift tables not used by current backend/frontend code.
 DROP TABLE IF EXISTS user_lesson_progress CASCADE;
-DROP TABLE IF EXISTS user_feedback CASCADE;
 
 COMMIT;

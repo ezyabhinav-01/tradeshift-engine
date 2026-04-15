@@ -1023,7 +1023,6 @@ export const useDrawingTools = (
                     ctx.font = `${11 * hRatio}px -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif`;
                     const textWidth = ctx.measureText(labelText).width;
                     const padX = 6 * hRatio;
-                    const padY = 3 * vRatio;
                     const boxW = textWidth + padX * 2;
                     const boxH = 16 * vRatio;
                     const labelX = xMax + 8 * hRatio;

@@ -63,6 +63,211 @@ const SELECTION_COLORS = new Set([
   '#ff6b00', // library selection orange
 ]);
 
+type FibLevelConfig = {
+  ratio: number;
+  label: string;
+  color: string;
+  fillAlphaTop: number;
+  fillAlphaBottom: number;
+};
+
+const FIB_RETRACEMENT_LEVELS: FibLevelConfig[] = [
+  { ratio: 0, label: '0', color: '#8c8c8c', fillAlphaTop: 0.18, fillAlphaBottom: 0.1 },
+  { ratio: 0.236, label: '0.236', color: '#ff4d4f', fillAlphaTop: 0.24, fillAlphaBottom: 0.14 },
+  { ratio: 0.382, label: '0.382', color: '#ff9800', fillAlphaTop: 0.23, fillAlphaBottom: 0.13 },
+  { ratio: 0.5, label: '0.5', color: '#4caf50', fillAlphaTop: 0.2, fillAlphaBottom: 0.12 },
+  { ratio: 0.618, label: '0.618', color: '#14b8a6', fillAlphaTop: 0.22, fillAlphaBottom: 0.12 },
+  { ratio: 0.786, label: '0.786', color: '#38bdf8', fillAlphaTop: 0.22, fillAlphaBottom: 0.12 },
+  { ratio: 1, label: '1', color: '#8c8c8c', fillAlphaTop: 0.16, fillAlphaBottom: 0.09 },
+];
+
+const FIB_EXTENSION_LEVELS: FibLevelConfig[] = [
+  ...FIB_RETRACEMENT_LEVELS,
+  { ratio: 1.618, label: '1.618', color: '#2962ff', fillAlphaTop: 0.2, fillAlphaBottom: 0.11 },
+  { ratio: 2.618, label: '2.618', color: '#ff335f', fillAlphaTop: 0.18, fillAlphaBottom: 0.1 },
+  { ratio: 3.618, label: '3.618', color: '#b339d4', fillAlphaTop: 0.18, fillAlphaBottom: 0.1 },
+  { ratio: 4.236, label: '4.236', color: '#ff2f92', fillAlphaTop: 0.17, fillAlphaBottom: 0.09 },
+];
+
+const FIB_LEVEL_EPSILON = 0.0005;
+
+const toFiniteNumber = (value: any, fallback = 0) =>
+  typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+
+const hexToRgba = (hex: string, alpha: number): string => {
+  const normalized = hex.replace('#', '');
+  if (normalized.length !== 6) return `rgba(255,255,255,${alpha})`;
+  const r = parseInt(normalized.slice(0, 2), 16);
+  const g = parseInt(normalized.slice(2, 4), 16);
+  const b = parseInt(normalized.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
+const findFibLevel = (ratioInput: any, levels: FibLevelConfig[]): FibLevelConfig => {
+  const ratio = Math.abs(toFiniteNumber(ratioInput, 0));
+  const exact = levels.find((level) => Math.abs(level.ratio - ratio) < FIB_LEVEL_EPSILON);
+  if (exact) return exact;
+
+  const sorted = [...levels].sort((a, b) => a.ratio - b.ratio);
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    if (ratio >= sorted[i].ratio) return sorted[i];
+  }
+  return sorted[0];
+};
+
+const formatFibPrice = (price: number) => price.toLocaleString(undefined, {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+const createFibLevelMap = (levels: FibLevelConfig[]) =>
+  Object.fromEntries(levels.map((level) => [String(level.ratio), level.color]));
+
+const getToolPoints = (tool: any): Array<{ time: any; price: number }> => {
+  if (!tool) return [];
+
+  if (typeof tool.getPoints === 'function') {
+    const points = tool.getPoints();
+    if (Array.isArray(points)) {
+      return points
+        .map((point: any) => ({
+          time: point?.time ?? point?._internal_time,
+          price: toFiniteNumber(point?.price ?? point?._internal_price, NaN),
+        }))
+        .filter((point) => point.time !== undefined && Number.isFinite(point.price));
+    }
+  }
+
+  const metricPoints = typeof tool.getMetrics === 'function' ? tool.getMetrics?.() : null;
+  const candidates = [metricPoints?.point1, metricPoints?.point2, metricPoints?.point3];
+
+  return candidates
+    .map((point: any) => ({
+      time: point?.time ?? point?._internal_time,
+      price: toFiniteNumber(point?.price ?? point?._internal_price, NaN),
+    }))
+    .filter((point) => point.time !== undefined && Number.isFinite(point.price));
+};
+
+const timeToCanvasX = (timeScale: any, time: any, ratio: number) => {
+  if (time === undefined || time === null) return null;
+  let x = null;
+
+  if (typeof time === 'object' && time !== null && '_internal_logical' in time) {
+    x = timeScale.logicalToCoordinate((time as any)._internal_logical);
+  } else {
+    x = timeScale.timeToCoordinate(time);
+  }
+
+  return typeof x === 'number' && Number.isFinite(x) ? x * ratio : null;
+};
+
+const getFibSegmentBounds = (
+  tool: any,
+  chartApi: IChartApi,
+  hRatio: number,
+  preferAllPoints = false
+) => {
+  const timeScale = chartApi.timeScale();
+  const points = getToolPoints(tool);
+  const domainPoints = preferAllPoints ? points : points.slice(0, 2);
+  const xs = domainPoints
+    .map((point) => timeToCanvasX(timeScale, point.time, hRatio))
+    .filter((value): value is number => value !== null);
+
+  if (xs.length < 2) return null;
+
+  return {
+    xMin: Math.min(...xs),
+    xMax: Math.max(...xs),
+  };
+};
+
+const drawFibGradientBands = (
+  ctx: CanvasRenderingContext2D,
+  seriesApi: ISeriesApi<any>,
+  levels: any[],
+  bandBounds: { xMin: number; xMax: number },
+  vRatio: number,
+  fibPalette: FibLevelConfig[]
+) => {
+  const sortedLevels = [...levels].sort(
+    (a: any, b: any) => toFiniteNumber(a.price ?? a._internal_price) - toFiniteNumber(b.price ?? b._internal_price)
+  );
+
+  for (let i = 0; i < sortedLevels.length - 1; i++) {
+    const lower = sortedLevels[i];
+    const upper = sortedLevels[i + 1];
+    const lowerPrice = lower.price ?? lower._internal_price;
+    const upperPrice = upper.price ?? upper._internal_price;
+    const ratio = lower.ratio ?? lower._internal_ratio ?? lower.level ?? lower._internal_level;
+
+    if (lowerPrice === undefined || upperPrice === undefined) continue;
+
+    const y1 = toFiniteNumber(seriesApi.priceToCoordinate(lowerPrice), NaN) * vRatio;
+    const y2 = toFiniteNumber(seriesApi.priceToCoordinate(upperPrice), NaN) * vRatio;
+    if (!Number.isFinite(y1) || !Number.isFinite(y2)) continue;
+
+    const top = Math.min(y1, y2);
+    const bottom = Math.max(y1, y2);
+    const height = bottom - top;
+    if (height <= 0) continue;
+
+    const band = findFibLevel(ratio, fibPalette);
+    const gradient = ctx.createLinearGradient(0, top, 0, bottom);
+    gradient.addColorStop(0, hexToRgba(band.color, band.fillAlphaTop));
+    gradient.addColorStop(0.5, hexToRgba(band.color, Math.max(band.fillAlphaBottom, band.fillAlphaTop - 0.06)));
+    gradient.addColorStop(1, hexToRgba(band.color, band.fillAlphaBottom));
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(bandBounds.xMin, top, Math.max(0, bandBounds.xMax - bandBounds.xMin), height);
+  }
+};
+
+const drawFibLevelLinesAndLabels = (
+  ctx: CanvasRenderingContext2D,
+  seriesApi: ISeriesApi<any>,
+  levels: any[],
+  bounds: { xMin: number; xMax: number },
+  vRatio: number,
+  hRatio: number,
+  fibPalette: FibLevelConfig[]
+) => {
+  const sortedLevels = [...levels].sort(
+    (a: any, b: any) => toFiniteNumber(a.price ?? a._internal_price) - toFiniteNumber(b.price ?? b._internal_price)
+  );
+
+  ctx.save();
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  ctx.font = `${11 * hRatio}px -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif`;
+
+  sortedLevels.forEach((level: any) => {
+    const levelPrice = level.price ?? level._internal_price;
+    const levelRatio = level.ratio ?? level._internal_ratio ?? level.level ?? level._internal_level;
+    if (levelPrice === undefined) return;
+
+    const y = toFiniteNumber(seriesApi.priceToCoordinate(levelPrice), NaN) * vRatio;
+    if (!Number.isFinite(y)) return;
+
+    const band = findFibLevel(levelRatio, fibPalette);
+    const ratioText = level.label ?? level._internal_label ?? band.label;
+    const labelText = `${ratioText} (${formatFibPrice(toFiniteNumber(levelPrice, 0))})`;
+
+    ctx.strokeStyle = band.color;
+    ctx.lineWidth = Math.max(1, 1.15 * hRatio);
+    ctx.beginPath();
+    ctx.moveTo(bounds.xMin, y);
+    ctx.lineTo(bounds.xMax, y);
+    ctx.stroke();
+
+    ctx.fillStyle = band.color;
+    ctx.fillText(labelText, bounds.xMin - (14 * hRatio), y);
+  });
+
+  ctx.restore();
+};
+
 export const useDrawingTools = (
   chart: IChartApi | null, 
   series: ISeriesApi<any> | null,
@@ -427,7 +632,14 @@ export const useDrawingTools = (
       }
       fibToolIdRef.current = null;
       fibExtPointsRef.current = [];
+      if (fibExtToolIdRef.current && managerRef.current) {
+        managerRef.current.removeTool(fibExtToolIdRef.current);
+      }
+      fibExtToolIdRef.current = null;
       rulerPointsRef.current = [];
+      if (rulerToolIdRef.current && managerRef.current) {
+        managerRef.current.removeTool(rulerToolIdRef.current);
+      }
       rulerToolIdRef.current = null;
       
       // Clean up zombie zoom boxes if they exist
@@ -612,17 +824,9 @@ export const useDrawingTools = (
             point2Price: point.price,
             lineColor: '#787b86',
             lineWidth: 1,
-            showLabels: true,
-            labelPosition: 'right',
-            levelColors: {
-              '0': '#787b86',
-              '0.236': '#f23645',
-              '0.382': '#ff9800',
-              '0.5': '#4caf50',
-              '0.618': '#089981',
-              '0.786': '#00bcd4',
-              '1': '#787b86',
-            },
+            showLabels: false,
+            labelPosition: 'left',
+            levelColors: createFibLevelMap(FIB_RETRACEMENT_LEVELS),
           });
           const id = managerRef.current.addTool(tool);
           fibToolIdRef.current = id;
@@ -659,22 +863,16 @@ export const useDrawingTools = (
             const tool = createFibonacciExtensionTool({ chart, series }, {
               lineColor: '#787b86',
               lineWidth: 1,
-              showLabels: true,
+              showLabels: false,
               extendLines: true,
               point1: point,
               point2: point,
               point3: point,
-              levels: [
-                { level: 0, color: '#787b86', label: '0%' },
-                { level: 0.236, color: '#f23645', label: '23.6%' },
-                { level: 0.382, color: '#ff9800', label: '38.2%' },
-                { level: 0.5, color: '#4caf50', label: '50.0%' },
-                { level: 0.618, color: '#089981', label: '61.8%' },
-                { level: 0.786, color: '#00bcd4', label: '78.6%' },
-                { level: 1.0, color: '#787b86', label: '100%' },
-                { level: 1.618, color: '#f23645', label: '161.8%' },
-                { level: 2.618, color: '#9c27b0', label: '261.8%' },
-              ],
+              levels: FIB_EXTENSION_LEVELS.map((level) => ({
+                level: level.ratio,
+                color: level.color,
+                label: level.label,
+              })),
             });
 
             if (managerRef.current) {
@@ -990,141 +1188,16 @@ export const useDrawingTools = (
               const chartApi = chart;
               const seriesApi = series;
               const toolType = (this as any).type;
-              const toNumber = (v: any, fallback = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
-              const hexToRgba = (hex: string, alpha: number): string => {
-                const normalized = hex.replace('#', '');
-                if (normalized.length !== 6) return `rgba(255,255,255,${alpha})`;
-                const r = parseInt(normalized.slice(0, 2), 16);
-                const g = parseInt(normalized.slice(2, 4), 16);
-                const b = parseInt(normalized.slice(4, 6), 16);
-                return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-              };
-              const ratioToColor = (ratioInput: any): string => {
-                const ratio = Math.abs(toNumber(ratioInput, 0));
-                if (ratio < 0.236) return '#f23645';
-                if (ratio < 0.382) return '#ff9800';
-                if (ratio < 0.5) return '#8bc34a';
-                if (ratio < 0.618) return '#089981';
-                if (ratio < 0.786) return '#00bcd4';
-                if (ratio < 1) return '#90a4ae';
-                if (ratio < 1.618) return '#2962ff';
-                if (ratio < 2.618) return '#9c27b0';
-                return '#f23645';
-              };
-              const applyBandFill = (xStart: number, xEnd: number, yA: number, yB: number, ratioInput: any) => {
-                const base = ratioToColor(ratioInput);
-                const top = hexToRgba(base, 0.26);
-                const bottom = hexToRgba(base, 0.14);
-                const yTop = Math.min(yA, yB);
-                const yBottom = Math.max(yA, yB);
-                const w = Math.max(0, xEnd - xStart);
-                const h = Math.max(0, yBottom - yTop);
-                if (w <= 0 || h <= 0) return;
-                const grad = ctx.createLinearGradient(0, yTop, 0, yBottom);
-                grad.addColorStop(0, top);
-                grad.addColorStop(1, bottom);
-                ctx.fillStyle = grad;
-                ctx.fillRect(xStart, yTop, w, h);
-              };
+              const isFibRetracement =
+                toolType === 'fibonacci' ||
+                toolType === 'fib' ||
+                toolType === 'fibonacci-tool' ||
+                (typeof (this as any).getLevels === 'function' && typeof (this as any).getMetrics === 'function');
 
-              // --- Fibonacci Fill Zones (use public API; avoid private internals) ---
-              if (
-                (
-                  toolType === 'fibonacci' ||
-                  toolType === 'fib' ||
-                  toolType === 'fibonacci-tool' ||
-                  (typeof (this as any).getLevels === 'function' && typeof (this as any).getMetrics === 'function')
-                ) &&
-                chartApi &&
-                seriesApi &&
-                typeof (this as any).getMetrics === 'function'
-              ) {
-                const metrics = (this as any).getMetrics();
-                if (metrics?.point1?.time !== undefined && metrics?.point2?.time !== undefined && Array.isArray(metrics?.levels)) {
-                  const timeScale = chartApi.timeScale();
-                  const x1 = toNumber(timeScale.timeToCoordinate(metrics.point1.time), 0) * hRatio;
-                  const x2 = toNumber(timeScale.timeToCoordinate(metrics.point2.time), 0) * hRatio;
-                  const xMin = Math.min(x1, x2);
-                  const xMax = Math.max(x1, x2);
-                  const sortedLevels = [...metrics.levels].sort((a: any, b: any) => toNumber(a.price) - toNumber(b.price));
-
-                  ctx.save();
-                  ctx.globalCompositeOperation = 'source-over';
-
-                  for (let i = 0; i < sortedLevels.length - 1; i++) {
-                    const lower = sortedLevels[i];
-                    const upper = sortedLevels[i + 1];
-                    const lowerPrice = lower.price ?? lower._internal_price;
-                    const upperPrice = upper.price ?? upper._internal_price;
-                    const lowerRatio = lower.ratio ?? lower._internal_ratio;
-                    if (lowerPrice === undefined || upperPrice === undefined) continue;
-                    const y1 = toNumber(seriesApi.priceToCoordinate(lowerPrice), 0) * vRatio;
-                    const y2 = toNumber(seriesApi.priceToCoordinate(upperPrice), 0) * vRatio;
-                    applyBandFill(xMin, xMax, y1, y2, lowerRatio);
-                  }
-
-                  sortedLevels.forEach((level: any) => {
-                    const levelPrice = level.price ?? level._internal_price;
-                    const levelRatio = level.ratio ?? level._internal_ratio;
-                    const levelLabel = level.label ?? level._internal_label;
-                    if (levelPrice === undefined) return;
-                    const y = toNumber(seriesApi.priceToCoordinate(levelPrice), 0) * vRatio;
-                    const ratio = toNumber(levelRatio, 0);
-                    const lineColor = ratioToColor(ratio);
-                    const labelText = `${levelLabel ?? ratio.toFixed(3)} (${toNumber(levelPrice, 0).toFixed(2)})`;
-
-                    ctx.strokeStyle = lineColor;
-                    ctx.lineWidth = Math.max(1, 1.5 * hRatio);
-                    ctx.beginPath();
-                    ctx.moveTo(xMin, y);
-                    ctx.lineTo(xMax, y);
-                    ctx.stroke();
-
-                    ctx.font = `${11 * hRatio}px -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif`;
-                    const textWidth = ctx.measureText(labelText).width;
-                    const padX = 6 * hRatio;
-                    const boxW = textWidth + padX * 2;
-                    const boxH = 16 * vRatio;
-                    const labelX = xMax + 8 * hRatio;
-                    const labelY = y - boxH / 2;
-
-                    ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
-                    ctx.fillRect(labelX, labelY, boxW, boxH);
-                    ctx.fillStyle = lineColor;
-                    ctx.textAlign = 'left';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(labelText, labelX + padX, y);
-                  });
-
-                  ctx.restore();
-                  return;
-                }
-              }
-
-              // --- Fibonacci Extension Fill Zones (public methods) ---
-              if (
-                (toolType === 'fib_ext' || toolType === 'fibonacci_extension' || toolType === 'fibonacci-extension') &&
-                chartApi &&
-                seriesApi &&
-                typeof (this as any).getExtensionLevels === 'function'
-              ) {
-                const extLevels = (this as any).getExtensionLevels();
-                if (Array.isArray(extLevels) && extLevels.length > 1) {
-                  const chartWidth = chartApi.chartElement().clientWidth * hRatio;
-                  const sorted = [...extLevels].sort((a: any, b: any) => toNumber(a.price) - toNumber(b.price));
-                  for (let i = 0; i < sorted.length - 1; i++) {
-                    const lower = sorted[i];
-                    const upper = sorted[i + 1];
-                    const lowerPrice = lower.price ?? lower._internal_price;
-                    const upperPrice = upper.price ?? upper._internal_price;
-                    const lowerLevel = lower.level ?? lower._internal_level;
-                    if (lowerPrice === undefined || upperPrice === undefined) continue;
-                    const y1 = toNumber(seriesApi.priceToCoordinate(lowerPrice), 0) * vRatio;
-                    const y2 = toNumber(seriesApi.priceToCoordinate(upperPrice), 0) * vRatio;
-                    applyBandFill(0, chartWidth, y1, y2, lowerLevel);
-                  }
-                }
-              }
+              const isFibExtension =
+                toolType === 'fib_ext' ||
+                toolType === 'fibonacci_extension' ||
+                toolType === 'fibonacci-extension';
 
               // --- Position Tool Visuals (Long/Short) ---
               const posOptions = (this as any)._private__positionOptions;
@@ -1330,9 +1403,8 @@ export const useDrawingTools = (
                 return;
               }
 
-              // --- Standard orange override fix ---
               const stableColor = (this as any)._userLineColor || readToolColor(this);
-              let realColor = stableColor || '#2196F3';
+              const realColor = stableColor || '#2196F3';
 
               const proxyCtx = new Proxy(ctx, {
                 set(target, prop, value) {
@@ -1347,6 +1419,36 @@ export const useDrawingTools = (
                   return val;
                 }
               });
+
+              if (chartApi && seriesApi && isFibRetracement && typeof (this as any).getMetrics === 'function') {
+                const metrics = (this as any).getMetrics();
+                if (Array.isArray(metrics?.levels) && metrics.levels.length > 1) {
+                  const bounds = getFibSegmentBounds(this, chartApi, hRatio);
+                  if (bounds) {
+                    ctx.save();
+                    drawFibGradientBands(ctx, seriesApi, metrics.levels, bounds, vRatio, FIB_RETRACEMENT_LEVELS);
+                    ctx.restore();
+                    originalDraw.call(this, proxyCtx, hRatio, vRatio);
+                    drawFibLevelLinesAndLabels(ctx, seriesApi, metrics.levels, bounds, vRatio, hRatio, FIB_RETRACEMENT_LEVELS);
+                    return;
+                  }
+                }
+              }
+
+              if (chartApi && seriesApi && isFibExtension && typeof (this as any).getExtensionLevels === 'function') {
+                const extLevels = (this as any).getExtensionLevels();
+                if (Array.isArray(extLevels) && extLevels.length > 1) {
+                  const bounds = getFibSegmentBounds(this, chartApi, hRatio, true);
+                  if (bounds) {
+                    ctx.save();
+                    drawFibGradientBands(ctx, seriesApi, extLevels, bounds, vRatio, FIB_EXTENSION_LEVELS);
+                    ctx.restore();
+                    originalDraw.call(this, proxyCtx, hRatio, vRatio);
+                    drawFibLevelLinesAndLabels(ctx, seriesApi, extLevels, bounds, vRatio, hRatio, FIB_EXTENSION_LEVELS);
+                    return;
+                  }
+                }
+              }
 
               originalDraw.call(this, proxyCtx, hRatio, vRatio);
             };

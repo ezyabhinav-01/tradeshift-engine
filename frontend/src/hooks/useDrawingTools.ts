@@ -1054,16 +1054,24 @@ export const useDrawingTools = (
                   for (let i = 0; i < sortedLevels.length - 1; i++) {
                     const lower = sortedLevels[i];
                     const upper = sortedLevels[i + 1];
-                    const y1 = toNumber(seriesApi.priceToCoordinate(lower.price), 0) * vRatio;
-                    const y2 = toNumber(seriesApi.priceToCoordinate(upper.price), 0) * vRatio;
-                    applyBandFill(xMin, xMax, y1, y2, lower.ratio);
+                    const lowerPrice = lower.price ?? lower._internal_price;
+                    const upperPrice = upper.price ?? upper._internal_price;
+                    const lowerRatio = lower.ratio ?? lower._internal_ratio;
+                    if (lowerPrice === undefined || upperPrice === undefined) continue;
+                    const y1 = toNumber(seriesApi.priceToCoordinate(lowerPrice), 0) * vRatio;
+                    const y2 = toNumber(seriesApi.priceToCoordinate(upperPrice), 0) * vRatio;
+                    applyBandFill(xMin, xMax, y1, y2, lowerRatio);
                   }
 
                   sortedLevels.forEach((level: any) => {
-                    const y = toNumber(seriesApi.priceToCoordinate(level.price), 0) * vRatio;
-                    const ratio = toNumber(level.ratio, 0);
+                    const levelPrice = level.price ?? level._internal_price;
+                    const levelRatio = level.ratio ?? level._internal_ratio;
+                    const levelLabel = level.label ?? level._internal_label;
+                    if (levelPrice === undefined) return;
+                    const y = toNumber(seriesApi.priceToCoordinate(levelPrice), 0) * vRatio;
+                    const ratio = toNumber(levelRatio, 0);
                     const lineColor = ratioToColor(ratio);
-                    const labelText = `${level.label ?? ratio.toFixed(3)} (${toNumber(level.price, 0).toFixed(2)})`;
+                    const labelText = `${levelLabel ?? ratio.toFixed(3)} (${toNumber(levelPrice, 0).toFixed(2)})`;
 
                     ctx.strokeStyle = lineColor;
                     ctx.lineWidth = Math.max(1, 1.5 * hRatio);
@@ -1107,9 +1115,13 @@ export const useDrawingTools = (
                   for (let i = 0; i < sorted.length - 1; i++) {
                     const lower = sorted[i];
                     const upper = sorted[i + 1];
-                    const y1 = toNumber(seriesApi.priceToCoordinate(lower.price), 0) * vRatio;
-                    const y2 = toNumber(seriesApi.priceToCoordinate(upper.price), 0) * vRatio;
-                    applyBandFill(0, chartWidth, y1, y2, lower.level);
+                    const lowerPrice = lower.price ?? lower._internal_price;
+                    const upperPrice = upper.price ?? upper._internal_price;
+                    const lowerLevel = lower.level ?? lower._internal_level;
+                    if (lowerPrice === undefined || upperPrice === undefined) continue;
+                    const y1 = toNumber(seriesApi.priceToCoordinate(lowerPrice), 0) * vRatio;
+                    const y2 = toNumber(seriesApi.priceToCoordinate(upperPrice), 0) * vRatio;
+                    applyBandFill(0, chartWidth, y1, y2, lowerLevel);
                   }
                 }
               }

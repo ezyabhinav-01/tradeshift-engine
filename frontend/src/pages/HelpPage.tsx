@@ -158,7 +158,6 @@ const HelpPage = () => {
                 Search
               </button>
             </div>
-            </div>
           </div>
         </div>
       </div>

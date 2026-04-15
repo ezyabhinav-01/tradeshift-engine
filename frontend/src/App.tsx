@@ -6,6 +6,8 @@ import { Toaster } from 'sonner';
 import { AuthProvider } from './context/AuthContext';
 import { AccessProvider } from './hooks/useAccessControl';
 import { NotificationProvider } from './context/NotificationContext';
+import { TutorialProvider } from './context/TutorialContext';
+import { TutorialOverlay } from './components/tutorial/TutorialOverlay';
 import Login from './pages/auth/Login';
 import Signup from './pages/auth/Signup';
 import PinVerification from './pages/auth/PinVerification';
@@ -126,7 +128,10 @@ export default function App() {
         <AccessProvider>
           <NotificationProvider>
             <GameProvider>
-              <AppContent />
+              <TutorialProvider>
+                <AppContent />
+                <TutorialOverlay />
+              </TutorialProvider>
             </GameProvider>
           </NotificationProvider>
         </AccessProvider>

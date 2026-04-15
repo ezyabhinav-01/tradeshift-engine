@@ -167,9 +167,39 @@ export default function PortfolioPage() {
   }, [activeOrders]);
 
   const s = liveSummary;
+  const quickInsights = [
+    {
+      label: 'Holdings',
+      value: holdings.length,
+      tone: 'text-slate-900 dark:text-white',
+      icon: Briefcase,
+      detail: 'Long-term positions being tracked',
+    },
+    {
+      label: 'Open Positions',
+      value: livePositions.length,
+      tone: livePositions.length > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-slate-900 dark:text-white',
+      icon: Target,
+      detail: 'Live intraday and swing exposure',
+    },
+    {
+      label: 'Pending Orders',
+      value: pendingBuyOrders.length,
+      tone: pendingBuyOrders.length > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-900 dark:text-white',
+      icon: Clock,
+      detail: 'Reserved cash waiting for execution',
+    },
+    {
+      label: 'Diversification',
+      value: sectors?.diversity_score ? `${sectors.diversity_score}/100` : '—',
+      tone: 'text-emerald-600 dark:text-emerald-400',
+      icon: Shield,
+      detail: 'Breadth of your current allocation',
+    },
+  ];
 
   return (
-    <div className="p-3 md:p-8 w-full max-w-7xl mx-auto space-y-6 md:space-y-8 font-sans pb-24 md:pb-20">
+    <div className="p-3 md:p-8 w-full max-w-[1600px] mx-auto space-y-6 md:space-y-8 font-sans pb-24 md:pb-20">
 
       {/* ─── Header & Summary ─── */}
       <div className="relative overflow-hidden rounded-2xl border border-slate-200 dark:border-white/10 bg-white/90 dark:bg-[#0f1118] p-5 md:p-6 shadow-sm dark:shadow-[0_18px_50px_-28px_rgba(37,99,235,0.45)]">
@@ -205,9 +235,29 @@ export default function PortfolioPage() {
       </div>
 
       {/* Hero Stats */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div data-tutorial="portfolio-metrics" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        {quickInsights.map((item) => (
+          <div
+            key={item.label}
+            className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white/90 dark:bg-[#0f1118] p-5 shadow-sm"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.22em] font-black text-slate-400 dark:text-slate-500">{item.label}</p>
+                <p className={`mt-3 text-3xl font-black tracking-tight ${item.tone}`}>{item.value}</p>
+                <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{item.detail}</p>
+              </div>
+              <div className="rounded-2xl bg-sidebar-primary/10 p-3 text-sidebar-primary">
+                <item.icon className="w-5 h-5" />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
         {/* Main P&L Card */}
-        <div className="lg:col-span-1 border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0f1118] rounded-xl p-8 flex flex-col justify-between overflow-hidden relative group shadow-sm dark:shadow-[0_15px_40px_-30px_rgba(16,185,129,0.8)]">
+        <div className="xl:col-span-3 border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0f1118] rounded-xl p-8 flex flex-col justify-between overflow-hidden relative group shadow-sm dark:shadow-[0_15px_40px_-30px_rgba(16,185,129,0.8)]">
           <div className="absolute -right-4 -top-4 opacity-[0.03] group-hover:opacity-[0.05] transition-opacity">
             <Briefcase size={140} />
           </div>
@@ -236,7 +286,7 @@ export default function PortfolioPage() {
         </div>
 
         {/* Cash Balance Card */}
-        <div className="lg:col-span-1 border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0f1118] rounded-xl p-8 flex flex-col justify-between overflow-hidden relative group shadow-sm dark:shadow-[0_15px_40px_-30px_rgba(59,130,246,0.8)]">
+        <div className="xl:col-span-3 border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0f1118] rounded-xl p-8 flex flex-col justify-between overflow-hidden relative group shadow-sm dark:shadow-[0_15px_40px_-30px_rgba(59,130,246,0.8)]">
           <div className="absolute -right-4 -top-4 opacity-[0.03] group-hover:opacity-[0.05] transition-opacity">
             <Zap size={140} />
           </div>
@@ -269,7 +319,7 @@ export default function PortfolioPage() {
         </div>
 
         {/* Equity Curve Chart */}
-        <div className="lg:col-span-2 border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0f1118] rounded-xl p-6 min-h-[300px] shadow-sm dark:shadow-[0_15px_40px_-30px_rgba(59,130,246,0.75)]">
+        <div className="xl:col-span-6 border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0f1118] rounded-xl p-6 min-h-[300px] shadow-sm dark:shadow-[0_15px_40px_-30px_rgba(59,130,246,0.75)]">
           <div className="flex justify-between items-center mb-6">
             <div className="flex items-center gap-2">
               <BarChart3 className="w-4 h-4 text-sidebar-primary" />
@@ -282,21 +332,43 @@ export default function PortfolioPage() {
               </div>
             </div>
           </div>
-          <div className="h-[200px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={s.equity_curve}>
-                <defs>
-                  <linearGradient id="curveColor" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={s.is_positive ? '#22c55e' : '#f43f5e'} stopOpacity={0.3} />
-                    <stop offset="95%" stopColor={s.is_positive ? '#22c55e' : '#f43f5e'} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="date" hide />
-                <YAxis hide domain={['auto', 'auto']} />
-                <Tooltip contentStyle={{ backgroundColor: '#171717', border: '1px solid #262626', borderRadius: '8px', color: '#fff' }} />
-                <Area type="monotone" dataKey="value" stroke={s.is_positive ? '#22c55e' : '#f43f5e'} fillOpacity={1} fill="url(#curveColor)" strokeWidth={3} />
-              </AreaChart>
-            </ResponsiveContainer>
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px] gap-6 items-center">
+            <div className="h-[220px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={s.equity_curve}>
+                  <defs>
+                    <linearGradient id="curveColor" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={s.is_positive ? '#22c55e' : '#f43f5e'} stopOpacity={0.3} />
+                      <stop offset="95%" stopColor={s.is_positive ? '#22c55e' : '#f43f5e'} stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="date" hide />
+                  <YAxis hide domain={['auto', 'auto']} />
+                  <Tooltip contentStyle={{ backgroundColor: '#171717', border: '1px solid #262626', borderRadius: '8px', color: '#fff' }} />
+                  <Area type="monotone" dataKey="value" stroke={s.is_positive ? '#22c55e' : '#f43f5e'} fillOpacity={1} fill="url(#curveColor)" strokeWidth={3} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.03] p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Net P&L</p>
+                <p className={`mt-2 text-xl font-black font-mono ${s.is_positive ? 'text-green-500' : 'text-red-500'}`}>
+                  {s.is_positive ? '+' : ''}₹{s.total_pnl.toLocaleString('en-IN')}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.03] p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Return %</p>
+                <p className={`mt-2 text-xl font-black font-mono ${s.is_positive ? 'text-green-500' : 'text-red-500'}`}>{s.pnl_percent}%</p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.03] p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Current Equity</p>
+                <p className="mt-2 text-xl font-black font-mono text-slate-900 dark:text-white">₹{s.total_value?.toLocaleString('en-IN') || '0'}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.03] p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Blocked Cash</p>
+                <p className="mt-2 text-xl font-black font-mono text-amber-600 dark:text-amber-400">₹{(s.pending_buy_value || 0).toLocaleString('en-IN')}</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -305,7 +377,7 @@ export default function PortfolioPage() {
 
       {/* ─── Detailed Tabs ─── */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabId)} className="w-full">
-        <TabsList className="bg-sidebar-accent/50 p-1 space-x-1 mb-8 overflow-x-auto no-scrollbar flex-nowrap w-full justify-start rounded-xl">
+        <TabsList className="bg-sidebar-accent/50 p-1 mb-8 overflow-x-auto no-scrollbar flex w-full justify-start rounded-xl gap-1 flex-nowrap xl:flex-wrap">
           {TABS.map((tab) => (
             <TabsTrigger key={tab.id} value={tab.id} className="rounded-lg data-[state=active]:bg-white dark:data-[state=active]:bg-sidebar-primary dark:data-[state=active]:text-black font-bold text-xs flex items-center gap-2 py-2.5 px-5 transition-all">
               <tab.icon size={14} /> {tab.label}

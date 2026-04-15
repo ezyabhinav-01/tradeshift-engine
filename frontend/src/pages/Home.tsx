@@ -255,7 +255,7 @@ const Home = () => {
 
       <div className="flex flex-1 min-h-0 relative">
         {/* CENTER CHART AREA */}
-        <div className="flex-1 relative bg-transparent">
+        <div data-tutorial="chart" className="flex-1 relative bg-transparent">
           <MultiChartGrid
             ProChartComponent={ProChart}
             chartProps={chartProps}

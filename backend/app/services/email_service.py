@@ -728,3 +728,33 @@ async def send_weekly_summary_email(
     
     subject = f"📊 Weekly Ledger: {net_gain_fmt} | TradeShift Statement"
     await _send(email, subject, _html_wrapper("Weekly Statement", content))
+
+
+async def send_feedback_reply_email(
+    email: str,
+    name: str | None,
+    title: str,
+    reply_message: str,
+    original_feedback: str,
+    demat_id: str | None = None,
+):
+    first = (name or "").split()[0] if name else "Trader"
+    content = f"""
+    {_heading(f"Update for you, {first}")}
+    {_text("A TradeShift admin has reviewed your feedback and sent you a private update.")}
+    {_info_table([
+        ("Subject", title),
+        ("Demat Account ID", demat_id or "Not linked"),
+    ])}
+    <div style="background:rgba(41,98,255,0.05); border:1px solid rgba(41,98,255,0.12); border-radius:14px; padding:18px; margin:24px 0;">
+      <p style="margin:0 0 10px; color:#fff; font-size:14px; font-weight:700;">Your original feedback</p>
+      <p style="margin:0; color:{TEXT_LIGHT}; font-size:14px; line-height:1.7;">{original_feedback}</p>
+    </div>
+    <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:14px; padding:18px; margin:24px 0;">
+      <p style="margin:0 0 10px; color:#fff; font-size:14px; font-weight:700;">Admin reply</p>
+      <p style="margin:0; color:#E5E7EB; font-size:14px; line-height:1.7;">{reply_message}</p>
+    </div>
+    {_text("You can also open your TradeShift notifications or private messages to continue the conversation if needed.", 13)}
+    {_cta_button("Open TradeShift")}
+    """
+    await _send(email, title, _html_wrapper("Support Update", content))

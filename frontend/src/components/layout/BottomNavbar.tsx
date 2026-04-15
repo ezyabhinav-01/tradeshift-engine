@@ -34,6 +34,7 @@ export const BottomNavbar = () => {
                         <Link
                             key={item.path}
                             to={item.path}
+                            data-tutorial={`nav-${item.name.toLowerCase()}`}
                             className="relative flex flex-col items-center justify-center flex-1 h-full gap-1 group"
                         >
                             <div className={`relative flex items-center justify-center w-10 h-10 rounded-2xl transition-all duration-300 ${isActive ? 'bg-tv-primary/15' : 'group-active:scale-90'}`}>

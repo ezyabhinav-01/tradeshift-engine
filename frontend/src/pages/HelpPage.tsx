@@ -12,6 +12,8 @@ import {
   Star
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useTutorial } from '../context/TutorialContext';
+import { Play } from 'lucide-react';
 
 const categories = [
   {
@@ -58,6 +60,7 @@ const HelpPage = () => {
   const [feedbackEntries, setFeedbackEntries] = useState<Array<{ id: number; rating: number; comment: string; created_at: string }>>([]);
   const [activeContactMethod, setActiveContactMethod] = useState<'email' | null>(null);
   const { user } = useAuth();
+  const { startTour } = useTutorial();
 
   useEffect(() => {
     if (!user) return;
@@ -155,6 +158,7 @@ const HelpPage = () => {
                 Search
               </button>
             </div>
+            </div>
           </div>
         </div>
       </div>
@@ -174,7 +178,15 @@ const HelpPage = () => {
               </p>
               <ul className="space-y-4">
                 {cat.links.map((link, lIdx) => (
-                  <li key={lIdx} className="flex items-center justify-between group/link cursor-pointer py-1">
+                  <li 
+                    key={lIdx} 
+                    className="flex items-center justify-between group/link cursor-pointer py-1"
+                    onClick={() => {
+                        if (link === 'Platform Overview') {
+                            startTour('global');
+                        }
+                    }}
+                  >
                     <span className="text-sm font-semibold text-slate-600 dark:text-slate-300 group-hover/link:text-tv-primary transition-colors">{link}</span>
                     <ChevronRight size={16} className="text-slate-300 dark:text-slate-600 group-hover/link:text-tv-primary transform translate-x-0 group-hover/link:translate-x-1 transition-all" />
                   </li>

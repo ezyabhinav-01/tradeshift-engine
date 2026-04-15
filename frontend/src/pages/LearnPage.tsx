@@ -915,7 +915,7 @@ export default function LearnPage() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+          <div data-tutorial="track-list" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {tracks.map((track, idx) => {
               const progress = getTrackProgress(track.id);
               return (

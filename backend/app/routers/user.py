@@ -26,8 +26,33 @@ async def _ensure_user_feedback_table(db: AsyncSession) -> None:
             feedback_type VARCHAR(100),
             rating INT CHECK (rating >= 1 AND rating <= 5),
             comment TEXT,
+            status VARCHAR(20) DEFAULT 'OPEN',
+            admin_reply TEXT,
+            admin_reply_sent_at TIMESTAMP WITH TIME ZONE,
+            admin_reply_sent_by INT REFERENCES users(id) ON DELETE SET NULL,
+            resolved_at TIMESTAMP WITH TIME ZONE,
             created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         )
+    """))
+    await db.execute(text("""
+        ALTER TABLE user_feedback
+        ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'OPEN'
+    """))
+    await db.execute(text("""
+        ALTER TABLE user_feedback
+        ADD COLUMN IF NOT EXISTS admin_reply TEXT
+    """))
+    await db.execute(text("""
+        ALTER TABLE user_feedback
+        ADD COLUMN IF NOT EXISTS admin_reply_sent_at TIMESTAMP WITH TIME ZONE
+    """))
+    await db.execute(text("""
+        ALTER TABLE user_feedback
+        ADD COLUMN IF NOT EXISTS admin_reply_sent_by INT REFERENCES users(id) ON DELETE SET NULL
+    """))
+    await db.execute(text("""
+        ALTER TABLE user_feedback
+        ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP WITH TIME ZONE
     """))
     await db.execute(text("""
         CREATE INDEX IF NOT EXISTS idx_user_feedback_created_at

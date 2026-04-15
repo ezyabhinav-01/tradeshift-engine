@@ -40,6 +40,7 @@ class User(BaseModel):
     city: Optional[str] = None
     how_heard_about: Optional[str] = None
     security_pin: Optional[str] = None
+    onboarding_status: Optional[dict] = {}
     balance: float = 100000.0
     created_at: datetime
     last_active_at: Optional[datetime] = None
@@ -65,6 +66,7 @@ class UserCreate(UserBase):
     city: Optional[str] = None
     how_heard_about: Optional[str] = None
     security_pin: Optional[str] = None
+    onboarding_status: Optional[dict] = {}
     balance: float = 100000.0
 
     @field_validator("email")
@@ -94,6 +96,7 @@ class UserProfileUpdate(BaseModel):
     risk_tolerance: Optional[str] = None
     occupation: Optional[str] = None
     city: Optional[str] = None
+    onboarding_status: Optional[dict] = None
 
 
 # --- Forgot Password Schemas ---
@@ -182,6 +185,7 @@ class User(UserBase):
     occupation: Optional[str] = None
     city: Optional[str] = None
     demat_id: Optional[str] = None
+    onboarding_status: Optional[dict] = {}
     balance: float = 100000.0
     created_at: datetime
     
@@ -444,10 +448,30 @@ class UserFeedbackCreate(UserFeedbackBase):
 class UserFeedbackResponse(UserFeedbackBase):
     id: int
     user_id: int
+    status: str = "OPEN"
+    admin_reply: Optional[str] = None
+    admin_reply_sent_at: Optional[datetime] = None
+    admin_reply_sent_by: Optional[int] = None
+    resolved_at: Optional[datetime] = None
     created_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class AdminUserFeedbackResponse(UserFeedbackResponse):
+    user_email: Optional[str] = None
+    user_full_name: Optional[str] = None
+    user_demat_id: Optional[str] = None
+
+
+class AdminFeedbackReplyRequest(BaseModel):
+    message: str
+    title: Optional[str] = "TradeShift support update"
+    mark_resolved: bool = True
+    send_email: bool = True
+    send_notification: bool = True
+    send_dm: bool = True
 
 # ─── Notification Schemas ──────────────────────────────────────
 

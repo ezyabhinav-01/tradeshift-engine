@@ -86,6 +86,7 @@ class User(Base):
     city = Column(String, nullable=True)
     how_heard_about = Column(String, nullable=True)
     security_pin = Column(String(255), nullable=True)
+    onboarding_status = Column(JSON, default=dict)
     
     # --- Forgot Password Fields ---
     phone_number = Column(String, nullable=True)
@@ -268,6 +269,11 @@ class UserFeedback(Base):
     feedback_type = Column(String(100), default="general", nullable=False)
     rating = Column(Integer, nullable=False)
     comment = Column(Text, nullable=False)
+    status = Column(String(20), default="OPEN", nullable=False)
+    admin_reply = Column(Text, nullable=True)
+    admin_reply_sent_at = Column(DateTime, nullable=True)
+    admin_reply_sent_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    resolved_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 # ═══════════════════════════════════════════

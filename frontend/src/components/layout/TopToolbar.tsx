@@ -142,7 +142,7 @@ const TopToolbar = ({
                 <Separator orientation="vertical" className="h-6 bg-tv-border" />
 
                 {/* Indicators */}
-                <Button variant="ghost" className="h-8 gap-2 px-2 hover:bg-tv-bg-pane/50 hover:text-blue-500 text-tv-text-primary" onClick={onToggleIndicators}>
+                <Button variant="ghost" data-tutorial="indicators" className="h-8 gap-2 px-2 hover:bg-tv-bg-pane/50 hover:text-blue-500 text-tv-text-primary" onClick={onToggleIndicators}>
                     <LayoutTemplate size={18} />
                     <span className="text-sm font-medium">Indicators</span>
                 </Button>

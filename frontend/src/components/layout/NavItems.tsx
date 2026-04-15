@@ -46,6 +46,7 @@ export const NavItems = ({ isMobile, onItemClick }: { isMobile?: boolean, onItem
                     <Link
                         key={item.path}
                         to={item.path}
+                        data-tutorial={`nav-${item.name.toLowerCase()}`}
                         onClick={() => {
                             handleItemClick();
                         }}
@@ -81,6 +82,7 @@ export const NavItems = ({ isMobile, onItemClick }: { isMobile?: boolean, onItem
 
                         <Link
                             to="/community"
+                            data-tutorial="nav-community"
                             onClick={() => {
                                 setIsMoreOpen(false);
                                 handleItemClick();

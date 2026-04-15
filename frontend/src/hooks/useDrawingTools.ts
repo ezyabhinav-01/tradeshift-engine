@@ -324,6 +324,20 @@ const buildFibLevelsFromAnchors = (
   }));
 };
 
+const buildTrendFibLevels = (
+  point1Price: number,
+  point2Price: number,
+  point3Price: number,
+  palette: FibLevelConfig[]
+) => {
+  const swing = point2Price - point1Price;
+  return palette.map((level) => ({
+    ratio: level.ratio,
+    label: level.label,
+    price: point3Price + (swing * level.ratio),
+  }));
+};
+
 const drawTrendGuide = (
   ctx: CanvasRenderingContext2D,
   startX: number,
@@ -1265,12 +1279,28 @@ export const useDrawingTools = (
               const toolType = (this as any).type ?? (typeof (this as any).getType === 'function' ? (this as any).getType() : undefined);
               const toolPoints = getToolPoints(this);
               const options = readToolOptions(this) ?? {};
+              const explicitFibExtension =
+                toolType === 'fib_ext' ||
+                toolType === 'fibonacci_extension' ||
+                toolType === 'fibonacci-extension';
+
+              const heuristicFibExtension =
+                toolPoints.length >= 3 &&
+                (
+                  Array.isArray(options.levels) ||
+                  options.point3 !== undefined ||
+                  options.point3Time !== undefined
+                );
+
+              const isFibExtension = explicitFibExtension || heuristicFibExtension;
+
               const isFibRetracement =
                 toolType === 'fibonacci' ||
                 toolType === 'fib' ||
                 toolType === 'fibonacci-tool' ||
                 (typeof (this as any).getLevels === 'function' && typeof (this as any).getMetrics === 'function') ||
                 (
+                  !isFibExtension &&
                   toolPoints.length >= 2 &&
                   (
                     options.levelColors ||
@@ -1278,19 +1308,6 @@ export const useDrawingTools = (
                     options.point2Time !== undefined
                   ) &&
                   toolPoints.length < 3
-                );
-
-              const isFibExtension =
-                toolType === 'fib_ext' ||
-                toolType === 'fibonacci_extension' ||
-                toolType === 'fibonacci-extension' ||
-                (
-                  toolPoints.length >= 3 &&
-                  (
-                    Array.isArray(options.levels) ||
-                    options.point3 !== undefined ||
-                    options.point3Time !== undefined
-                  )
                 );
 
               // --- Position Tool Visuals (Long/Short) ---
@@ -1530,7 +1547,8 @@ export const useDrawingTools = (
 
               if (chartApi && seriesApi && isFibExtension && toolPoints.length >= 2) {
                 const [point1, point2, maybePoint3] = toolPoints;
-                const levels = buildFibLevelsFromAnchors(point2.price, point1.price, FIB_EXTENSION_LEVELS);
+                const point3 = maybePoint3 ?? point2;
+                const levels = buildTrendFibLevels(point1.price, point2.price, point3.price, FIB_EXTENSION_LEVELS);
                 const bounds = getFibSegmentBounds(this, chartApi, hRatio, true);
                 if (bounds) {
                   ctx.save();
@@ -1542,7 +1560,7 @@ export const useDrawingTools = (
                   const timeScale = chartApi.timeScale();
                   const guideStartX = timeToCanvasX(timeScale, point1.time, hRatio);
                   const guideStartY = toFiniteNumber(seriesApi.priceToCoordinate(point1.price), NaN) * vRatio;
-                  const guideEndX = timeToCanvasX(timeScale, (maybePoint3 ?? point2).time, hRatio);
+                  const guideEndX = timeToCanvasX(timeScale, point2.time, hRatio);
                   const guideEndY = toFiniteNumber(seriesApi.priceToCoordinate(point2.price), NaN) * vRatio;
                   if (
                     guideStartX !== null &&

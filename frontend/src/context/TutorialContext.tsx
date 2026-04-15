@@ -17,6 +17,7 @@ export interface TutorialContextType {
   isActive: boolean;
   currentTour: TourId | null;
   currentStepIndex: number;
+  totalSteps: number;
   currentStep: TutorialStep | null;
   startTour: (tourId: TourId) => void;
   nextStep: () => void;
@@ -26,71 +27,73 @@ export interface TutorialContextType {
   hasCompletedTour: (tourId: TourId) => boolean;
 }
 
+const TUTORIAL_RELEASE_DATE = new Date('2026-04-16T00:00:00Z').getTime();
+
 const TOUR_CONFIG: Record<TourId, TutorialStep[]> = {
   global: [
     {
       title: "Welcome to TradeShift!",
-      content: "Let's take a quick tour to help you get started with the platform.",
+      content: "Welcome to your new trading headquarters. This guide will help you navigate the platform's core areas so you can start trading with confidence and precision. Ready to see how it works?",
       placement: "center"
     },
     {
       targetId: "tutorial-nav-home",
-      title: "Navigation",
-      content: "Here is your navigation bar. Access all your tools from here.",
-      placement: "bottom"
+      title: "Dashboard & Navigation",
+      content: "This sidebar is your control center. Use it to quickly switch between the simulated market, your personal portfolio, and the learning academy. It's designed to keep your most important tools just one click away at all times.",
+      placement: "right"
     },
     {
       targetId: "tutorial-nav-trade",
-      title: "Trading Terminal",
-      content: "This is your main dashboard where you can analyze charts and execute trades.",
-      placement: "bottom"
+      title: "The Trading Terminal",
+      content: "This is where the action happens. Use the Trading Terminal to analyze real-time market data, view professional charts, and execute buy/sell orders. Use this when you're ready to test a strategy in the live market simulation.",
+      placement: "right"
     },
     {
       targetId: "tutorial-nav-portfolio",
-      title: "Portfolio",
-      content: "Track your active positions, history, and overall account performance here.",
-      placement: "bottom"
+      title: "Portfolio Management",
+      content: "Your Portfolio tracks every trade you've ever made. Review this daily to see your total equity, active holdings, and long-term performance. It helps you see 'the big picture' of your wealth growth and risk management success.",
+      placement: "right"
     },
     {
       targetId: "tutorial-nav-learn",
-      title: "Academy",
-      content: "Level up your skills by completing interactive lessons and earning XP.",
-      placement: "bottom"
+      title: "Learning Academy",
+      content: "Trading is a skill, and the Academy is where you master it. Complete interactive tracks, earn XP for correct answers, and climb the global leaderboard. Use this daily to refine your edge and learn new professional strategies.",
+      placement: "right"
     },
     {
       targetId: "tutorial-nav-community",
-      title: "Community",
-      content: "Connect with other traders, share setups, and discuss market trends.",
-      placement: "bottom"
+      title: "Trader Community",
+      content: "You're not trading alone. Join discussions, share your chart setups, and see what other pros are watching. The community is best used for cross-verifying signals and staying updated on market sentiment in real-time.",
+      placement: "right"
     }
   ],
   markets: [
     {
       targetId: "tutorial-chart",
-      title: "Pro Charts",
-      content: "Use professional charting tools with indicators and drawing capabilities.",
+      title: "Professional Charting",
+      content: "These charts use the same data engines as world-class hedge funds. You can draw trends, identify support/resistance, and visualize price action across different timeframes to time your entries perfectly.",
       placement: "left"
     },
     {
       targetId: "tutorial-indicators",
-      title: "Indicators",
-      content: "Add technical indicators to help analyze the market.",
+      title: "Technical Indicators",
+      content: "Indicators help you confirm your trades. Add tools like RSI or Moving Averages to cut through market noise. Use these when you need objective data to support your subjective chart analysis.",
       placement: "bottom"
     }
   ],
   portfolio: [
     {
       targetId: "tutorial-portfolio-metrics",
-      title: "Performance Metrics",
-      content: "View your total balance, P&L, and Win Rate at a glance.",
+      title: "Vital Stats",
+      content: "These metrics (ROI, Win Rate, Max Drawdown) are the pulse of your trading business. High numbers here mean your strategy is working; use these to identify when you need to pivot or scale up your position sizes.",
       placement: "bottom"
     }
   ],
   learn: [
     {
       targetId: "tutorial-track-list",
-      title: "Learning Tracks",
-      content: "Follow structured tracks to build your trading knowledge from basics to advanced.",
+      title: "Structured Curriculum",
+      content: "Start with the 'Markets 101' tracks and move up. Each module is designed to give you 'the why' behind every concept, ensuring you don't just memorize patterns, but truly understand market mechanics.",
       placement: "top"
     }
   ]
@@ -107,6 +110,7 @@ export const TutorialProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
 
   const currentStep = currentTour ? TOUR_CONFIG[currentTour]?.[currentStepIndex] || null : null;
+  const totalSteps = currentTour ? TOUR_CONFIG[currentTour]?.length || 0 : 0;
 
   // Track completed tours to avoid repeated api calls
   const [completedTours, setCompletedTours] = useState<Set<string>>(new Set());
@@ -128,23 +132,34 @@ export const TutorialProvider: React.FC<{ children: ReactNode }> = ({ children }
     if (!user) return;
     if (isActive) return;
 
-    // Check Global Tour first on login
-    if (!completedTours.has('global') && !isActive) {
-      // Delay slightly so UI loads
-      const t = setTimeout(() => startTour('global'), 1000);
-      return () => clearTimeout(t);
+    // Check Global Tour first
+    if (!completedTours.has('global')) {
+      // Logic for new vs existing users
+      const userCreatedTimestamp = user.created_at ? new Date(user.created_at).getTime() : 0;
+      const isNewUser = userCreatedTimestamp >= TUTORIAL_RELEASE_DATE;
+
+      if (isNewUser) {
+        // Automatic start for truly new users
+        const t = setTimeout(() => startTour('global'), 1500);
+        return () => clearTimeout(t);
+      } else {
+        // Silently mark as completed for existing users so they don't get the pop-up
+        // but can still trigger it manually from Help
+        void syncOnboardingStatus('global');
+      }
+      return;
     }
 
     // Check Context Tours
     const path = location.pathname;
     if (path.startsWith('/markets') && !completedTours.has('markets')) {
-      const t = setTimeout(() => startTour('markets'), 1000);
+      const t = setTimeout(() => startTour('markets'), 1500);
       return () => clearTimeout(t);
     } else if (path.startsWith('/portfolio') && !completedTours.has('portfolio')) {
-      const t = setTimeout(() => startTour('portfolio'), 1000);
+      const t = setTimeout(() => startTour('portfolio'), 1500);
       return () => clearTimeout(t);
     } else if (path.startsWith('/learn') && !completedTours.has('learn')) {
-      const t = setTimeout(() => startTour('learn'), 1000);
+      const t = setTimeout(() => startTour('learn'), 1500);
       return () => clearTimeout(t);
     }
   }, [location.pathname, user, completedTours, isActive]);
@@ -224,7 +239,7 @@ export const TutorialProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   return (
     <TutorialContext.Provider value={{
-      isActive, currentTour, currentStepIndex, currentStep,
+      isActive, currentTour, currentStepIndex, totalSteps, currentStep,
       startTour, nextStep, prevStep, endTour, skipTour,
       hasCompletedTour
     }}>

@@ -4,7 +4,7 @@ import { useTutorial } from '../../context/TutorialContext';
 import { X, ChevronRight, ChevronLeft } from 'lucide-react';
 
 export const TutorialOverlay: React.FC = () => {
-  const { isActive, currentStep, currentStepIndex, nextStep, prevStep, skipTour, currentTour } = useTutorial();
+  const { isActive, currentStep, currentStepIndex, totalSteps, nextStep, prevStep, skipTour } = useTutorial();
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
   const [windowSize, setWindowSize] = useState({ width: window.innerWidth, height: window.innerHeight });
 
@@ -25,31 +25,23 @@ export const TutorialOverlay: React.FC = () => {
     }
 
     const updateRect = () => {
-      const elements = document.querySelectorAll(`[data-tutorial="${currentStep.targetId}"]`);
-      // Find the first visible element (width > 0)
-      const el = Array.from(elements).find(e => {
-        const rect = e.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0;
-      });
-
+      const el = document.querySelector(`[data-tutorial="${currentStep.targetId}"]`);
       if (el) {
         setTargetRect(el.getBoundingClientRect());
       } else {
-        // If element not found, fallback to center or retry
         setTargetRect(null);
       }
     };
 
     updateRect();
-    // Re-check after a brief delay in case of layout shifts
-    const timer = setTimeout(updateRect, 300);
+    const timer = setTimeout(updateRect, 500); // Wait for potential layout shifts
     return () => clearTimeout(timer);
   }, [isActive, currentStep, windowSize]);
 
   if (!isActive || !currentStep) return null;
 
-  const PADDING = 8;
-  const borderRadius = 12;
+  const PADDING = 12;
+  const borderRadius = 20;
 
   // Mask dimensions
   const x = targetRect ? targetRect.left - PADDING : 0;
@@ -65,13 +57,13 @@ export const TutorialOverlay: React.FC = () => {
 
     const placement = currentStep.placement || 'bottom';
     if (placement === 'bottom') {
-      return { top: y + height + 16, left: x + width / 2, x: '-50%', y: '0%' };
+      return { top: y + height + 20, left: x + width / 2, x: '-50%', y: '0%' };
     } else if (placement === 'top') {
-      return { top: y - 16, left: x + width / 2, x: '-50%', y: '-100%' };
+      return { top: y - 20, left: x + width / 2, x: '-50%', y: '-100%' };
     } else if (placement === 'left') {
-      return { top: y + height / 2, left: x - 16, x: '-100%', y: '-50%' };
+      return { top: y + height / 2, left: x - 20, x: '-100%', y: '-50%' };
     } else if (placement === 'right') {
-      return { top: y + height / 2, left: x + width + 16, x: '0%', y: '-50%' };
+      return { top: y + height / 2, left: x + width + 20, x: '0%', y: '-50%' };
     } else {
       return { top: '50%', left: '50%', x: '-50%', y: '-50%' }; // center fallback
     }
@@ -79,29 +71,26 @@ export const TutorialOverlay: React.FC = () => {
 
   const tooltipPos = getTooltipPosition();
 
-  // If tooltip goes out of bounds horizontally, adjust it (simplistic approach)
+  // If tooltip goes out of bounds horizontally, adjust it
   let clampedLeft = tooltipPos.left;
   if (typeof clampedLeft === 'number') {
-      if (clampedLeft < 150) clampedLeft = 150; // min distance from left edge
-      if (clampedLeft > windowSize.width - 150) clampedLeft = windowSize.width - 150;
+      if (clampedLeft < 170) clampedLeft = 170; 
+      if (clampedLeft > windowSize.width - 170) clampedLeft = windowSize.width - 170;
   }
 
   return (
-    <div className="fixed inset-0 z-[9999] pointer-events-none">
+    <div className="fixed inset-0 z-[9999] pointer-events-none font-sans">
       <AnimatePresence>
         {isActive && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
+            transition={{ duration: 0.4 }}
             className="absolute inset-0 pointer-events-auto"
           >
             {/* SVG Mask for the Spotlight */}
-            <svg
-              className="absolute inset-0 w-full h-full"
-              xmlns="http://www.w3.org/2000/svg"
-            >
+            <svg className="absolute inset-0 w-full h-full" xmlns="http://www.w3.org/2000/svg">
               <defs>
                 <mask id="tutorial-mask">
                   <rect width="100%" height="100%" fill="white" />
@@ -111,7 +100,7 @@ export const TutorialOverlay: React.FC = () => {
                       rx={borderRadius}
                       initial={false}
                       animate={{ x, y, width, height }}
-                      transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
+                      transition={{ type: 'spring', bounce: 0.15, duration: 0.7 }}
                     />
                   )}
                 </mask>
@@ -119,28 +108,28 @@ export const TutorialOverlay: React.FC = () => {
               <rect
                 width="100%"
                 height="100%"
-                fill="rgba(0,0,0,0.7)"
+                fill="rgba(2, 6, 23, 0.85)"
                 mask="url(#tutorial-mask)"
-                onClick={skipTour} // Clicking outside skips/closes
+                onClick={skipTour}
               />
             </svg>
 
-            {/* Pulsing ring around target */}
+            {/* Glowing Border around target */}
             {targetRect && (
               <motion.div
                 initial={false}
                 animate={{ x, y, width, height }}
-                transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
-                className="absolute border-2 border-tv-primary rounded-xl"
+                transition={{ type: 'spring', bounce: 0.15, duration: 0.7 }}
+                className="absolute border-[3px] border-tv-primary/60 rounded-[22px]"
                 style={{
-                  boxShadow: '0 0 0 4px rgba(41, 98, 255, 0.2), 0 0 20px rgba(41, 98, 255, 0.4)'
+                  boxShadow: '0 0 30px rgba(41, 98, 255, 0.4), inset 0 0 15px rgba(41, 98, 255, 0.2)'
                 }}
               />
             )}
 
-            {/* Tooltip Card */}
+            {/* Tooltip Card - Premium Glassmorphism */}
             <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 10 }}
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ 
                 opacity: 1, 
                 scale: 1, 
@@ -149,52 +138,65 @@ export const TutorialOverlay: React.FC = () => {
                 x: tooltipPos.x,
                 y: tooltipPos.y
               }}
-              exit={{ opacity: 0, scale: 0.9, y: 10 }}
-              transition={{ type: 'spring', bounce: 0.3, duration: 0.5 }}
-              className="absolute w-[320px] bg-[#1E222D] border border-white/10 shadow-2xl rounded-2xl p-5 text-white"
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ type: 'spring', bounce: 0.3, duration: 0.6 }}
+              className="absolute w-[360px] bg-slate-900/90 dark:bg-black/80 backdrop-blur-2xl border border-white/20 shadow-[0_20px_50px_rgba(0,0,0,0.5)] rounded-3xl p-7 text-white overflow-hidden"
               style={{ pointerEvents: 'auto' }}
             >
+              {/* Decorative Gradient Background */}
+              <div className="absolute top-0 right-0 w-32 h-32 bg-tv-primary/10 blur-3xl -mr-16 -mt-16 pointer-events-none" />
+              
               <button 
                 onClick={skipTour}
-                className="absolute top-3 right-3 text-white/40 hover:text-white transition-colors"
+                className="absolute top-4 right-4 text-white/30 hover:text-white transition-colors p-1"
               >
-                <X size={16} />
+                <X size={18} />
               </button>
 
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-[10px] font-black uppercase tracking-widest text-tv-primary bg-tv-primary/10 px-2 py-0.5 rounded-full">
-                  Step {currentStepIndex + 1}
-                </span>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-2xl bg-tv-primary/20 flex items-center justify-center text-tv-primary border border-tv-primary/30">
+                  <span className="text-sm font-black italic">!</span>
+                </div>
+                <div>
+                  <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-tv-primary/80">Guide Insights</h4>
+                  <div className="flex gap-1 mt-1">
+                    {Array.from({ length: totalSteps }).map((_, i) => (
+                      <div 
+                        key={i} 
+                        className={`h-1 rounded-full transition-all duration-300 ${i === currentStepIndex ? 'w-4 bg-tv-primary' : 'w-1 bg-white/20'}`}
+                      />
+                    ))}
+                  </div>
+                </div>
               </div>
               
-              <h3 className="text-lg font-bold mb-2">{currentStep.title}</h3>
-              <p className="text-sm text-white/70 mb-6 leading-relaxed">
+              <h3 className="text-xl font-black mb-3 text-white tracking-tight">{currentStep.title}</h3>
+              <p className="text-[14px] text-slate-300 mb-8 leading-relaxed font-medium">
                 {currentStep.content}
               </p>
 
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between mt-auto">
                 <button
                   onClick={skipTour}
-                  className="text-xs font-bold text-white/40 hover:text-white transition-colors uppercase tracking-wider"
+                  className="text-xs font-bold text-slate-500 hover:text-white transition-colors uppercase tracking-widest px-2"
                 >
-                  Skip
+                  Skip Guide
                 </button>
-                <div className="flex gap-2">
+                <div className="flex gap-3">
                   {currentStepIndex > 0 && (
                     <button
                       onClick={prevStep}
-                      className="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 text-white transition-colors"
+                      className="w-10 h-10 flex items-center justify-center rounded-2xl bg-white/5 hover:bg-white/10 text-white transition-all active:scale-90 border border-white/10"
                     >
-                      <ChevronLeft size={16} />
+                      <ChevronLeft size={20} />
                     </button>
                   )}
                   <button
                     onClick={nextStep}
-                    className="flex items-center gap-1 px-4 h-8 rounded-full bg-tv-primary hover:bg-blue-600 text-white text-xs font-bold transition-colors"
+                    className="flex items-center gap-2 px-6 h-10 rounded-2xl bg-tv-primary hover:bg-blue-600 text-white text-[13px] font-black transition-all active:scale-95 shadow-lg shadow-tv-primary/30"
                   >
-                    {/* Checking if it's the last step. Using a hacky way since we don't have total steps length easily available without passing it */}
-                    {currentTour === 'global' && currentStepIndex === 4 ? 'Finish' : 'Next'}
-                    <ChevronRight size={16} className="-mr-1" />
+                    {currentStepIndex === totalSteps - 1 ? 'Start Exploring' : 'Next Insight'}
+                    <ChevronRight size={18} className={currentStepIndex === totalSteps - 1 ? 'hidden' : ''} />
                   </button>
                 </div>
               </div>

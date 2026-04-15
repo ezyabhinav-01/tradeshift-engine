@@ -17,6 +17,8 @@ interface User {
   occupation?: string;
   city?: string;
   balance: number;
+  created_at?: string;
+  onboarding_status?: any;
 }
 
 interface AuthContextType {

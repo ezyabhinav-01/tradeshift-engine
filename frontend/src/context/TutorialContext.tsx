@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import axios from 'axios';
 import { useAuth } from './AuthContext';
 import { useLocation } from 'react-router-dom';
@@ -98,7 +99,7 @@ const TOUR_CONFIG: Record<TourId, TutorialStep[]> = {
 const TutorialContext = createContext<TutorialContextType | undefined>(undefined);
 
 export const TutorialProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { user, checkAuth } = useAuth();
+  const { user } = useAuth();
   const location = useLocation();
 
   const [isActive, setIsActive] = useState(false);
@@ -111,8 +112,8 @@ export const TutorialProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [completedTours, setCompletedTours] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    if (user?.onboarding_status) {
-      const status = user.onboarding_status as any;
+    if ((user as any)?.onboarding_status) {
+      const status = (user as any).onboarding_status;
       const completed = new Set<string>();
       if (status?.global_tour_completed) completed.add('global');
       if (Array.isArray(status?.page_tours_completed)) {
@@ -170,7 +171,7 @@ export const TutorialProvider: React.FC<{ children: ReactNode }> = ({ children }
     });
 
     try {
-      const currentStatus = (user.onboarding_status as any) || {};
+      const currentStatus = ((user as any).onboarding_status) || {};
       const newStatus = { ...currentStatus };
       
       if (tourId === 'global') {

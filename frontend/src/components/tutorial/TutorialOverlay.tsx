@@ -4,7 +4,7 @@ import { useTutorial } from '../../context/TutorialContext';
 import { X, ChevronRight, ChevronLeft } from 'lucide-react';
 
 export const TutorialOverlay: React.FC = () => {
-  const { isActive, currentStep, currentStepIndex, nextStep, prevStep, skipTour, endTour, currentTour } = useTutorial();
+  const { isActive, currentStep, currentStepIndex, nextStep, prevStep, skipTour, currentTour } = useTutorial();
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
   const [windowSize, setWindowSize] = useState({ width: window.innerWidth, height: window.innerHeight });
 

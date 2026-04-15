@@ -13,7 +13,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTutorial } from '../context/TutorialContext';
-import { Play } from 'lucide-react';
 
 const categories = [
   {

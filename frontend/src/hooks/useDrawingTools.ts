@@ -123,6 +123,24 @@ const formatFibPrice = (price: number) => price.toLocaleString(undefined, {
 const createFibLevelMap = (levels: FibLevelConfig[]) =>
   Object.fromEntries(levels.map((level) => [String(level.ratio), level.color]));
 
+const readToolOptions = (tool: any) => {
+  if (!tool) return null;
+  const candidates: any[] = [
+    typeof tool.getOptions === 'function' ? tool.getOptions() : null,
+    tool.options,
+    tool._options,
+    tool._private__options,
+    tool._private__lineOptions,
+    tool._private__trendLineOptions,
+  ];
+
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === 'object') return candidate;
+  }
+
+  return null;
+};
+
 const getToolPoints = (tool: any): Array<{ time: any; price: number }> => {
   if (!tool) return [];
 
@@ -141,7 +159,32 @@ const getToolPoints = (tool: any): Array<{ time: any; price: number }> => {
   const metricPoints = typeof tool.getMetrics === 'function' ? tool.getMetrics?.() : null;
   const candidates = [metricPoints?.point1, metricPoints?.point2, metricPoints?.point3];
 
-  return candidates
+  const fromMetrics = candidates
+    .map((point: any) => ({
+      time: point?.time ?? point?._internal_time,
+      price: toFiniteNumber(point?.price ?? point?._internal_price, NaN),
+    }))
+    .filter((point) => point.time !== undefined && Number.isFinite(point.price));
+
+  if (fromMetrics.length > 0) return fromMetrics;
+
+  const options = readToolOptions(tool) ?? {};
+  const fallbackPoints = [
+    options.point1 ?? (options.point1Time !== undefined || options.point1Price !== undefined
+      ? { time: options.point1Time, price: options.point1Price }
+      : null),
+    options.point2 ?? (options.point2Time !== undefined || options.point2Price !== undefined
+      ? { time: options.point2Time, price: options.point2Price }
+      : null),
+    options.point3 ?? (options.point3Time !== undefined || options.point3Price !== undefined
+      ? { time: options.point3Time, price: options.point3Price }
+      : null),
+    tool.point1,
+    tool.point2,
+    tool.point3,
+  ];
+
+  return fallbackPoints
     .map((point: any) => ({
       time: point?.time ?? point?._internal_time,
       price: toFiniteNumber(point?.price ?? point?._internal_price, NaN),
@@ -265,6 +308,38 @@ const drawFibLevelLinesAndLabels = (
     ctx.fillText(labelText, bounds.xMin - (14 * hRatio), y);
   });
 
+  ctx.restore();
+};
+
+const buildFibLevelsFromAnchors = (
+  baseStart: number,
+  baseEnd: number,
+  palette: FibLevelConfig[]
+) => {
+  const delta = baseEnd - baseStart;
+  return palette.map((level) => ({
+    ratio: level.ratio,
+    label: level.label,
+    price: baseStart + (delta * level.ratio),
+  }));
+};
+
+const drawTrendGuide = (
+  ctx: CanvasRenderingContext2D,
+  startX: number,
+  startY: number,
+  endX: number,
+  endY: number,
+  hRatio: number
+) => {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(180, 180, 180, 0.7)';
+  ctx.lineWidth = Math.max(1, 1.2 * hRatio);
+  ctx.setLineDash([8 * hRatio, 8 * hRatio]);
+  ctx.beginPath();
+  ctx.moveTo(startX, startY);
+  ctx.lineTo(endX, endY);
+  ctx.stroke();
   ctx.restore();
 };
 
@@ -1187,17 +1262,36 @@ export const useDrawingTools = (
             tool.drawToCanvas = function(ctx: CanvasRenderingContext2D, hRatio: number, vRatio: number) {
               const chartApi = chart;
               const seriesApi = series;
-              const toolType = (this as any).type;
+              const toolType = (this as any).type ?? (typeof (this as any).getType === 'function' ? (this as any).getType() : undefined);
+              const toolPoints = getToolPoints(this);
+              const options = readToolOptions(this) ?? {};
               const isFibRetracement =
                 toolType === 'fibonacci' ||
                 toolType === 'fib' ||
                 toolType === 'fibonacci-tool' ||
-                (typeof (this as any).getLevels === 'function' && typeof (this as any).getMetrics === 'function');
+                (typeof (this as any).getLevels === 'function' && typeof (this as any).getMetrics === 'function') ||
+                (
+                  toolPoints.length >= 2 &&
+                  (
+                    options.levelColors ||
+                    options.point1Time !== undefined ||
+                    options.point2Time !== undefined
+                  ) &&
+                  toolPoints.length < 3
+                );
 
               const isFibExtension =
                 toolType === 'fib_ext' ||
                 toolType === 'fibonacci_extension' ||
-                toolType === 'fibonacci-extension';
+                toolType === 'fibonacci-extension' ||
+                (
+                  toolPoints.length >= 3 &&
+                  (
+                    Array.isArray(options.levels) ||
+                    options.point3 !== undefined ||
+                    options.point3Time !== undefined
+                  )
+                );
 
               // --- Position Tool Visuals (Long/Short) ---
               const posOptions = (this as any)._private__positionOptions;
@@ -1420,33 +1514,45 @@ export const useDrawingTools = (
                 }
               });
 
-              if (chartApi && seriesApi && isFibRetracement && typeof (this as any).getMetrics === 'function') {
-                const metrics = (this as any).getMetrics();
-                if (Array.isArray(metrics?.levels) && metrics.levels.length > 1) {
-                  const bounds = getFibSegmentBounds(this, chartApi, hRatio);
-                  if (bounds) {
-                    ctx.save();
-                    drawFibGradientBands(ctx, seriesApi, metrics.levels, bounds, vRatio, FIB_RETRACEMENT_LEVELS);
-                    ctx.restore();
-                    originalDraw.call(this, proxyCtx, hRatio, vRatio);
-                    drawFibLevelLinesAndLabels(ctx, seriesApi, metrics.levels, bounds, vRatio, hRatio, FIB_RETRACEMENT_LEVELS);
-                    return;
-                  }
+              if (chartApi && seriesApi && isFibRetracement && toolPoints.length >= 2) {
+                const [point1, point2] = toolPoints;
+                const levels = buildFibLevelsFromAnchors(point2.price, point1.price, FIB_RETRACEMENT_LEVELS);
+                const bounds = getFibSegmentBounds(this, chartApi, hRatio);
+                if (bounds) {
+                  ctx.save();
+                  drawFibGradientBands(ctx, seriesApi, levels, bounds, vRatio, FIB_RETRACEMENT_LEVELS);
+                  ctx.restore();
+                  originalDraw.call(this, proxyCtx, hRatio, vRatio);
+                  drawFibLevelLinesAndLabels(ctx, seriesApi, levels, bounds, vRatio, hRatio, FIB_RETRACEMENT_LEVELS);
+                  return;
                 }
               }
 
-              if (chartApi && seriesApi && isFibExtension && typeof (this as any).getExtensionLevels === 'function') {
-                const extLevels = (this as any).getExtensionLevels();
-                if (Array.isArray(extLevels) && extLevels.length > 1) {
-                  const bounds = getFibSegmentBounds(this, chartApi, hRatio, true);
-                  if (bounds) {
-                    ctx.save();
-                    drawFibGradientBands(ctx, seriesApi, extLevels, bounds, vRatio, FIB_EXTENSION_LEVELS);
-                    ctx.restore();
-                    originalDraw.call(this, proxyCtx, hRatio, vRatio);
-                    drawFibLevelLinesAndLabels(ctx, seriesApi, extLevels, bounds, vRatio, hRatio, FIB_EXTENSION_LEVELS);
-                    return;
+              if (chartApi && seriesApi && isFibExtension && toolPoints.length >= 2) {
+                const [point1, point2, maybePoint3] = toolPoints;
+                const levels = buildFibLevelsFromAnchors(point2.price, point1.price, FIB_EXTENSION_LEVELS);
+                const bounds = getFibSegmentBounds(this, chartApi, hRatio, true);
+                if (bounds) {
+                  ctx.save();
+                  drawFibGradientBands(ctx, seriesApi, levels, bounds, vRatio, FIB_EXTENSION_LEVELS);
+                  ctx.restore();
+                  originalDraw.call(this, proxyCtx, hRatio, vRatio);
+                  drawFibLevelLinesAndLabels(ctx, seriesApi, levels, bounds, vRatio, hRatio, FIB_EXTENSION_LEVELS);
+
+                  const timeScale = chartApi.timeScale();
+                  const guideStartX = timeToCanvasX(timeScale, point1.time, hRatio);
+                  const guideStartY = toFiniteNumber(seriesApi.priceToCoordinate(point1.price), NaN) * vRatio;
+                  const guideEndX = timeToCanvasX(timeScale, (maybePoint3 ?? point2).time, hRatio);
+                  const guideEndY = toFiniteNumber(seriesApi.priceToCoordinate(point2.price), NaN) * vRatio;
+                  if (
+                    guideStartX !== null &&
+                    guideEndX !== null &&
+                    Number.isFinite(guideStartY) &&
+                    Number.isFinite(guideEndY)
+                  ) {
+                    drawTrendGuide(ctx, guideStartX, guideStartY, guideEndX, guideEndY, hRatio);
                   }
+                  return;
                 }
               }
 

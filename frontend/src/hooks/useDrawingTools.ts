@@ -991,6 +991,14 @@ export const useDrawingTools = (
               const seriesApi = series;
               const toolType = (this as any).type;
               const toNumber = (v: any, fallback = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
+              const hexToRgba = (hex: string, alpha: number): string => {
+                const normalized = hex.replace('#', '');
+                if (normalized.length !== 6) return `rgba(255,255,255,${alpha})`;
+                const r = parseInt(normalized.slice(0, 2), 16);
+                const g = parseInt(normalized.slice(2, 4), 16);
+                const b = parseInt(normalized.slice(4, 6), 16);
+                return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+              };
               const ratioToColor = (ratioInput: any): string => {
                 const ratio = Math.abs(toNumber(ratioInput, 0));
                 if (ratio < 0.236) return '#f23645';
@@ -1005,8 +1013,8 @@ export const useDrawingTools = (
               };
               const applyBandFill = (xStart: number, xEnd: number, yA: number, yB: number, ratioInput: any) => {
                 const base = ratioToColor(ratioInput);
-                const top = `${base}44`;
-                const bottom = `${base}22`;
+                const top = hexToRgba(base, 0.26);
+                const bottom = hexToRgba(base, 0.14);
                 const yTop = Math.min(yA, yB);
                 const yBottom = Math.max(yA, yB);
                 const w = Math.max(0, xEnd - xStart);
@@ -1036,8 +1044,6 @@ export const useDrawingTools = (
                   const timeScale = chartApi.timeScale();
                   const x1 = toNumber(timeScale.timeToCoordinate(metrics.point1.time), 0) * hRatio;
                   const x2 = toNumber(timeScale.timeToCoordinate(metrics.point2.time), 0) * hRatio;
-                  const point1Y = toNumber(seriesApi.priceToCoordinate(metrics.point1.price), 0) * vRatio;
-                  const point2Y = toNumber(seriesApi.priceToCoordinate(metrics.point2.price), 0) * vRatio;
                   const xMin = Math.min(x1, x2);
                   const xMax = Math.max(x1, x2);
                   const sortedLevels = [...metrics.levels].sort((a: any, b: any) => toNumber(a.price) - toNumber(b.price));
@@ -1052,16 +1058,6 @@ export const useDrawingTools = (
                     const y2 = toNumber(seriesApi.priceToCoordinate(upper.price), 0) * vRatio;
                     applyBandFill(xMin, xMax, y1, y2, lower.ratio);
                   }
-
-                  // Draw the swing guide between anchor points to match pro chart tools.
-                  ctx.strokeStyle = 'rgba(180, 180, 180, 0.7)';
-                  ctx.lineWidth = Math.max(1, 1.5 * hRatio);
-                  ctx.setLineDash([8 * hRatio, 8 * hRatio]);
-                  ctx.beginPath();
-                  ctx.moveTo(x1, point1Y);
-                  ctx.lineTo(x2, point2Y);
-                  ctx.stroke();
-                  ctx.setLineDash([]);
 
                   sortedLevels.forEach((level: any) => {
                     const y = toNumber(seriesApi.priceToCoordinate(level.price), 0) * vRatio;
@@ -1090,16 +1086,6 @@ export const useDrawingTools = (
                     ctx.textAlign = 'left';
                     ctx.textBaseline = 'middle';
                     ctx.fillText(labelText, labelX + padX, y);
-                  });
-
-                  [ [x1, point1Y], [x2, point2Y] ].forEach(([handleX, handleY]) => {
-                    ctx.fillStyle = '#0f3eff';
-                    ctx.strokeStyle = '#8fb4ff';
-                    ctx.lineWidth = Math.max(1, 1.5 * hRatio);
-                    ctx.beginPath();
-                    ctx.arc(handleX, handleY, 5 * hRatio, 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.stroke();
                   });
 
                   ctx.restore();

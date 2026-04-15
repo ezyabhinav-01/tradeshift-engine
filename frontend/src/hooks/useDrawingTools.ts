@@ -930,18 +930,6 @@ export const useDrawingTools = (
           if (typeof tool.drawToCanvas === 'function' && !tool._drawPatched) {
             const originalDraw = tool.drawToCanvas;
             
-            // Define Fibonacci fill zone colors (keyed by lower ratio boundary)
-            const fibFillColors: Record<string, string> = {
-              '0': '#f2364540',      // Red zone (0 → 0.236)
-              '0.236': '#ff980035',  // Orange zone (0.236 → 0.382)
-              '0.382': '#4caf5030',  // Green zone (0.382 → 0.5)
-              '0.5': '#08998130',    // Teal zone (0.5 → 0.618)
-              '0.618': '#00bcd435',  // Cyan zone (0.618 → 0.786)
-              '0.786': '#787b8620',  // Grey zone (0.786 → 1)
-              '1': '#2962ff30',      // Blue zone (1 → 1.618)
-              '1.618': '#9c27b025',  // Purple zone (1.618 → 2.618)
-            };
-
             tool.drawToCanvas = function(ctx: CanvasRenderingContext2D, hRatio: number, vRatio: number) {
               const chartApi = chart;
               const seriesApi = series;
@@ -992,25 +980,75 @@ export const useDrawingTools = (
                   const timeScale = chartApi.timeScale();
                   const x1 = toNumber(timeScale.timeToCoordinate(metrics.point1.time), 0) * hRatio;
                   const x2 = toNumber(timeScale.timeToCoordinate(metrics.point2.time), 0) * hRatio;
+                  const point1Y = toNumber(seriesApi.priceToCoordinate(metrics.point1.price), 0) * vRatio;
+                  const point2Y = toNumber(seriesApi.priceToCoordinate(metrics.point2.price), 0) * vRatio;
                   const xMin = Math.min(x1, x2);
                   const xMax = Math.max(x1, x2);
                   const sortedLevels = [...metrics.levels].sort((a: any, b: any) => toNumber(a.price) - toNumber(b.price));
+
+                  ctx.save();
+                  ctx.globalCompositeOperation = 'source-over';
 
                   for (let i = 0; i < sortedLevels.length - 1; i++) {
                     const lower = sortedLevels[i];
                     const upper = sortedLevels[i + 1];
                     const y1 = toNumber(seriesApi.priceToCoordinate(lower.price), 0) * vRatio;
                     const y2 = toNumber(seriesApi.priceToCoordinate(upper.price), 0) * vRatio;
-                    const ratioKey = (lower.ratio ?? '').toString();
                     applyBandFill(xMin, xMax, y1, y2, lower.ratio);
-
-                    // fallback flat fill path in case gradient is unsupported in specific browsers
-                    if (!ctx.fillStyle) {
-                      const fillColor = fibFillColors[ratioKey] || 'rgba(255,255,255,0.08)';
-                      ctx.fillStyle = fillColor;
-                      ctx.fillRect(xMin, Math.min(y1, y2), Math.max(0, xMax - xMin), Math.abs(y2 - y1));
-                    }
                   }
+
+                  // Draw the swing guide between anchor points to match pro chart tools.
+                  ctx.strokeStyle = 'rgba(180, 180, 180, 0.7)';
+                  ctx.lineWidth = Math.max(1, 1.5 * hRatio);
+                  ctx.setLineDash([8 * hRatio, 8 * hRatio]);
+                  ctx.beginPath();
+                  ctx.moveTo(x1, point1Y);
+                  ctx.lineTo(x2, point2Y);
+                  ctx.stroke();
+                  ctx.setLineDash([]);
+
+                  sortedLevels.forEach((level: any) => {
+                    const y = toNumber(seriesApi.priceToCoordinate(level.price), 0) * vRatio;
+                    const ratio = toNumber(level.ratio, 0);
+                    const lineColor = ratioToColor(ratio);
+                    const labelText = `${level.label ?? ratio.toFixed(3)} (${toNumber(level.price, 0).toFixed(2)})`;
+
+                    ctx.strokeStyle = lineColor;
+                    ctx.lineWidth = Math.max(1, 1.5 * hRatio);
+                    ctx.beginPath();
+                    ctx.moveTo(xMin, y);
+                    ctx.lineTo(xMax, y);
+                    ctx.stroke();
+
+                    ctx.font = `${11 * hRatio}px -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif`;
+                    const textWidth = ctx.measureText(labelText).width;
+                    const padX = 6 * hRatio;
+                    const padY = 3 * vRatio;
+                    const boxW = textWidth + padX * 2;
+                    const boxH = 16 * vRatio;
+                    const labelX = xMax + 8 * hRatio;
+                    const labelY = y - boxH / 2;
+
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+                    ctx.fillRect(labelX, labelY, boxW, boxH);
+                    ctx.fillStyle = lineColor;
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(labelText, labelX + padX, y);
+                  });
+
+                  [ [x1, point1Y], [x2, point2Y] ].forEach(([handleX, handleY]) => {
+                    ctx.fillStyle = '#0f3eff';
+                    ctx.strokeStyle = '#8fb4ff';
+                    ctx.lineWidth = Math.max(1, 1.5 * hRatio);
+                    ctx.beginPath();
+                    ctx.arc(handleX, handleY, 5 * hRatio, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                  });
+
+                  ctx.restore();
+                  return;
                 }
               }
 

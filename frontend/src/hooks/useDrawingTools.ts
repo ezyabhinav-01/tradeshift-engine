@@ -122,6 +122,8 @@ export const useDrawingTools = (
 
   const managerRef = useRef<DrawingToolsManager | null>(null);
   const hLineManagerRef = useRef<any>(null);  // Ref for fib_ext 3-click workflow
+  const fibPointsRef = useRef<{ time: any; price: number }[]>([]);
+  const fibToolIdRef = useRef<string | null>(null);
   const fibExtPointsRef = useRef<{ time: any; price: number }[]>([]);
   const fibExtToolIdRef = useRef<string | null>(null);
 
@@ -283,13 +285,9 @@ export const useDrawingTools = (
         });
       }
       else if (toolId === 'fibonacci') {
-        tool = createFibonacciTool(ctx, { 
-          interactive: true, lineColor: '#787b86', lineWidth: 1, showLabels: true, labelPosition: 'right',
-          levelColors: {
-            '0': '#787b86', '0.236': '#f23645', '0.382': '#ff9800',
-            '0.5': '#4caf50', '0.618': '#089981', '0.786': '#00bcd4', '1': '#787b86',
-          },
-        });
+        // Fib retracement is handled by our own click workflow so production
+        // behavior stays deterministic across minified builds.
+        return;
       }
       else if (toolId === 'fib_ext') {
         // Fib Extension is handled entirely via the click handler effect
@@ -419,10 +417,15 @@ export const useDrawingTools = (
     // For now, redo just logs. Full serialization would require tool-state persistence.
   }, [redo]);
 
-  // Custom interactive click placement for horizontal line, cross, fib extension, and position tools
+  // Custom interactive click placement for horizontal line, fib retracement,
+  // cross, fib extension, and position tools
   useEffect(() => {
-    if (!chart || !series || !['hline', 'hray', 'vline', 'cross', 'fib_ext', 'long_pos', 'short_pos', 'ruler', 'zoom_in'].includes(activeTool as string)) {
-      // Reset fib ext points when switching away
+    if (!chart || !series || !['hline', 'hray', 'vline', 'cross', 'fibonacci', 'fib_ext', 'long_pos', 'short_pos', 'ruler', 'zoom_in'].includes(activeTool as string)) {
+      fibPointsRef.current = [];
+      if (fibToolIdRef.current && managerRef.current) {
+        managerRef.current.removeTool(fibToolIdRef.current);
+      }
+      fibToolIdRef.current = null;
       fibExtPointsRef.current = [];
       rulerPointsRef.current = [];
       rulerToolIdRef.current = null;
@@ -595,6 +598,51 @@ export const useDrawingTools = (
           selectTool(null);
         }
       }
+      else if (currentActiveTool === 'fibonacci') {
+        const point = { time, price: price as number };
+        fibPointsRef.current.push(point);
+        const count = fibPointsRef.current.length;
+
+        if (count === 1) {
+          const tool = createFibonacciTool({ chart, series } as any, {
+            interactive: false,
+            point1Time: point.time,
+            point1Price: point.price,
+            point2Time: point.time,
+            point2Price: point.price,
+            lineColor: '#787b86',
+            lineWidth: 1,
+            showLabels: true,
+            labelPosition: 'right',
+            levelColors: {
+              '0': '#787b86',
+              '0.236': '#f23645',
+              '0.382': '#ff9800',
+              '0.5': '#4caf50',
+              '0.618': '#089981',
+              '0.786': '#00bcd4',
+              '1': '#787b86',
+            },
+          });
+          const id = managerRef.current.addTool(tool);
+          fibToolIdRef.current = id;
+          managerRef.current.selectTool(id);
+        } else if (count === 2) {
+          const toolId = fibToolIdRef.current;
+          if (toolId) {
+            const tool = managerRef.current.getAllTools().get(toolId);
+            const p1 = fibPointsRef.current[0];
+            if (tool && typeof (tool as any).updatePoints === 'function') {
+              (tool as any).updatePoints(p1.time, p1.price, point.time, point.price);
+            }
+          }
+
+          fibPointsRef.current = [];
+          fibToolIdRef.current = null;
+          snapshotCurrentState();
+          selectTool(null);
+        }
+      }
       // zoom_in is now handled as an immediate command in useEffect below
       // (no chart click needed)
       // --- Fib Extension: 3-click interactive (Progressive version) ---
@@ -707,9 +755,9 @@ export const useDrawingTools = (
     };
   }, [containerRef]);
 
-  // Mouse-move preview for Fib Extension and Ruler
+  // Mouse-move preview for Fib retracement, Fib Extension, and Ruler
   useEffect(() => {
-    if (!chart || !series || !['fib_ext', 'ruler', 'zoom_in'].includes(activeTool as string)) return;
+    if (!chart || !series || !['fibonacci', 'fib_ext', 'ruler', 'zoom_in'].includes(activeTool as string)) return;
 
     const moveHandler = (param: any) => {
       if (!param || !param.point) return;
@@ -728,7 +776,15 @@ export const useDrawingTools = (
       if (price === null || time === null) return;
       if (!managerRef.current) return;
 
-      if (activeTool === 'fib_ext' && fibExtToolIdRef.current) {
+      if (activeTool === 'fibonacci' && fibToolIdRef.current) {
+        const tool = managerRef.current.getAllTools().get(fibToolIdRef.current);
+        if (tool && fibPointsRef.current.length === 1) {
+          const p1 = fibPointsRef.current[0];
+          if (typeof (tool as any).updatePoints === 'function') {
+            (tool as any).updatePoints(p1.time, p1.price, time, price);
+          }
+        }
+      } else if (activeTool === 'fib_ext' && fibExtToolIdRef.current) {
         const tool = managerRef.current.getAllTools().get(fibExtToolIdRef.current);
         if (tool) {
           const count = fibExtPointsRef.current.length;

@@ -12,7 +12,7 @@ export const useLearningTimeTracking = () => {
     const { user } = useAuth();
     const { logLearningTime } = useLearnStore();
     const lastLogTimeRef = useRef<number>(Date.now());
-    const intervalRef = useRef<NodeJS.Timeout | null>(null);
+    const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     const isLearningPage = location.pathname.startsWith('/learn');
 

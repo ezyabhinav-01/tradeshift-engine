@@ -230,7 +230,7 @@ export const useLearnStore = create<LearnState>((set, get) => ({
         completedLessons: Array.isArray(data.completed_lessons) ? data.completed_lessons : [],
         badges: mergedBadges,
         learningMinutes: data.learning_minutes ?? 0,
-        totalLearningSeconds: data.learning_seconds ?? (data.learning_minutes * 60 ?? 0),
+        totalLearningSeconds: data.learning_seconds ?? ((data.learning_minutes ?? 0) * 60),
         weeklyHistory: Array.isArray(data.weekly_history) ? data.weekly_history : [false, false, false, false, false, false, false],
       });
     } catch (e) {

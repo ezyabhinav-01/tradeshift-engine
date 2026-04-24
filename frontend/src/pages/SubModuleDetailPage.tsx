@@ -13,7 +13,7 @@ import { useNotifications } from '../context/NotificationContext';
 import { useAccessControl } from '../hooks/useAccessControl';
 import { motion, AnimatePresence, useScroll, useSpring, useMotionValueEvent } from 'framer-motion';
 import Lenis from 'lenis';
-import { parseTextWithTags, useTopicPortalHydrator } from '../components/TopicPortal';
+import { useTopicPortalHydrator } from '../components/TopicPortal';
 import './LearnPage.css';
 
 interface QuizQuestion {
@@ -126,7 +126,7 @@ export default function SubModuleDetailPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { checkAccess } = useAccessControl();
-  const { completeLesson, completedLessons, logLearningTime } = useLearnStore();
+  const { completeLesson, completedLessons } = useLearnStore();
 
   const { theme } = useTheme();
   const [data, setData] = useState<SubModuleData | null>(null);

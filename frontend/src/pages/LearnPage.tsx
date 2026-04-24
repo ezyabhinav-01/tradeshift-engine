@@ -469,7 +469,7 @@ const TrackCard: React.FC<{
 export default function LearnPage() {
   const {
     tracks, badges, secrets, completedLessons, totalXP, level,
-    currentStreak, longestStreak, lastActiveDate, learningMinutes, totalLearningSeconds,
+    currentStreak, longestStreak, lastActiveDate, totalLearningSeconds,
     weeklyHistory,
     secretsRevealed, secretsTotal,
     getTrackProgress,
@@ -511,11 +511,7 @@ export default function LearnPage() {
     return m > 0 ? `${h}h ${m}m` : `${h}h`;
   };
 
-  const formatLiveDuration = (seconds: number) => {
-    const mm = String(Math.floor(seconds / 60)).padStart(2, '0');
-    const ss = String(seconds % 60).padStart(2, '0');
-    return `${mm}:${ss}`;
-  };
+
 
   useEffect(() => {
     const handleVisibility = () => {

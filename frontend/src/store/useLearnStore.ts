@@ -139,7 +139,8 @@ interface LearnState {
   lessonsToday: number;
   quizzesCompleted: number;
   tracksStarted: string[]; // track IDs
-  learningMinutes: number; // dynamically tracked DB minutes
+  learningMinutes: number; // legacy display minutes
+  totalLearningSeconds: number; // exact accumulated seconds
   weeklyHistory: boolean[]; // Mon-Sun activity flags
   secretsRevealed: number;
   secretsTotal: number;
@@ -184,6 +185,7 @@ export const useLearnStore = create<LearnState>((set, get) => ({
   quizzesCompleted: 0,
   tracksStarted: [],
   learningMinutes: 0,
+  totalLearningSeconds: 0,
   weeklyHistory: [false, false, false, false, false, false, false],
   secretsRevealed: 0,
   secretsTotal: 0,
@@ -228,6 +230,7 @@ export const useLearnStore = create<LearnState>((set, get) => ({
         completedLessons: Array.isArray(data.completed_lessons) ? data.completed_lessons : [],
         badges: mergedBadges,
         learningMinutes: data.learning_minutes ?? 0,
+        totalLearningSeconds: data.learning_seconds ?? (data.learning_minutes * 60 ?? 0),
         weeklyHistory: Array.isArray(data.weekly_history) ? data.weekly_history : [false, false, false, false, false, false, false],
       });
     } catch (e) {
@@ -237,6 +240,12 @@ export const useLearnStore = create<LearnState>((set, get) => ({
 
   logLearningTime: async (seconds: number) => {
     try {
+      // Optimistic local update
+      set(state => ({
+        totalLearningSeconds: state.totalLearningSeconds + seconds,
+        learningMinutes: Math.floor((state.totalLearningSeconds + seconds) / 60)
+      }));
+
       const res = await fetch('/api/learn/time', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -245,6 +254,7 @@ export const useLearnStore = create<LearnState>((set, get) => ({
       });
       if (res.ok) {
         const data = await res.json();
+        // Sync back from server if needed, though local is likely fine
         set({ learningMinutes: data.total_learning_minutes });
       }
     } catch (e) {

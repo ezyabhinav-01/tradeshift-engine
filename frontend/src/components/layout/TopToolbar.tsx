@@ -166,17 +166,15 @@ const TopToolbar = ({
                     <span className="text-sm">Alert</span>
                 </Button>
 
-            </div>
+                <Separator orientation="vertical" className="h-6 bg-tv-border" />
 
-            {/* RIGHT CONTROLS */}
-            <div className="flex items-center space-x-1 h-full">
-                {/* Replay Control (Pinned to right controls beside publish) */}
+                {/* Replay Control (Moved to left controls) */}
                 <Button
                     variant="ghost"
                     onClick={() => {
                         if (checkAccess()) toggleReplay();
                     }}
-                    className={`h-8 gap-2 px-3 mr-1 border border-tv-border text-tv-text-primary hover:opacity-90 ${
+                    className={`h-8 gap-2 px-3 border border-tv-border text-tv-text-primary hover:opacity-90 ${
                         isReplayActive
                             ? 'bg-gradient-to-r from-blue-600/20 to-blue-700/20 text-blue-500 border-blue-500/50'
                             : 'bg-tv-bg-pane'
@@ -185,6 +183,11 @@ const TopToolbar = ({
                     <Rewind size={18} />
                     <span className="text-sm font-bold">Replay</span>
                 </Button>
+
+            </div>
+
+            {/* RIGHT CONTROLS */}
+            <div className="flex items-center space-x-1 h-full">
 
                 {/* News Panel Toggle */}
                 <Button

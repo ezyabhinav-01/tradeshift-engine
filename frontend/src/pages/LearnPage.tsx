@@ -469,7 +469,7 @@ const TrackCard: React.FC<{
 export default function LearnPage() {
   const {
     tracks, badges, secrets, completedLessons, totalXP, level,
-    currentStreak, longestStreak, lastActiveDate, learningMinutes,
+    currentStreak, longestStreak, lastActiveDate, learningMinutes, totalLearningSeconds,
     weeklyHistory,
     secretsRevealed, secretsTotal,
     getTrackProgress,
@@ -483,11 +483,7 @@ export default function LearnPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [xpPopups, setXpPopups] = useState<{ id: number; xp: number; x: number; y: number }[]>([]);
   const [selectedBadge, setSelectedBadge] = useState<Badge | null>(null);
-  const [sessionBaseMinutes, setSessionBaseMinutes] = useState(learningMinutes);
-  const [liveSessionSeconds, setLiveSessionSeconds] = useState(0);
-  const [monitorVisible, setMonitorVisible] = useState(() =>
-    typeof document === 'undefined' ? true : !document.hidden
-  );
+  const [monitorVisible, setMonitorVisible] = useState(true);
   const [moduleOpenedToday, setModuleOpenedToday] = useState(false);
   const [chapterCompletedToday, setChapterCompletedToday] = useState(false);
 
@@ -506,14 +502,12 @@ export default function LearnPage() {
   const completedTodayFromServer = !isGuest && lastActiveDate === todayDateKey;
   const streakArmedToday = !isGuest && (moduleOpenedToday || chapterCompletedToday || completedTodayFromServer);
   const streakReadyToday = !isGuest && (chapterCompletedToday || completedTodayFromServer);
-  const liveLearningMinutes = isGuest
-    ? 0
-    : sessionBaseMinutes + Math.floor(liveSessionSeconds / 60);
 
-  const formatMinutes = (minutes: number) => {
-    if (minutes < 60) return `${minutes}m`;
-    const h = Math.floor(minutes / 60);
-    const m = minutes % 60;
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    if (mins < 60) return `${mins}m`;
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
     return m > 0 ? `${h}h ${m}m` : `${h}h`;
   };
 
@@ -548,30 +542,10 @@ export default function LearnPage() {
   }, [isGuest, todayDateKey, completedLessons.length]);
 
   useEffect(() => {
-    setSessionBaseMinutes(learningMinutes);
-    setLiveSessionSeconds(0);
-  }, [learningMinutes]);
-
-  useEffect(() => {
-    if (isGuest) return;
-
-    const secondTicker = window.setInterval(() => {
-      if (!document.hidden) {
-        setLiveSessionSeconds((prev) => prev + 1);
-      }
-    }, 1000);
-
-    const statsHeartbeat = window.setInterval(() => {
-      if (!document.hidden) {
-        void fetchUserStats();
-      }
-    }, 20000);
-
-    return () => {
-      window.clearInterval(secondTicker);
-      window.clearInterval(statsHeartbeat);
-    };
-  }, [isGuest, fetchUserStats]);
+    const handleVisibility = () => setMonitorVisible(!document.hidden);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
 
   // Find continue learning suggestion
   const continueSuggestion = useMemo(() => {
@@ -702,13 +676,13 @@ export default function LearnPage() {
                 </div>
                 <div className="flex items-baseline gap-1">
                   <span className="text-3xl font-black text-slate-800 dark:text-white group-hover:text-emerald-500 transition-colors uppercase tracking-tight">
-                    {isGuest ? "0m" : formatMinutes(liveLearningMinutes)}
+                    {isGuest ? "0m" : formatDuration(totalLearningSeconds)}
                   </span>
                 </div>
                 <div className="mt-1 flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider">
                   <span className={`inline-block w-1.5 h-1.5 rounded-full ${monitorVisible ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
                   <span className={monitorVisible ? 'text-emerald-500' : 'text-slate-400 dark:text-slate-600'}>
-                    {monitorVisible ? `Live ${formatLiveDuration(liveSessionSeconds)}` : 'Paused in background'}
+                    {monitorVisible ? `Live Tracking Active` : 'Paused in background'}
                   </span>
                 </div>
               </div>

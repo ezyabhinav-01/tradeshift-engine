@@ -650,6 +650,11 @@ async def send_weekly_summary_email(
     trade_count = str(stats.get('trade_count', 0))
     win_rate_fmt = f"{stats.get('win_rate', 0.0):.1f}%"
     
+    learning_seconds = stats.get('learning_seconds', 0)
+    h = learning_seconds // 3600
+    m = (learning_seconds % 3600) // 60
+    learning_fmt = f"{h}h {m}m" if h > 0 else f"{m}m"
+    
     opening_bal_fmt = f"Rs {stats.get('opening_balance', 0.0):,.2f}"
     closing_bal_fmt = f"Rs {stats.get('closing_balance', 0.0):,.2f}"
     net_gain_fmt = f"Rs {total_pnl:+,.2f}"
@@ -657,27 +662,39 @@ async def send_weekly_summary_email(
     summary_html = """
     <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:32px;">
       <tr>
-        <td style="padding:0 5px 0 0; width:33.3%;">
-          <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px; text-align:center;">
-            <p style="margin:0 0 4px; color:{{TEXT_LIGHT}}; font-size:10px; text-transform:uppercase; letter-spacing:1px;">Net PnL</p>
-            <span style="font-size:16px; font-weight:800; color:{{PNL_COLOR}};">{{PNL_FMT}}</span>
+        <td style="padding:0 4px 0 0; width:25%;">
+          <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:12px 8px; text-align:center;">
+            <p style="margin:0 0 4px; color:{{TEXT_LIGHT}}; font-size:9px; text-transform:uppercase; letter-spacing:1px;">Net PnL</p>
+            <span style="font-size:14px; font-weight:800; color:{{PNL_COLOR}};">{{PNL_FMT}}</span>
           </div>
         </td>
-        <td style="padding:0 5px; width:33.3%;">
-          <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px; text-align:center;">
-            <p style="margin:0 0 4px; color:{{TEXT_LIGHT}}; font-size:10px; text-transform:uppercase; letter-spacing:1px;">Trades</p>
-            <span style="font-size:16px; font-weight:800; color:#fff;">{{TRADE_COUNT}}</span>
+        <td style="padding:0 4px; width:25%;">
+          <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:12px 8px; text-align:center;">
+            <p style="margin:0 0 4px; color:{{TEXT_LIGHT}}; font-size:9px; text-transform:uppercase; letter-spacing:1px;">Trades</p>
+            <span style="font-size:14px; font-weight:800; color:#fff;">{{TRADE_COUNT}}</span>
           </div>
         </td>
-        <td style="padding:0 0 0 5px; width:33.3%;">
-          <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px; text-align:center;">
-            <p style="margin:0 0 4px; color:{{TEXT_LIGHT}}; font-size:10px; text-transform:uppercase; letter-spacing:1px;">Win Rate</p>
-            <span style="font-size:16px; font-weight:800; color:#fff;">{{WIN_RATE_FMT}}</span>
+        <td style="padding:0 4px; width:25%;">
+          <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:12px 8px; text-align:center;">
+            <p style="margin:0 0 4px; color:{{TEXT_LIGHT}}; font-size:9px; text-transform:uppercase; letter-spacing:1px;">Win Rate</p>
+            <span style="font-size:14px; font-weight:800; color:#fff;">{{WIN_RATE_FMT}}</span>
+          </div>
+        </td>
+        <td style="padding:0 0 0 4px; width:25%;">
+          <div style="background:rgba(41,98,255,0.05); border:1px solid rgba(41,98,255,0.2); border-radius:12px; padding:12px 8px; text-align:center;">
+            <p style="margin:0 0 4px; color:{{TEXT_LIGHT}}; font-size:9px; text-transform:uppercase; letter-spacing:1px;">Learning</p>
+            <span style="font-size:14px; font-weight:800; color:#2962FF;">{{LEARNING_FMT}}</span>
           </div>
         </td>
       </tr>
     </table>
-    """.replace("{{TEXT_LIGHT}}", TEXT_LIGHT).replace("{{PNL_COLOR}}", pnl_color).replace("{{PNL_FMT}}", pnl_fmt).replace("{{TRADE_COUNT}}", trade_count).replace("{{WIN_RATE_FMT}}", win_rate_fmt)
+    """.replace("{{TEXT_LIGHT}}", TEXT_LIGHT)\
+       .replace("{{PNL_COLOR}}", pnl_color)\
+       .replace("{{PNL_FMT}}", pnl_fmt)\
+       .replace("{{TRADE_COUNT}}", trade_count)\
+       .replace("{{WIN_RATE_FMT}}", win_rate_fmt)\
+       .replace("{{LEARNING_FMT}}", learning_fmt)
+
     
     table_rows = "".join([_ledger_table_row(t['date'], t['symbol'], t['direction'], t['qty'], t['entry'], t['exit'], t['pnl']) for t in trades])
     

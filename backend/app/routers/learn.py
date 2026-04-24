@@ -152,6 +152,7 @@ async def get_learning_stats(current_user: User = Depends(get_current_user), db:
             "current_streak": streak.current_streak if streak else 0,
             "longest_streak": streak.longest_streak if streak else 0,
             "learning_minutes": streak.learning_minutes if streak else 0,
+            "learning_seconds": streak.learning_seconds if streak else 0,
             "last_active_date": streak.last_active_date.isoformat() if streak and streak.last_active_date else None,
             "completed_lessons": completed_lessons,
             "weekly_history": rolling_history, # This is now the last 7 days
@@ -164,6 +165,7 @@ async def get_learning_stats(current_user: User = Depends(get_current_user), db:
                 for b in badges
             ],
         }
+
     except Exception as e:
         raise HTTPException(status_code=500, detail="Failed to fetch stats")
 
@@ -218,7 +220,12 @@ async def complete_lesson(
         raise HTTPException(status_code=500, detail="Failed to complete lesson")
 
 @router.post("/time")
-async def add_learning_time(request: AddTimeRequest, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def add_learning_time(
+    request: AddTimeRequest, 
+    req_obj: Request,
+    current_user: User = Depends(get_current_user), 
+    db: AsyncSession = Depends(get_db)
+):
     """
     Increment user's total learning time (active session tracking).
     """
@@ -236,6 +243,24 @@ async def add_learning_time(request: AddTimeRequest, current_user: User = Depend
         
         # Recalculate minutes for legacy/ui display
         streak.learning_minutes = streak.learning_seconds // 60
+
+        # --- Log to PageEngagement for Weekly Analytics ---
+        # We use the referrer or a default /learn path
+        referrer = req_obj.headers.get("referer", "/learn")
+        try:
+            path = referrer.split("://")[-1].split("/", 1)[1] if "/" in referrer.split("://")[-1] else "/learn"
+            if not path.startswith("/"):
+                path = "/" + path
+        except:
+            path = "/learn"
+
+        engagement = PageEngagement(
+            user_id=current_user.id,
+            page_path=path,
+            duration_seconds=effective_seconds,
+            timestamp=datetime.utcnow()
+        )
+        db.add(engagement)
         
         await db.commit()
         
@@ -247,6 +272,7 @@ async def add_learning_time(request: AddTimeRequest, current_user: User = Depend
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail="Failed to log learning time")
+
 
 
 @router.post("/streak")

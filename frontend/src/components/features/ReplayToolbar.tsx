@@ -4,6 +4,7 @@ import { useGameActions, useGamePlayback } from '../../hooks/useGame';
 import { marketDataService } from '../../services/MarketDataService';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
+import { motion } from 'framer-motion';
 
 const ReplayToolbar = () => {
     const { isReplayActive, isPlaying, speed, selectedDate, availableDates } = useGamePlayback();
@@ -15,10 +16,16 @@ const ReplayToolbar = () => {
     if (!isReplayActive) return null;
 
     return (
-        <div className={cn(
-            "fixed bottom-32 left-1/2 -translate-x-1/2 z-[100] flex items-center bg-[#1e222d]/95 backdrop-blur-md border border-[#2a2e39] rounded-lg shadow-2xl p-1 gap-2 select-none transition-all duration-300 ease-in-out",
-            isCollapsed ? "w-28 overflow-hidden" : "w-auto"
-        )}>
+        <motion.div 
+            drag
+            dragMomentum={false}
+            dragElastic={0.1}
+            initial={{ x: "-50%" }}
+            className={cn(
+                "fixed bottom-16 left-1/2 z-[100] flex items-center bg-[#1e222d]/95 backdrop-blur-md border border-[#2a2e39] rounded-lg shadow-2xl p-1 gap-2 select-none transition-colors duration-300 ease-in-out",
+                isCollapsed ? "w-28 overflow-hidden" : "w-auto"
+            )}
+        >
             {/* Handle & Toggle Section (Always Visible) */}
             <div className="flex items-center gap-1 pl-1">
                 <div className="text-[#d1d4dc]/30 cursor-grab active:cursor-grabbing hover:text-[#d1d4dc]/60 transition-colors">
@@ -108,7 +115,7 @@ const ReplayToolbar = () => {
                     </Button>
                 </>
             )}
-        </div>
+        </motion.div>
     );
 };
 

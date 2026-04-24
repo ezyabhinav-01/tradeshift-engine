@@ -30,6 +30,7 @@ import HelpPage from './pages/HelpPage';
 
 import { useChartPersistence } from './hooks/useChartPersistence';
 import { usePageTracking } from './hooks/usePageTracking';
+import { useLearningTimeTracking } from './hooks/useLearningTimeTracking';
 import { Bot } from 'lucide-react';
 
 const MarketPage = lazy(() => import('./pages/MarketPage'));
@@ -52,6 +53,7 @@ function RouteLoader() {
 
 function AppContent() {
   usePageTracking();
+  useLearningTimeTracking();
 
   useEffect(() => {
     const win = window as Window & { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void };

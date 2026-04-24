@@ -133,6 +133,7 @@ export default function SubModuleDetailPage() {
   const [loading, setLoading] = useState(true);
   const [selectedAnswers, setSelectedAnswers] = useState<Record<string, Record<number, number>>>({});
   const [showQuizResults, setShowQuizResults] = useState<Record<string, boolean>>({});
+  const [activeLessonIndex, setActiveLessonIndex] = useState(0);
   const [scrollDir, setScrollDir] = useState<'up' | 'down'>('down');
   const lastProgress = useRef(0);
 
@@ -305,16 +306,6 @@ export default function SubModuleDetailPage() {
     }
   };
 
-  // Active Learning Time Tracker
-  useEffect(() => {
-    if (loading || !data) return;
-    const interval = setInterval(() => {
-      if (!document.hidden) {
-        logLearningTime(30);
-      }
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [loading, data, logLearningTime]);
 
   // #TopicRef — Hydrate topic-tag spans in lesson HTML content
   useTopicPortalHydrator(contentRef);
@@ -521,8 +512,10 @@ export default function SubModuleDetailPage() {
           {/* ───── LESSON CONTENT (centered) ───── */}
           <div className="max-w-4xl mx-auto px-6">
 
-            {/* ───── LESSON STACK ───── */}
-            {data.lessons.map((lesson, index) => {
+            {/* ───── LESSON STACK (Now Single Topic with Nav) ───── */}
+            {data.lessons.length > 0 && (() => {
+              const lesson = data.lessons[activeLessonIndex];
+              const index = activeLessonIndex;
               const isCompleted = completedLessons.includes(lesson.id);
               const isQuiz = lesson.type === 'quiz' || (lesson.quizQuestions && lesson.quizQuestions.length > 0);
               const currentSelected = selectedAnswers[lesson.id] || {};
@@ -771,170 +764,108 @@ export default function SubModuleDetailPage() {
                         </button>
                       )}
                     </div>
+
+                    {/* ───── SUB-TOPIC NAVIGATION & DISCUSSION (Revealed on Completion) ───── */}
+                    <AnimatePresence>
+                      {isCompleted && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="mt-20 space-y-20"
+                        >
+                          {/* DISCUSSION REVEAL */}
+                          <div className="pt-12 border-t border-slate-200 dark:border-white/10">
+                            <div className="flex items-center justify-between mb-8">
+                                <div>
+                                    <h3 className="text-3xl font-black text-slate-900 dark:text-white tracking-tighter uppercase italic">Sub-Topic Discussion</h3>
+                                    <p className="text-slate-500 text-[10px] mt-1 uppercase font-bold tracking-widest">Connect with elite analysts on this topic</p>
+                                </div>
+                                <div className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400 text-xs font-black">
+                                    {comments.length} Contributions
+                                </div>
+                            </div>
+                            
+                            {/* Comment Input */}
+                            <div className="p-6 rounded-2xl bg-slate-50 dark:bg-white/[0.01] border border-slate-200 dark:border-white/5 mb-8">
+                                <textarea
+                                    value={newComment}
+                                    onChange={(e) => setNewComment(e.target.value)}
+                                    placeholder="Share your insights on this sub-topic..."
+                                    className="w-full bg-white dark:bg-black/40 border border-slate-200 dark:border-white/5 rounded-xl p-4 text-sm text-slate-900 dark:text-white outline-none focus:border-indigo-500/50 transition-all resize-none min-h-[100px]"
+                                />
+                                <div className="flex justify-end mt-4">
+                                    <button
+                                        onClick={handlePostComment}
+                                        disabled={!newComment.trim() || isPosting}
+                                        className="px-6 py-2 bg-indigo-600 text-white font-black rounded-lg hover:bg-indigo-500 disabled:opacity-20 transition-all flex items-center gap-2 text-xs"
+                                    >
+                                        Post Insight <Sparkles size={14} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Recent Comments */}
+                            <div className="space-y-6 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                                {comments.slice(0, 5).map((comment) => (
+                                    <div key={comment.id} className="flex gap-4 p-4 rounded-xl bg-slate-50/50 dark:bg-white/[0.01] border border-slate-100 dark:border-white/5">
+                                        <div className="w-10 h-10 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-500 font-bold text-xs shrink-0">{comment.user_full_name.charAt(0)}</div>
+                                        <div className="flex-1">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className="text-[11px] font-black dark:text-white">{comment.user_full_name}</span>
+                                                <span className="text-[9px] font-bold text-slate-500 uppercase">{new Date(comment.created_at).toLocaleDateString()}</span>
+                                            </div>
+                                            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">{comment.content}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                          </div>
+
+                          {/* NAVIGATION BUTTONS */}
+                          <div className="flex flex-col sm:flex-row items-center justify-between gap-6 pt-12 border-t border-slate-200 dark:border-white/10">
+                            <button
+                              onClick={() => {
+                                setActiveLessonIndex(prev => prev - 1);
+                                if (scrollRef?.current) scrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+                              }}
+                              disabled={activeLessonIndex === 0}
+                              className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all ${activeLessonIndex === 0 ? 'opacity-0 pointer-events-none' : 'text-slate-500 hover:text-indigo-500 hover:bg-indigo-500/5'}`}
+                            >
+                              <ArrowLeft size={16} /> Previous Sub-Topic
+                            </button>
+
+                            {activeLessonIndex < data.lessons.length - 1 ? (
+                              <button
+                                onClick={() => {
+                                  setActiveLessonIndex(prev => prev + 1);
+                                  if (scrollRef?.current) scrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+                                }}
+                                className="px-10 py-4 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-500 transition-all shadow-xl shadow-indigo-500/20 flex items-center gap-2 group"
+                              >
+                                Next Sub-Topic <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => navigate(`/learn/chapter/${data.next_id}`)}
+                                disabled={!data.next_id}
+                                className={`px-10 py-4 bg-emerald-600 text-white font-black rounded-xl hover:bg-emerald-500 transition-all shadow-xl shadow-emerald-500/20 flex items-center gap-2 group ${!data.next_id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              >
+                                {data.next_id ? (
+                                  <>Next Chapter <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" /></>
+                                ) : (
+                                  <>Module Complete!</>
+                                )}
+                              </button>
+                            )}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 </motion.section>
               );
-            })}
+            })()}
 
-            {/* ───── CHAPTER FINALE ───── */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            className="pt-20"
-          >
-            <div 
-              onMouseMove={handleMagneticMove}
-              onMouseLeave={handleMagneticLeave}
-              className="magnetic-tilt relative p-16 rounded-2xl bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-transparent dark:bg-black border border-slate-200 dark:border-white/10 text-center overflow-hidden transition-all duration-300"
-            >
-                {/* Background Glow */}
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-indigo-500/20 rounded-full blur-[150px] pointer-events-none" />
-
-                <div className="relative z-10 space-y-10">
-                  <div className="w-28 h-28 bg-white dark:bg-white/5 rounded-[2.5rem] flex items-center justify-center mx-auto border border-slate-200 dark:border-white/10 shadow-3xl">
-                    <Trophy size={56} className="text-amber-500 drop-shadow-[0_0_20px_rgba(245,158,11,0.6)]" />
-                  </div>
-
-                  <div className="space-y-4">
-                    <h2 className="text-5xl font-black text-slate-900 dark:text-white italic uppercase tracking-tighter mb-4" style={{ fontFamily: 'Inter, sans-serif' }}>Chapter Conquest</h2>
-                    <p className="text-slate-600 dark:text-slate-400 max-w-lg mx-auto leading-relaxed text-lg">
-                      You've successfully completed every sub-topic in this chapter. Your analytical understanding of these concepts is now documented.
-                    </p>
-                  </div>
-
-                  <div className="flex flex-col sm:flex-row items-center justify-center gap-6 pt-6">
-                    {data.next_id ? (
-                      <button
-                        onClick={() => navigate(`/learn/chapter/${data.next_id}`)}
-                        className="w-full sm:w-auto px-12 py-6 bg-indigo-600 text-white font-black rounded-[2.5rem] hover:bg-indigo-500 transition-all shadow-2xl active:scale-95 text-lg flex items-center gap-3"
-                      >
-                        Continue to Next Chapter <ArrowRight size={24} />
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => navigate(`/learn/track/${data.trackId}`)}
-                        className="w-full sm:w-auto px-12 py-6 bg-slate-900 dark:bg-white text-white dark:text-black font-black rounded-[2.5rem] hover:bg-slate-800 dark:hover:bg-indigo-400 transition-all shadow-2xl active:scale-95 text-lg"
-                      >
-                        Track Completed
-                      </button>
-                    )}
-                    <button
-                      onClick={() => {
-                        if (scrollRef?.current) {
-                          scrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
-                        }
-                      }}
-                      className="w-full sm:w-auto px-10 py-6 bg-slate-100 dark:bg-white/5 text-slate-900 dark:text-white font-black rounded-[2.5rem] hover:bg-slate-200 dark:hover:bg-white/10 transition-all border border-slate-200 dark:border-white/10"
-                    >
-                      Review Core Concepts
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-
-            {/* ───── CHAPTER NAVIGATION FOOTER ───── */}
-            <div className="pt-24 grid grid-cols-2 gap-6 border-t border-white/5">
-              <div className="col-span-1">
-                {data.prev_id && (
-                  <button
-                    onClick={() => navigate(`/learn/chapter/${data.prev_id}`)}
-                    className="w-full p-8 rounded-[2rem] bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-all text-left flex flex-col gap-2 group"
-                  >
-                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                      <ArrowLeft size={12} /> Previous Segment
-                    </span>
-                    <span className="text-sm font-bold text-white group-hover:text-indigo-400 transition-colors">Go Back</span>
-                  </button>
-                )}
-              </div>
-              <div className="col-span-1">
-                {data.next_id && (
-                  <button
-                    onClick={() => navigate(`/learn/chapter/${data.next_id}`)}
-                    className="w-full p-8 rounded-[2rem] bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-all text-right flex flex-col items-end gap-2 group"
-                  >
-                    <h4 className="text-sm font-black text-indigo-500 dark:text-indigo-400 uppercase tracking-widest flex items-center gap-2 mb-2" style={{ fontFamily: 'Inter, sans-serif' }}>
-                      Next Segment <ArrowRight size={12} />
-                    </h4>
-                    <span className="text-sm font-bold text-white group-hover:text-indigo-400 transition-colors">Advance Chapter</span>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* ───── PUBLIC DISCUSSION ───── */}
-            <div className="pt-32 space-y-12">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-4xl font-black text-white tracking-tighter">Chapter Discussion</h3>
-                  <p className="text-slate-500 text-sm mt-1 uppercase font-bold tracking-widest">Connect with elite analysts</p>
-                </div>
-                <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 text-slate-400 text-xs font-black">
-                  {comments.length} Contributions
-                </div>
-              </div>
-
-              {/* Post Comment Input */}
-              <div className="p-8 rounded-3xl bg-white/[0.01] border border-white/5 space-y-6">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center text-indigo-400 font-black text-lg border border-indigo-500/20">
-                    {user?.full_name?.charAt(0) || 'U'}
-                  </div>
-                  <div className="flex-1 space-y-4">
-                    <textarea
-                      value={newComment}
-                      onChange={(e) => setNewComment(e.target.value)}
-                      placeholder="Share your insights, ask a question, or discuss this topic..."
-                      className="w-full bg-black/40 border border-white/5 rounded-2xl p-4 text-sm text-white placeholder:text-slate-600 focus:border-indigo-500/50 outline-none transition-all resize-none min-h-[120px]"
-                    />
-                    <div className="flex justify-end">
-                      <button
-                        onClick={handlePostComment}
-                        disabled={!newComment.trim() || isPosting}
-                        className="px-8 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-500 disabled:opacity-20 transition-all flex items-center gap-2"
-                      >
-                        {isPosting ? 'Posting...' : 'Post Contribution'} <Sparkles size={16} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Comment List */}
-              <div className="space-y-8">
-                {comments.map((comment) => (
-                  <motion.div
-                    key={comment.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    whileInView={{ opacity: 1, x: 0 }}
-                    className="flex gap-6 group"
-                  >
-                    <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/5 flex items-center justify-center text-slate-500 font-bold text-sm shrink-0">
-                      {comment.user_full_name.charAt(0)}
-                    </div>
-                    <div className="flex-1 space-y-2">
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs font-black text-white tracking-wide">{comment.user_full_name}</span>
-                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">
-                          {new Date(comment.created_at).toLocaleDateString()}
-                        </span>
-                      </div>
-                      <p className="text-slate-400 text-sm leading-relaxed bg-white/[0.02] p-6 rounded-2xl rounded-tl-none border border-white/5">
-                        {parseTextWithTags(comment.content)}
-                      </p>
-                    </div>
-                  </motion.div>
-                ))}
-                {comments.length === 0 && (
-                  <div className="py-20 text-center border-2 border-dashed border-white/5 rounded-3xl">
-                    <Sparkles size={40} className="text-slate-800 mx-auto mb-4" />
-                    <p className="text-slate-600 font-bold uppercase tracking-widest text-xs">No contributions yet.</p>
-                    <p className="text-slate-700 text-xs mt-1">Be the first to start the discussion.</p>
-                  </div>
-                )}
-              </div>
-            </div>
           </div>
         </div>
 

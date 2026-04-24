@@ -1,8 +1,8 @@
 import logging
 from datetime import datetime, timedelta
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func
 from app.database import get_session
-from app.models import User, TradeLog, PortfolioSnapshot
+from app.models import User, TradeLog, PortfolioSnapshot, PageEngagement
 from app.services.email_service import send_weekly_summary_email
 
 logger = logging.getLogger(__name__)
@@ -57,7 +57,18 @@ async def generate_and_send_weekly_ledgers():
                         "pnl": pnl
                     })
                 
-                # 3. Fetch Balances (Opening/Closing) for reconciliation
+                # 3. Calculate Learning Time for the week
+                res_learning = await db.execute(
+                    select(func.sum(PageEngagement.duration_seconds))
+                    .filter(
+                        PageEngagement.user_id == user.id,
+                        PageEngagement.timestamp >= last_week,
+                        PageEngagement.page_path.like("/learn%")
+                    )
+                )
+                learning_seconds = res_learning.scalar() or 0
+                
+                # 4. Fetch Balances (Opening/Closing) for reconciliation
                 # Opening: Closest snapshot before last_week
                 res_opening = await db.execute(
                     select(PortfolioSnapshot)
@@ -76,8 +87,10 @@ async def generate_and_send_weekly_ledgers():
                     "trade_count": len(formatted_trades),
                     "win_rate": (wins / len(formatted_trades) * 100) if formatted_trades else 0,
                     "opening_balance": opening_balance,
-                    "closing_balance": closing_balance
+                    "closing_balance": closing_balance,
+                    "learning_seconds": int(learning_seconds)
                 }
+
                 
                 # 4. Send Email
                 if user.email:

@@ -1705,9 +1705,23 @@ async def orders_websocket(websocket: WebSocket):
         logger.info(f"🟢 Orders WS: user-{user_id} connected")
         await _safe_ws_send(websocket, {"type": "connected", "data": {"room": room}})
         
-        # Keep the connection alive
+        # Keep the connection alive and handle incoming chat messages
         while True:
-            await websocket.receive_text()
+            data = await websocket.receive_text()
+            try:
+                payload = json.loads(data)
+                if payload.get("type") == "send_message":
+                    from app.services.community_service import process_and_broadcast_message
+                    msg_data = payload.get("data", {})
+                    await process_and_broadcast_message(
+                        sender_id=user_id,
+                        content=msg_data.get("content"),
+                        channel_id=msg_data.get("channel_id"),
+                        recipient_id=msg_data.get("recipient_id"),
+                        client_temp_id=msg_data.get("client_temp_id")
+                    )
+            except Exception as e:
+                logger.error(f"Error processing WS message: {e}")
     except WebSocketDisconnect:
         logger.info(f"🔴 Orders WS: user-{user_id} disconnected")
     except Exception as e:

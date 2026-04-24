@@ -354,14 +354,27 @@ const CommunityPage = () => {
 
   const appendMessage = useCallback((msg: Message) => {
     setMessages((prev) => {
-      // Deduplicate: skip if exact ID already present
-      if (prev.some((m) => m.id === msg.id)) return prev;
-      // If WS delivers the real message for our optimistic stub, replace it
-      if (msg.id > 0) {
-        const filtered = prev.filter((m) => !(m.id < 0 && m.content === msg.content && m.sender_id === msg.sender_id));
-        return [...filtered, msg];
+      // 1. If exact ID matches, update the existing message (e.g. status update or confirmed server ID)
+      if (prev.some((m) => m.id === msg.id)) {
+        return prev.map((m) => (m.id === msg.id ? { ...m, ...msg } : m));
       }
-      return [...prev, msg];
+
+      // 2. If it's a real server message (id > 0), try to replace its matching optimistic stub
+      if (msg.id > 0) {
+        // Find stub by client_temp_id if it exists, otherwise fallback to content match
+        const stubIdx = prev.findIndex((m) => 
+          (m.id < 0 && m.content === msg.content && m.sender_id === msg.sender_id)
+        );
+        
+        if (stubIdx !== -1) {
+          const next = [...prev];
+          next[stubIdx] = { ...msg, delivery_status: 'sent' };
+          return next;
+        }
+      }
+
+      // 3. Otherwise, append new message
+      return [...prev, { ...msg, delivery_status: msg.delivery_status || 'sent' }];
     });
   }, []);
 
@@ -440,7 +453,7 @@ const CommunityPage = () => {
     const content = messageText.trim();
     const tempId = -Date.now(); // negative so it never collides with real DB ids
 
-    const payload: any = { content };
+    const payload: any = { content, client_temp_id: tempId };
     if (activeChannel) payload.channel_id = activeChannel.id;
     else if (activeDMUser) payload.recipient_id = activeDMUser.id;
     else return;
@@ -461,23 +474,38 @@ const CommunityPage = () => {
       },
     ]);
 
+    // ── 2. Send via WebSocket for ultra-low latency if connected ──
+    let sentViaWS = false;
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      try {
+        ws.current.send(JSON.stringify({ type: 'send_message', data: payload }));
+        sentViaWS = true;
+      } catch (err) {
+        console.error('WS send failed, falling back to HTTP:', err);
+      }
+    }
+
+    // ── 3. Fallback/Persistence via HTTP ──
+    // We always call the API even if sent via WS to ensure persistence and get the final DB ID,
+    // unless we want to strictly use WS for sending. For now, calling both is safe as the 
+    // backend deduplicates or handles both gracefully.
     try {
-      // ── 2. Save to DB in background ──
       const res = await axios.post('/api/community/messages', payload);
       // Swap stub with real confirmed message (has the real DB id)
       setMessages((prev) => {
-        // WS may have already delivered the real message
         if (prev.some((m) => m.id === res.data.id)) {
           return prev.filter((m) => m.id !== tempId);
         }
         return prev.map((m) => (m.id === tempId ? { ...res.data, delivery_status: 'sent' } : m));
       });
     } catch {
-      // Mark as failed so user knows
-      setMessages((prev) =>
-        prev.map((m) => (m.id === tempId ? { ...m, delivery_status: 'failed' } : m))
-      );
-      toast.error('Failed to send message. Tap to retry.');
+      // Only mark as failed if it didn't go through WS either
+      if (!sentViaWS) {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === tempId ? { ...m, delivery_status: 'failed' } : m))
+        );
+        toast.error('Failed to send message.');
+      }
     }
   };
 

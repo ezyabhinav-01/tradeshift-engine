@@ -70,7 +70,7 @@ const TopToolbar = ({
     const activeChartSymbol = activeChart?.symbol || selectedSymbol || 'RELIANCE';
 
     return (
-        <div className="h-12 bg-transparent flex items-center px-4 justify-between text-tv-text-secondary select-none">
+        <div className="w-full h-12 bg-transparent flex items-center px-4 text-tv-text-secondary select-none">
             <SymbolSearch 
                 open={isSearchOpen} 
                 onOpenChange={setIsSearchOpen} 
@@ -185,6 +185,9 @@ const TopToolbar = ({
                 </Button>
 
             </div>
+
+            {/* SPACER to push right controls to the corner */}
+            <div className="flex-1" />
 
             {/* RIGHT CONTROLS */}
             <div className="flex items-center space-x-1 h-full">

@@ -865,6 +865,33 @@ export default function SubModuleDetailPage() {
                 </motion.section>
               );
             })()}
+            
+            {/* ───── BOTTOM CHAPTER NAVIGATION ───── */}
+            <div className="flex items-center justify-center gap-8 mt-20 pt-10 border-t border-slate-200 dark:border-white/10">
+              {data.prev_id && (
+                <button
+                  onClick={() => navigate(`/learn/chapter/${data.prev_id}`)}
+                  className="text-sm font-bold text-indigo-500 hover:text-indigo-400 transition-colors flex items-center gap-1"
+                >
+                  &larr; Previous
+                </button>
+              )}
+              <button
+                onClick={() => navigate(`/learn/module/${data.moduleId}`)}
+                className="text-sm font-bold text-slate-400 hover:text-indigo-500 transition-colors"
+              >
+                Chapters
+              </button>
+              {data.next_id && (
+                <button
+                  onClick={() => navigate(`/learn/chapter/${data.next_id}`)}
+                  className="text-sm font-bold text-indigo-500 hover:text-indigo-400 transition-colors flex items-center gap-1"
+                >
+                  Next &rarr;
+                </button>
+              )}
+            </div>
+
 
           </div>
         </div>

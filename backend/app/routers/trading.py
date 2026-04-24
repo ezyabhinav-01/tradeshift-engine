@@ -85,31 +85,9 @@ async def execute_trade(
     """
     user_id = await _get_user_id(request, db, trade_request.session_type)
     try:
-        # 1. Sync Calculation (Fast)
-        drafter = await TradeEngine.calculate_execution_draft(trade_request, user_id)
-        
-        # 2. Emit WebSocket update (Instant)
-        ws_payload = drafter["meta"].copy()
-        # Note: In draft mode, we don't have a DB ID yet, but we can return the draft state.
-        # However, to be fully functional, it's better to background the REAL work
-        # and let the background task emit the final ID.
-        # BUT the user wants "Message goes instantly".
-        # Let's emit a 'preliminary' update or just let the background task handle it if it's fast enough.
-        # Actually, the user wants lightning fast. Let's background the whole thing
-        # but return a 202 immediately.
-        
-        background_tasks.add_task(TradeEngine.save_trade_async, trade_request, user_id)
-            
-        return TradeResponse(
-            trade_id=0, # Signal that it's being processed
-            status=drafter["trade"].status,
-            symbol=drafter["trade"].symbol,
-            direction=drafter["trade"].direction,
-            quantity=drafter["trade"].quantity,
-            entry_price=drafter["entry_price"] or 0.0,
-            order_type=drafter["trade"].order_type,
-            message="Order accepted for high-speed execution"
-        )
+        # Execute synchronously to get the real trade ID instantly
+        result = await TradeEngine.execute_trade(trade_request, user_id, db)
+        return TradeResponse(**result)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

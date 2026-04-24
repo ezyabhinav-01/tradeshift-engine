@@ -1,0 +1,42 @@
+name: Security Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    - cron: '0 0 * * 0' # Run weekly on Sundays
+
+jobs:
+  sast-python:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.13"
+        
+    - name: Install Bandit
+      run: pip install bandit
+      
+    - name: Run Bandit SAST
+      working-directory: ./backend
+      # Skip B101 (assert used) since we use assert in tests
+      run: bandit -r ./app ./main.py -s B101
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: "20.x"
+        
+    - name: Run npm audit
+      working-directory: ./frontend
+      run: npm audit --audit-level=high

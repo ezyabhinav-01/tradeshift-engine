@@ -1,0 +1,47 @@
+name: Post-Deployment Smoke Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to test (staging/production)'
+        required: true
+        default: 'staging'
+  deployment_status:
+
+jobs:
+  smoke-test:
+    # Run only if a deployment was successful or manually triggered
+    if: github.event.deployment_status.state == 'success' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Determine Target URL
+        id: set_url
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "${{ github.event.inputs.environment }}" = "production" ]; then
+              echo "url=${{ secrets.PROD_URL }}" >> $GITHUB_OUTPUT
+            else
+              echo "url=${{ secrets.STAGING_URL }}" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "url=${{ github.event.deployment_status.target_url }}" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Health Endpoint Check
+        run: |
+          TARGET_URL="${{ steps.set_url.outputs.url }}"
+          echo "Testing $TARGET_URL"
+          
+          # Wait up to 30 seconds for the service to be responsive
+          timeout 30 bash -c "until curl -s -f $TARGET_URL/api/health; do sleep 5; done"
+          
+          # Verify the response is OK
+          RESPONSE=$(curl -s $TARGET_URL/api/health)
+          if [[ "$RESPONSE" != *"ok"* ]]; then
+            echo "Smoke test failed: $RESPONSE"
+            exit 1
+          fi
+          
+          echo "Smoke test passed!"

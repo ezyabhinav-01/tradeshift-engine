@@ -74,7 +74,7 @@ class TradeEngine:
                 sl_order = TradeLog(
                     symbol=request.symbol,
                     direction="SELL" if request.direction.value == "BUY" else "BUY",
-                    quantity=filled_quantity,
+                    quantity=drafter["filled_quantity"],
                     entry_time=None,
                     exit_time=None,
                     holding_time=None,
@@ -92,7 +92,7 @@ class TradeEngine:
                 tp_order = TradeLog(
                     symbol=request.symbol,
                     direction="SELL" if request.direction.value == "BUY" else "BUY",
-                    quantity=filled_quantity,
+                    quantity=drafter["filled_quantity"],
                     entry_time=None,
                     exit_time=None,
                     holding_time=None,
@@ -111,7 +111,7 @@ class TradeEngine:
             
             # --- UPDATE CASH BALANCE ---
             multiplier = -1 if request.direction == TradeDirection.BUY else 1
-            transaction_value = money_float(filled_quantity * entry_price)
+            transaction_value = money_float(drafter["filled_quantity"] * drafter["entry_price"])
             
             await db.execute(
                 update(User)
@@ -124,8 +124,8 @@ class TradeEngine:
                 db=db,
                 user_id=user_id,
                 symbol=request.symbol,
-                quantity_delta=filled_quantity,
-                price=entry_price,
+                quantity_delta=drafter["filled_quantity"],
+                price=drafter["entry_price"],
                 direction=request.direction.value,
                 session_type=request.session_type
             )
@@ -135,21 +135,33 @@ class TradeEngine:
         from app.services.order_management import oms_service
         oms_service.invalidate_pending_cache(request.symbol, request.session_type, user_id)
 
-        is_partial_fill = is_market and execution_meta["fill_ratio"] < 1.0
-        status_label = "partially filled" if is_partial_fill else ("filled" if is_market else "placed as pending")
+        # 🔥 Emit WebSocket Payload instantly after commit
+        from app.websocket_manager import order_manager
+        ws_payload = TradeEngine.build_order_update_payload(trade)
+        ws_payload["simulated_latency_ms"] = execution_meta["simulated_latency_ms"]
+        ws_payload["simulated_slippage_bps"] = execution_meta["simulated_slippage_bps"]
+        # order_manager.emit_to_user is async, so we await it
+        await order_manager.emit_to_user(user_id, "order_update", ws_payload)
+        
+        # 🔥 Update snapshots in background
+        import asyncio
+        asyncio.create_task(portfolio_service.save_portfolio_snapshot(user_id, request.session_type))
+
+        is_partial_fill = drafter["is_market"] and execution_meta["fill_ratio"] < 1.0
+        status_label = "partially filled" if is_partial_fill else ("filled" if drafter["is_market"] else "placed as pending")
         logger.info(
             f"📈 Trade {status_label}: {request.direction.value} {request.quantity}x "
-            f"{request.symbol} @ {entry_price} ({order_type}) | ID: {trade.id}"
+            f"{request.symbol} @ {drafter['entry_price']} ({drafter['trade'].order_type}) | ID: {trade.id}"
         )
 
         return {
             "trade_id": trade.id,
-            "status": status,
+            "status": trade.status,
             "symbol": trade.symbol,
             "direction": trade.direction,
             "quantity": trade.quantity,
             "entry_price": trade.entry_price,
-            "order_type": order_type,
+            "order_type": drafter["trade"].order_type,
             "stop_loss": trade.stop_loss,
             "take_profit": trade.take_profit,
             "requested_quantity": execution_meta["requested_quantity"],
@@ -294,7 +306,8 @@ class TradeEngine:
             # 🔥 Update snapshots in background too
             await portfolio_service.save_portfolio_snapshot(user_id, request.session_type)
         except Exception as e:
-            logger.error(f"❌ Async background save failed: {e}")
+            import traceback
+            logger.error(f"❌ Async background save failed: {e}\n{traceback.format_exc()}")
             await db.rollback()
         finally:
             await db.close()

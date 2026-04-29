@@ -134,13 +134,15 @@ class RollingSuccessTracker:
             return RollingSuccessSnapshot(attempts=attempts, successes=successes)
 
 
+import tempfile
+
 class ProcessFileLock:
     """
     Lightweight process-level lock for single-instance scheduler jobs.
     Uses non-blocking file locks so duplicate runners skip immediately.
     """
 
-    def __init__(self, name: str, lock_dir: str = "/tmp/tradeshift_engine_locks"):
+    def __init__(self, name: str, lock_dir: str = os.path.join(tempfile.gettempdir(), "tradeshift_engine_locks")):
         safe_name = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in name)
         self._path = os.path.join(lock_dir, f"{safe_name}.lock")
         self._fd: int | None = None

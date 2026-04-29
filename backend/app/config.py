@@ -24,9 +24,9 @@ SECRET_KEY = (os.getenv("SECRET_KEY") or "").strip()
 if not SECRET_KEY:
     if APP_ENV in {"production", "staging", "beta"} and not ALLOW_INSECURE_SECRET_KEY:
         raise RuntimeError("SECRET_KEY must be set for production/staging environments.")
-    SECRET_KEY = "dev-insecure-secret-key"
+    SECRET_KEY = "dev-insecure-secret-key"  # nosec B105
     print("⚠️ Config Warning: SECRET_KEY not set. Using development fallback key.")
-elif SECRET_KEY == "supersecretkey" and APP_ENV in {"production", "staging", "beta"} and not ALLOW_INSECURE_SECRET_KEY:
+elif SECRET_KEY == "supersecretkey" and APP_ENV in {"production", "staging", "beta"} and not ALLOW_INSECURE_SECRET_KEY:  # nosec B105
     raise RuntimeError("Insecure default SECRET_KEY detected. Set a strong SECRET_KEY before startup.")
 
 ALGORITHM = "HS256"

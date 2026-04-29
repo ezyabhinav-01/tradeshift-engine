@@ -100,7 +100,7 @@ async def fetch_indian_news_rss(limit: int = 50) -> list[dict]:
                         continue
 
                     rows.append({
-                        "id": hashlib.md5(link.encode()).hexdigest(),
+                        "id": hashlib.md5(link.encode(), usedforsecurity=False).hexdigest(),
                         "title": title,
                         "description": summary[:280] + "..." if len(summary) > 280 else summary,
                         "source": feed.feed.get("title", "Indian Market News"),
@@ -309,7 +309,7 @@ async def fetch_newsapi(category: str, limit: int = 50) -> list[dict]:
 
                     return [
                         {
-                            "id": hashlib.md5(a.get("url", "").encode()).hexdigest(),
+                            "id": hashlib.md5(a.get("url", "").encode(), usedforsecurity=False).hexdigest(),
                             "title": a.get("title"),
                             "description": a.get("description"),
                             "source": a.get("source", {}).get("name", "NewsAPI"),
@@ -341,7 +341,7 @@ async def fetch_alpha_vantage_sentiment() -> list[dict]:
                     feed = data.get("feed", [])
                     return [
                         {
-                            "id": hashlib.md5(item.get("url", "").encode()).hexdigest(),
+                            "id": hashlib.md5(item.get("url", "").encode(), usedforsecurity=False).hexdigest(),
                             "title": item.get("title"),
                             "description": item.get("summary"),
                             "source": item.get("source"),
@@ -410,7 +410,7 @@ async def fetch_newsdata(category: str, limit: int = 50) -> list[dict]:
                         if not url or not title:
                             continue
                         all_items.append({
-                            "id": hashlib.md5(url.encode()).hexdigest(),
+                            "id": hashlib.md5(url.encode(), usedforsecurity=False).hexdigest(),
                             "title": title,
                             "description": item.get("description"),
                             "source": item.get("source_id", "NewsData"),

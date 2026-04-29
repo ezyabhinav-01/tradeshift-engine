@@ -137,14 +137,16 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
+import secrets
+
 def generate_demat_id() -> str:
     categories = ["Bull", "Edge", "Bear", "Tick", "Yolo"]
-    category = random.choice(categories)
-    random_code = f"{random.randint(0, 9999):04d}"
+    category = secrets.choice(categories)
+    random_code = f"{secrets.randbelow(10000):04d}"
     return f"RS-{category}-{random_code}"
 
 async def generate_and_set_otp(db: AsyncSession, user: User) -> str:
-    otp = str(random.randint(100000, 999999))
+    otp = "".join(secrets.choice("0123456789") for _ in range(6))
     user.otp_code = otp
     user.otp_expiry = datetime.utcnow() + timedelta(minutes=10)
     await db.commit()
@@ -460,7 +462,7 @@ async def refresh_session(request: Request, response: Response, db: AsyncSession
         email = payload.get("sub")
         token_type = payload.get("type")
         
-        if email is None or token_type != "refresh":
+        if email is None or token_type != "refresh": # nosec B105
             raise HTTPException(status_code=401, detail="Invalid refresh token type")
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid refresh token")

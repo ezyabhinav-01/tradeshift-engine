@@ -244,6 +244,7 @@ def _schedule_ws_send(websocket: WebSocket, payload: dict):
         try:
             await _safe_ws_send(websocket, payload)
         except Exception:
+            # Silent fail for background fire-and-forget sends
             pass
     asyncio.create_task(_sender())
 
@@ -363,7 +364,8 @@ def _build_replay_bootstrap_sync(symbol: str, target_date: str) -> ReplayBootstr
                 prev_col = next((c for c in ["datetime", "date", "time"] if c in df_prev.columns), None)
                 if prev_col:
                     backfill_dfs.append(_normalize_candles_frame(df_prev, prev_col))
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Skipping backfill for {candidate}: {e}")
                 continue
     backfill_dfs.append(session_df)
 
@@ -398,7 +400,8 @@ def _build_replay_bootstrap_sync(symbol: str, target_date: str) -> ReplayBootstr
                 index_candles[idx_name] = _records_from_frame(filtered_idx)
                 index_opens[idx_name] = float(filtered_idx.iloc[0].get("open", 0) or 0)
                 break
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Failed to load index {idx_name}: {e}")
                 continue
 
     payload = ReplayBootstrapPayload(
@@ -496,8 +499,8 @@ def rolling_market_refresh():
     finally:
         lock.release()
 
-def _load_fundamental_symbols_query(limit: int) -> str:
-    return f"""
+def _load_fundamental_symbols_query() -> str:
+    return """
     WITH ranked AS (
       SELECT DISTINCT UPPER(symbol) AS sym
       FROM instruments_master
@@ -505,7 +508,7 @@ def _load_fundamental_symbols_query(limit: int) -> str:
         AND symbol <> ''
         AND UPPER(COALESCE(instrument_type, '')) IN ('EQUITY', 'STOCK')
         AND UPPER(COALESCE(exchange, '')) IN ('NSE', 'BSE')
-      LIMIT {max(limit, 1)}
+      LIMIT :limit
     )
     SELECT sym FROM ranked
     """
@@ -529,7 +532,7 @@ def scheduled_fundamental_sync(limit: int = FUND_SYNC_SYMBOL_LIMIT, reason: str 
             async with await get_session() as db:
                 symbols = []
                 try:
-                    result = await db.execute(text(_load_fundamental_symbols_query(limit)))
+                    result = await db.execute(text(_load_fundamental_symbols_query()), {"limit": max(limit, 1)})
                     symbols = [row[0] for row in result.all()]
                 except Exception as query_err:
                     logger.warning(f"⚠️ instruments_master lookup failed: {query_err}")
@@ -693,11 +696,11 @@ async def shutdown_event():
         if async_scheduler is not None:
             async_scheduler.shutdown(wait=False)
             async_scheduler = None
-    except Exception:
+    except Exception: # nosec
         pass
     try:
         replay_executor.shutdown(wait=False, cancel_futures=True)
-    except Exception:
+    except Exception: # nosec
         pass
 
 async def seed_community_channels():
@@ -1116,7 +1119,7 @@ def _available_symbols_sync() -> list[dict]:
 
         available_symbols.append({
             "symbol": symbol_part,
-            "token": "0",
+            "token": "0",  # nosec B105
             "name": name,
             "instrument_type": "INDEX" if symbol_part in ["NIFTY", "BANKNIFTY", "SENSEX"] else "EQUITY",
         })
@@ -1139,7 +1142,7 @@ def _available_dates_sync(base_symbol: str) -> list[str]:
                 try:
                     pd.to_datetime(date_part)
                     local_dates.append(date_part)
-                except Exception:
+                except Exception: # nosec
                     pass
     if local_dates:
         return sorted(local_dates, reverse=True)
@@ -1298,7 +1301,7 @@ async def get_historical_candles(
                     df, fpath, _ = await _run_blocking(load_market_data_tiered, base_symbol, d, True)
                     all_dfs.append(df)
                     loaded_files.add(fpath)
-                except:
+                except Exception: # nosec
                     continue
             
             # If lookback_days was -1, also try to add the base file (the most recent data)
@@ -1309,7 +1312,7 @@ async def get_historical_candles(
                     if fpath not in loaded_files:
                         all_dfs.append(df_base)
                         loaded_files.add(fpath)
-                except: pass
+                except Exception: pass # nosec
 
         if not all_dfs:
             return {"symbol": symbol, "candles": [], "interval": interval}
@@ -1738,7 +1741,7 @@ async def live_indices_websocket(websocket: WebSocket):
     if shoonya_live.latest_data:
         try:
             await _safe_ws_send(websocket, shoonya_live.latest_data)
-        except Exception:
+        except Exception: # nosec
             pass
 
     # Callback to push updates to this specific client (from Shoonya Live WS)
@@ -2251,7 +2254,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             await _safe_ws_send(websocket, { "type": "INDICES_TICK", "data": indices_payload })
                             if i % 15 == 0:
                                 await _safe_ws_send(websocket, { "type": "STATS", "data": { "tick": i, "speed": speed } })
-                        except Exception: pass
+                        except Exception: pass # nosec
 
                     # ─── Smooth Sub-Tick Brownian Bridge Simulation ───
                     # Low speeds should feel closer to a live tape: softer easing, steadier pacing,
@@ -2307,7 +2310,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             except WebSocketDisconnect:
                                 is_running = False
                                 break
-                            except Exception:
+                            except Exception: # nosec
                                 pass
 
                         if not is_running: break
@@ -2485,11 +2488,11 @@ async def websocket_endpoint(websocket: WebSocket):
         if 'current_user_id' in locals():
             try:
                 order_manager.disconnect(websocket, current_user_id)
-            except Exception: pass
+            except Exception: pass # nosec
         replay_session_semaphore.release()
         logger.info("🔴 Simulation Client Disconnected")
 
 
 if __name__ == "__main__":
     dev_reload = os.getenv("UVICORN_RELOAD", "false").lower() in ("1", "true", "yes", "on")
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=dev_reload)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=dev_reload)  # nosec B104

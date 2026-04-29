@@ -10,7 +10,6 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useNotifications } from '../context/NotificationContext';
-import { useAccessControl } from '../hooks/useAccessControl';
 import { motion, AnimatePresence, useScroll, useSpring, useMotionValueEvent } from 'framer-motion';
 import Lenis from 'lenis';
 import { useTopicPortalHydrator } from '../components/TopicPortal';
@@ -76,6 +75,17 @@ const ChapterHeaderActions = () => {
   const { unreadCount } = useNotifications();
   const navigate = useNavigate();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   return (
     <div className="flex items-center gap-3">
@@ -88,15 +98,13 @@ const ChapterHeaderActions = () => {
       </button>
       <div className="h-5 w-px bg-slate-200 dark:bg-white/10" />
       {user ? (
-        <div className="relative">
+        <div className="relative" ref={userMenuRef}>
           <button onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} className="flex items-center gap-2 p-1 pl-2 rounded-full hover:bg-slate-100 dark:hover:bg-white/5 transition-all border border-transparent hover:border-slate-200 dark:hover:border-white/10">
             <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center text-white font-bold text-sm shadow-md">{(user.full_name || user.email || "U").charAt(0).toUpperCase()}</div>
             <ChevronDown size={14} className={`text-slate-500 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} />
           </button>
           {isUserMenuOpen && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setIsUserMenuOpen(false)} />
-              <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-[#1E222D] border border-slate-200 dark:border-white/10 rounded-xl shadow-2xl py-2 z-50">
+              <div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-[#1E222D] border border-slate-200 dark:border-white/10 rounded-xl shadow-2xl py-2 z-50">
                 <div className="px-4 py-3 border-b border-slate-100 dark:border-white/5 mb-1">
                   <p className="text-base font-bold text-slate-900 dark:text-white tracking-tight">{user.demat_id || 'N/A'}</p>
                   <p className="text-[11px] text-slate-500 dark:text-gray-400 font-medium truncate">{user.email}</p>
@@ -108,7 +116,6 @@ const ChapterHeaderActions = () => {
                   <LogOut size={18} /> Sign Out
                 </button>
               </div>
-            </>
           )}
         </div>
       ) : (
@@ -124,8 +131,6 @@ const ChapterHeaderActions = () => {
 export default function SubModuleDetailPage() {
   const { subModuleId } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const { checkAccess } = useAccessControl();
   const { completeLesson, completedLessons } = useLearnStore();
 
   const { theme } = useTheme();
@@ -241,13 +246,7 @@ export default function SubModuleDetailPage() {
     };
   }, [scrollRef, loading, data]); // Re-run when layout/data changes to ensure fresh measurements
 
-  useEffect(() => {
-    if (!user) {
-      checkAccess();
-      navigate('/learn');
-      return;
-    }
-  }, [user, navigate, checkAccess]);
+  // Removed user access check to allow guest access
 
   useEffect(() => {
     setLoading(true);

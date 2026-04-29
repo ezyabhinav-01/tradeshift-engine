@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useLearnStore } from '../store/useLearnStore';
-import { useAuth } from '../context/AuthContext';
 
 /**
  * Global hook to track learning time across all /learn routes.
@@ -9,7 +8,6 @@ import { useAuth } from '../context/AuthContext';
  */
 export const useLearningTimeTracking = () => {
     const location = useLocation();
-    const { user } = useAuth();
     const { logLearningTime } = useLearnStore();
     const lastLogTimeRef = useRef<number>(Date.now());
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -23,7 +21,7 @@ export const useLearningTimeTracking = () => {
             intervalRef.current = null;
         }
 
-        if (user && isLearningPage) {
+        if (isLearningPage) {
             // Start heartbeat
             intervalRef.current = setInterval(() => {
                 if (!document.hidden) {
@@ -38,7 +36,7 @@ export const useLearningTimeTracking = () => {
                 clearInterval(intervalRef.current);
             }
         };
-    }, [user, isLearningPage, logLearningTime]);
+    }, [isLearningPage, logLearningTime]);
 
     // Cleanup on unmount or user logout
     useEffect(() => {

@@ -1361,12 +1361,16 @@ export default function LandingPage() {
 
   const [isLandingMoreOpen, setIsLandingMoreOpen] = useState(false);
   const moreDropdownRef = useRef<HTMLDivElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
 
-  // Close 'More' dropdown on click outside
+  // Close dropdowns on click outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (moreDropdownRef.current && !moreDropdownRef.current.contains(event.target as Node)) {
         setIsLandingMoreOpen(false);
+      }
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setIsUserMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -1539,7 +1543,7 @@ export default function LandingPage() {
             </button>
 
             {user ? (
-              <div className="relative flex items-center">
+              <div className="relative flex items-center" ref={userMenuRef}>
                 <div
                   className={`${isLightMode ? 'bg-slate-300/80' : 'bg-white/15'}`}
                   style={{ width: '1px', height: '24px', margin: '0 0.65rem' }}
@@ -1568,16 +1572,10 @@ export default function LandingPage() {
                 </button>
 
                 {isUserMenuOpen && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-40"
-                      onClick={() => setIsUserMenuOpen(false)}
-                      style={{ position: 'fixed', inset: 0, zIndex: 40 }}
-                    ></div>
-                    <div className={`absolute right-0 mt-2 w-56 border rounded-xl shadow-2xl z-50 animate-in fade-in slide-in-from-top-2 duration-200 ${
-                         isLightMode ? 'bg-white border-slate-200' : 'bg-[#1A1E29] border-white/10'
-                       }`}
-                         style={{ padding: '0.5rem 0' }}>
+                  <div className={`absolute right-0 top-full mt-2 w-56 border rounded-xl shadow-2xl z-50 animate-in fade-in slide-in-from-top-2 duration-200 ${
+                       isLightMode ? 'bg-white border-slate-200' : 'bg-[#1A1E29] border-white/10'
+                     }`}
+                       style={{ padding: '0.5rem 0' }}>
                       <div className={`border-b mb-1 ${isLightMode ? 'border-slate-100' : 'border-white/5'}`} style={{ padding: '0.75rem 1rem' }}>
                         <p className={`text-base font-bold mt-0.5 tracking-tight ${isLightMode ? 'text-slate-900' : 'text-white'}`}>{user.demat_id || 'N/A'}</p>
                         <p className={`text-[11px] font-medium truncate ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>{user.email}</p>
@@ -1606,7 +1604,6 @@ export default function LandingPage() {
                         Sign Out
                       </button>
                     </div>
-                  </>
                 )}
               </div>
             ) : (

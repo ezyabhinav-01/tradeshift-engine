@@ -24,6 +24,7 @@ import ModuleDetailPage from './pages/ModuleDetailPage';
 import SubModuleDetailPage from './pages/SubModuleDetailPage';
 import TrackDetailPage from './pages/TrackDetailPage';
 import SecretDetailPage from './pages/SecretDetailPage';
+import AdminDashboard from './pages/AdminDashboard';
 import CommunityPage from './pages/CommunityPage';
 import NotificationsPage from './pages/NotificationsPage';
 import HelpPage from './pages/HelpPage';
@@ -107,6 +108,7 @@ function AppContent() {
             <Route path="notifications" element={<NotificationsPage />} />
             <Route path="help" element={<HelpPage />} />
             <Route path="settings" element={<SettingsPage />} />
+            <Route path="admin" element={<AdminDashboard />} />
             <Route path="research/:symbol" element={<ResearchHub />} />
           </Route>
         </Routes>

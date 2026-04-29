@@ -184,8 +184,8 @@ export const useLearnStore = create<LearnState>((set, get) => ({
   lessonsToday: 0,
   quizzesCompleted: 0,
   tracksStarted: [],
-  learningMinutes: 0,
-  totalLearningSeconds: 0,
+  learningMinutes: Math.floor(parseInt(localStorage.getItem(`learn:time_spent:${new Date().toISOString().split('T')[0]}`) || '0', 10) / 60),
+  totalLearningSeconds: parseInt(localStorage.getItem(`learn:time_spent:${new Date().toISOString().split('T')[0]}`) || '0', 10),
   weeklyHistory: [false, false, false, false, false, false, false],
   secretsRevealed: 0,
   secretsTotal: 0,
@@ -221,6 +221,11 @@ export const useLearnStore = create<LearnState>((set, get) => ({
         };
       });
 
+      const todayKey = `learn:time_spent:${new Date().toISOString().split('T')[0]}`;
+      const localTime = parseInt(localStorage.getItem(todayKey) || '0', 10);
+      const serverSeconds = data.learning_seconds ?? ((data.learning_minutes ?? 0) * 60);
+      const activeSeconds = Math.max(serverSeconds, localTime);
+
       set({
         totalXP: data.total_xp ?? 0,
         level: data.level ?? 1,
@@ -229,10 +234,12 @@ export const useLearnStore = create<LearnState>((set, get) => ({
         lastActiveDate: data.last_active_date ?? null,
         completedLessons: Array.isArray(data.completed_lessons) ? data.completed_lessons : [],
         badges: mergedBadges,
-        learningMinutes: data.learning_minutes ?? 0,
-        totalLearningSeconds: data.learning_seconds ?? ((data.learning_minutes ?? 0) * 60),
+        learningMinutes: Math.floor(activeSeconds / 60),
+        totalLearningSeconds: activeSeconds,
         weeklyHistory: Array.isArray(data.weekly_history) ? data.weekly_history : [false, false, false, false, false, false, false],
       });
+      // Sync max time to local storage as well
+      localStorage.setItem(todayKey, activeSeconds.toString());
     } catch (e) {
       console.error("Failed to fetch user stats", e);
     }
@@ -240,13 +247,18 @@ export const useLearnStore = create<LearnState>((set, get) => ({
 
   logLearningTime: async (seconds: number) => {
     try {
+      const todayKey = `learn:time_spent:${new Date().toISOString().split('T')[0]}`;
       // Optimistic local update
-      set(state => ({
-        totalLearningSeconds: state.totalLearningSeconds + seconds,
-        learningMinutes: Math.floor((state.totalLearningSeconds + seconds) / 60)
-      }));
+      set(state => {
+        const newSeconds = state.totalLearningSeconds + seconds;
+        localStorage.setItem(todayKey, newSeconds.toString());
+        return {
+          totalLearningSeconds: newSeconds,
+          learningMinutes: Math.floor(newSeconds / 60)
+        };
+      });
 
-      const res = await fetch('/api/learn/time', {
+      const res = await fetch('/api/learn/heartbeat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -254,8 +266,9 @@ export const useLearnStore = create<LearnState>((set, get) => ({
       });
       if (res.ok) {
         const data = await res.json();
-        // Sync back from server if needed, though local is likely fine
-        set({ learningMinutes: data.total_learning_minutes });
+        if (data.total_learning_minutes !== undefined) {
+          set({ learningMinutes: data.total_learning_minutes });
+        }
       }
     } catch (e) {
       console.error("Failed to log learning time", e);

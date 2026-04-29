@@ -61,6 +61,14 @@ async def get_current_user(request: Request, db: AsyncSession = Depends(get_db))
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials")
 
 
+async def get_current_user_optional(request: Request, db: AsyncSession = Depends(get_db)):
+    try:
+        user = await get_current_user(request, db)
+        return user
+    except HTTPException:
+        return None
+
+
 def has_internal_admin_key(request: Request) -> bool:
     """
     Allow trusted internal services like the admin backend to hit protected

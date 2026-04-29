@@ -852,7 +852,7 @@ export default function LearnPage() {
               </div>
               <button
                 onClick={() => {
-                  if (checkAccess()) navigate(`/learn/track/${continueSuggestion.track.id}`);
+                  navigate(`/learn/track/${continueSuggestion.track.id}`);
                 }}
                 className="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-indigo-500 to-purple-600 hover:opacity-90 transition-opacity flex items-center gap-2 shadow-lg shadow-indigo-500/20"
               >
@@ -872,10 +872,10 @@ export default function LearnPage() {
             </div>
             {isGuest ? (
                <button 
-                 onClick={() => checkAccess()}
+                 onClick={() => navigate('/login')}
                  className="px-4 py-2 bg-indigo-500 text-white text-[10px] font-black uppercase tracking-widest rounded-lg"
                >
-                 Sign in to track progress
+                 Sign in to save progress
                </button>
             ) : (
               <div className="flex items-center gap-2 text-[11px] text-slate-400 dark:text-slate-500 font-medium">

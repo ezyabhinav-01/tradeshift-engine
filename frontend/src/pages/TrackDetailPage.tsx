@@ -109,6 +109,17 @@ const TrackHeaderActions: React.FC = () => {
   const { unreadCount } = useNotifications();
   const navigate = useNavigate();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const userMenuRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   return (
     <div className="flex items-center gap-3">
@@ -139,7 +150,7 @@ const TrackHeaderActions: React.FC = () => {
 
       {/* User */}
       {user ? (
-        <div className="relative">
+        <div className="relative" ref={userMenuRef}>
           <button
             onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
             className="flex items-center gap-2 p-1 pl-2 rounded-full hover:bg-slate-100 dark:hover:bg-white/5 transition-all border border-transparent hover:border-slate-200 dark:hover:border-white/10"
@@ -151,9 +162,7 @@ const TrackHeaderActions: React.FC = () => {
           </button>
 
           {isUserMenuOpen && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setIsUserMenuOpen(false)} />
-              <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-[#1E222D] border border-slate-200 dark:border-white/10 rounded-xl shadow-2xl py-2 z-50">
+              <div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-[#1E222D] border border-slate-200 dark:border-white/10 rounded-xl shadow-2xl py-2 z-50">
                 <div className="px-4 py-3 border-b border-slate-100 dark:border-white/5 mb-1">
                   <p className="text-base font-bold text-slate-900 dark:text-white tracking-tight">{user.demat_id || 'N/A'}</p>
                   <p className="text-[11px] text-slate-500 dark:text-gray-400 font-medium truncate">{user.email}</p>
@@ -172,7 +181,6 @@ const TrackHeaderActions: React.FC = () => {
                   <LogOut size={18} /> Sign Out
                 </button>
               </div>
-            </>
           )}
         </div>
       ) : (

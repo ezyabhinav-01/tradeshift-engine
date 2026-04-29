@@ -116,35 +116,40 @@ export const TutorialProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [completedTours, setCompletedTours] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    if ((user as any)?.onboarding_status) {
+    const localCompleted = new Set<string>();
+    try {
+      const localStr = localStorage.getItem('tutorial:completed');
+      if (localStr) {
+        JSON.parse(localStr).forEach((t: string) => localCompleted.add(t));
+      }
+    } catch {}
+
+    const completed = new Set(localCompleted);
+
+    if (user && (user as any)?.onboarding_status) {
       const status = (user as any).onboarding_status;
-      const completed = new Set<string>();
       if (status?.global_tour_completed) completed.add('global');
       if (Array.isArray(status?.page_tours_completed)) {
         status.page_tours_completed.forEach((t: string) => completed.add(t));
       }
-      setCompletedTours(completed);
     }
+    setCompletedTours(completed);
   }, [user]);
 
   // Check if we should trigger a tour on route change
   useEffect(() => {
-    if (!user) return;
     if (isActive) return;
 
     // Check Global Tour first
     if (!completedTours.has('global')) {
-      // Logic for new vs existing users
-      const userCreatedTimestamp = user.created_at ? new Date(user.created_at).getTime() : 0;
-      const isNewUser = userCreatedTimestamp >= TUTORIAL_RELEASE_DATE;
+      const isNewUser = user ? (user.created_at ? new Date(user.created_at).getTime() >= TUTORIAL_RELEASE_DATE : false) : true;
 
       if (isNewUser) {
-        // Automatic start for truly new users
+        // Automatic start for truly new users or guests
         const t = setTimeout(() => startTour('global'), 1500);
         return () => clearTimeout(t);
       } else {
-        // Silently mark as completed for existing users so they don't get the pop-up
-        // but can still trigger it manually from Help
+        // Silently mark as completed for existing users
         void syncOnboardingStatus('global');
       }
       return;
@@ -176,14 +181,17 @@ export const TutorialProvider: React.FC<{ children: ReactNode }> = ({ children }
   };
 
   const syncOnboardingStatus = async (tourId: TourId) => {
-    if (!user) return;
-    
     // Optimistic update locally
     setCompletedTours(prev => {
       const next = new Set(prev);
       next.add(tourId);
+      try {
+        localStorage.setItem('tutorial:completed', JSON.stringify(Array.from(next)));
+      } catch {}
       return next;
     });
+
+    if (!user) return;
 
     try {
       const currentStatus = ((user as any).onboarding_status) || {};
@@ -202,7 +210,6 @@ export const TutorialProvider: React.FC<{ children: ReactNode }> = ({ children }
       await axios.patch('/auth/update-profile', {
         onboarding_status: newStatus
       });
-      // checkAuth(); // Optionally refresh, but we did optimistic update.
     } catch (err) {
       console.error("Failed to sync onboarding status", err);
     }

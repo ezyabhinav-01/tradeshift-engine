@@ -14,7 +14,7 @@ import asyncio
 from sqlalchemy.orm import joinedload
 from app.database import get_db
 from app.models import LearningProgress, UserStreak, UserBadge, Track, Module, SubModule, Lesson, MarketSecret, UserSecretReveal, User, ChapterComment, PageEngagement
-from app.dependencies import get_current_user, admin_or_internal
+from app.dependencies import get_current_user, get_current_user_optional, admin_or_internal
 from app.schemas import ChapterCommentCreate, ChapterCommentResponse
 from app.redis_utils import get_redis_client
 
@@ -272,6 +272,30 @@ async def add_learning_time(
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail="Failed to log learning time")
+
+@router.post("/heartbeat")
+async def register_active_heartbeat(
+    request: Request,
+    current_user: Optional[User] = Depends(get_current_user_optional)
+):
+    """
+    Registers an active heartbeat in Redis for the live admin dashboard.
+    Tracks both logged in users and anonymous guests.
+    """
+    try:
+        # Generate an identifier for anonymous users based on IP
+        client_ip = request.client.host if request.client else "unknown"
+        user_identifier = f"user:{current_user.id}" if current_user else f"guest:{client_ip}"
+        
+        # We will store active users in a redis set/sorted set or individual keys.
+        # Simplest is individual keys with 60 second TTL.
+        redis_key = f"learn_active_session:{user_identifier}"
+        await redis_client.set(redis_key, "active", ex=120)  # 2 minute expiry
+        
+        return {"status": "ok"}
+    except Exception as e:
+        # Don't fail the request if redis tracking fails
+        return {"status": "error", "detail": str(e)}
 
 
 

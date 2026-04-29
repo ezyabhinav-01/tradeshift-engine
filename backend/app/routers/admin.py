@@ -19,6 +19,9 @@ from app.services.email_service import send_feedback_reply_email
 from app.routers.user import _ensure_user_feedback_table
 from sqlalchemy import text
 from typing import List
+from app.redis_utils import get_redis_client
+
+redis_client = get_redis_client()
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -26,6 +29,21 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 async def _get_admin_sender_id(db: AsyncSession) -> int | None:
     result = await db.execute(select(User.id).where(User.email == "admin@gmail.com").limit(1))
     return result.scalar_one_or_none()
+
+@router.get("/active-learn-users")
+async def get_active_learn_users(
+    admin_user: User = Depends(admin_required)
+):
+    """
+    Get the count of currently active users/guests on the Learn platform.
+    """
+    try:
+        keys = []
+        async for key in redis_client.scan_iter(match="learn_active_session:*", count=100):
+            keys.append(key)
+        return {"active_users": len(keys)}
+    except Exception as e:
+        return {"active_users": 0, "error": str(e)}
 
 # ─── Stock Data Management ──────────────────────────────────────
 

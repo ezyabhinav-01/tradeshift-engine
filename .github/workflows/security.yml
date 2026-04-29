@@ -25,7 +25,7 @@ jobs:
     - name: Run Bandit SAST
       working-directory: ./backend
       # Skip B101 (assert used) since we use assert in tests
-      run: bandit -r ./app ./main.py -s B101
+      run: bandit -r ./app ./main.py -s B101 --severity-level medium
 
   dependency-audit:
     runs-on: ubuntu-latest

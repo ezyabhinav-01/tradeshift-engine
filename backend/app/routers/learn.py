@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func
 from pydantic import BaseModel
 from datetime import datetime, date, timedelta
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import json
 import os
 import asyncio
@@ -412,13 +412,9 @@ async def get_tracks(db: AsyncSession = Depends(get_db)):
                             "id": str(lesson.id),
                             "title": lesson.title,
                             "duration": duration,
-                            "type": "article",
+                            "type": _lesson_type(lesson),
                             "xpReward": lesson.xp_reward or 50
                         }
-                        if lesson.quiz_questions:
-                            lesson_data["type"] = "quiz"
-                        if getattr(lesson, 'practice_scene_id', None) and lesson.practice_scene_id != "None":
-                            lesson_data["type"] = "interactive"
                             
                         sm_data["lessons"].append(lesson_data)
                         t_data["totalLessons"] += 1
@@ -436,13 +432,9 @@ async def get_tracks(db: AsyncSession = Depends(get_db)):
                         "id": str(lesson.id),
                         "title": lesson.title,
                         "duration": duration,
-                        "type": "article",
+                        "type": _lesson_type(lesson),
                         "xpReward": lesson.xp_reward or 50
                     }
-                    if lesson.quiz_questions:
-                        lesson_data["type"] = "quiz"
-                    if getattr(lesson, 'practice_scene_id', None) and lesson.practice_scene_id != "None":
-                        lesson_data["type"] = "interactive"
                         
                     m_data["lessons"].append(lesson_data)
                     t_data["totalLessons"] += 1
@@ -578,6 +570,89 @@ def tiptap_to_html(doc: dict) -> str:
     return "".join(_render_node(node) for node in content)
 
 
+def _walk_tiptap_nodes(node):
+    if isinstance(node, list):
+        for item in node:
+            yield from _walk_tiptap_nodes(item)
+        return
+    if not isinstance(node, dict):
+        return
+
+    yield node
+    for child in node.get("content") or []:
+        yield from _walk_tiptap_nodes(child)
+
+
+def _normalize_quiz_question(raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    question = (raw.get("question") or "").strip()
+    options = raw.get("options") or []
+    if not question or not isinstance(options, list):
+        return None
+
+    cleaned_options = [str(opt).strip() for opt in options if str(opt).strip()]
+    if len(cleaned_options) < 2:
+        return None
+
+    correct_index = raw.get("correct_index", raw.get("correctIndex", 0))
+    try:
+        correct_index = int(correct_index)
+    except (TypeError, ValueError):
+        correct_index = 0
+    correct_index = max(0, min(correct_index, len(cleaned_options) - 1))
+
+    return {
+        "question": question,
+        "options": cleaned_options,
+        "correct_index": correct_index,
+        "correctIndex": correct_index,
+        "explanation": raw.get("explanation") or "",
+    }
+
+
+def _extract_inline_mcqs(content: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if not isinstance(content, dict):
+        return []
+
+    questions = []
+    for node in _walk_tiptap_nodes(content):
+        if node.get("type") != "mcqBlock":
+            continue
+        normalized = _normalize_quiz_question(node.get("attrs") or {})
+        if normalized:
+            questions.append(normalized)
+    return questions
+
+
+def _lesson_quiz_questions(lesson) -> List[Dict[str, Any]]:
+    merged = []
+    seen = set()
+    raw_questions = []
+    if lesson.quiz_questions:
+        raw_questions.extend(lesson.quiz_questions)
+    raw_questions.extend(_extract_inline_mcqs(lesson.content))
+
+    for raw in raw_questions:
+        if not isinstance(raw, dict):
+            continue
+        normalized = _normalize_quiz_question(raw)
+        if not normalized:
+            continue
+        key = normalized["question"].strip().lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(normalized)
+    return merged
+
+
+def _lesson_type(lesson) -> str:
+    if getattr(lesson, 'practice_scene_id', None) and lesson.practice_scene_id != "None":
+        return "interactive"
+    if _lesson_quiz_questions(lesson):
+        return "quiz"
+    return "article"
+
+
 def _render_node(node: dict) -> str:
     """Recursively render a TipTap node to HTML."""
     node_type = node.get("type", "")
@@ -629,6 +704,27 @@ def _render_node(node: dict) -> str:
         src = attrs.get("src", "")
         alt = attrs.get("alt", "")
         return f'<img src="{src}" alt="{alt}" />'
+    elif node_type == "mcqBlock":
+        question = _escape_html(attrs.get("question") or "Untitled Question")
+        options = attrs.get("options") or []
+        correct_index = attrs.get("correct_index", attrs.get("correctIndex", 0))
+        try:
+            correct_index = int(correct_index)
+        except (TypeError, ValueError):
+            correct_index = 0
+        rendered_options = "".join(
+            f'<li class="mcq-option{" is-correct" if idx == correct_index else ""}">{_escape_html(str(option))}</li>'
+            for idx, option in enumerate(options)
+            if str(option).strip()
+        )
+        explanation = attrs.get("explanation") or ""
+        explanation_html = f'<p class="mcq-explanation">{_escape_html(explanation)}</p>' if explanation else ""
+        return f'<section class="mcq-block"><h4>{question}</h4><ol>{rendered_options}</ol>{explanation_html}</section>'
+    elif node_type == "socraticQuestionBlock":
+        question = _escape_html(attrs.get("question") or "Think about this")
+        answer = _escape_html(attrs.get("answer") or "")
+        answer_html = f"<p>{answer}</p>" if answer else ""
+        return f'<section class="socratic-question-block"><h4>{question}</h4>{answer_html}</section>'
     elif node_type == "hardBreak":
         return "<br />"
     elif node_type == "horizontalRule":
@@ -688,7 +784,7 @@ async def get_module_detail(module_id: int, db: AsyncSession = Depends(get_db)):
                     "description": _get_lesson_preview(lesson),
                     "duration": lesson.read_time or 5,
                     "xpReward": lesson.xp_reward or 50,
-                    "type": "quiz" if lesson.quiz_questions else "article",
+                    "type": _lesson_type(lesson),
                     "createdAt": lesson.created_at.isoformat() if lesson.created_at else None,
                     "practiceSceneId": lesson.practice_scene_id
                 })
@@ -714,7 +810,7 @@ async def get_module_detail(module_id: int, db: AsyncSession = Depends(get_db)):
                 "description": _get_lesson_preview(lesson),
                 "duration": lesson.read_time or 5,
                 "xpReward": lesson.xp_reward or 50,
-                "type": "quiz" if lesson.quiz_questions else "article",
+                "type": _lesson_type(lesson),
                 "createdAt": lesson.created_at.isoformat() if lesson.created_at else None,
                 "practiceSceneId": lesson.practice_scene_id
             })
@@ -784,6 +880,7 @@ async def get_sub_module_detail(sub_module_id: int, db: AsyncSession = Depends(g
         for lesson in sorted(published_lessons, key=lambda x: (getattr(x, 'sort_order', 0), x.id)):
             # Convert TipTap JSON to HTML
             content_html = tiptap_to_html(lesson.content) if lesson.content else ""
+            quiz_questions = _lesson_quiz_questions(lesson)
 
             lessons_data.append({
                 "id": str(lesson.id),
@@ -792,8 +889,8 @@ async def get_sub_module_detail(sub_module_id: int, db: AsyncSession = Depends(g
                 "contentHtml": content_html,
                 "duration": lesson.read_time or 5,
                 "xpReward": lesson.xp_reward or 50,
-                "type": "quiz" if lesson.quiz_questions else "article",
-                "quizQuestions": lesson.quiz_questions if lesson.quiz_questions else [],
+                "type": _lesson_type(lesson),
+                "quizQuestions": quiz_questions,
                 "practiceSceneId": getattr(lesson, 'practice_scene_id', None),
                 "createdAt": lesson.created_at.isoformat() if lesson.created_at else None,
             })
@@ -894,8 +991,8 @@ async def get_lesson(lesson_id: int, db: AsyncSession = Depends(get_db)):
             "trackId": track_id,
             "duration": lesson.read_time or 5,
             "xpReward": lesson.xp_reward or 50,
-            "type": "quiz" if lesson.quiz_questions else "article",
-            "quizQuestions": lesson.quiz_questions if lesson.quiz_questions else [],
+            "type": _lesson_type(lesson),
+            "quizQuestions": _lesson_quiz_questions(lesson),
             "practiceSceneId": getattr(lesson, 'practice_scene_id', None),
             "createdAt": lesson.created_at.isoformat() if lesson.created_at else None,
             "siblings": siblings

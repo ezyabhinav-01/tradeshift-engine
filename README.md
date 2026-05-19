@@ -23,6 +23,7 @@
 - [✨ Vision & The Problem](#-vision--the-problem)
 - [🛠️ Core Features](#-core-features)
 - [🏗️ System Architecture](#-system-architecture)
+- [📚 Codebase Bible](#-codebase-bible)
 - [📸 Screenshots](#-screenshots)
 - [📦 Technology Stack](#-technology-stack)
 - [🚦 Getting Started](#-getting-started)
@@ -79,6 +80,14 @@ graph TD
 - **Ticker Synthesizer**: Converts historical bars into 60-tick per minute micro-movements.
 - **OMS (Order Management System)**: Tracks virtual positions, margins, and risk limits.
 - **Research Hub**: Provides institutional-grade fundamental deep dives via AI.
+
+## 📚 Codebase Bible
+
+If your goal is to master TradeShift as a full software system, start with:
+
+[`docs/TRADESHIFT_CODEBASE_BIBLE.md`](docs/TRADESHIFT_CODEBASE_BIBLE.md)
+
+It maps the frontend, backend, database, WebSockets, request flows, failure scenarios, debugging playbooks, and a staged ownership curriculum for learning the project deeply.
 
 ---
 

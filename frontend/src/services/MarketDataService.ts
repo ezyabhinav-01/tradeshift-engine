@@ -14,6 +14,42 @@ export class MarketDataService {
     private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     private lastConnectArgs: { speed: number; userId?: number; symbols?: string[]; symbol?: string; date?: string; startTime?: string } | null = null;
 
+    private emitNormalizedMessage(raw: any) {
+        if (!this.onMessageCallback) return;
+
+        if (raw?.t === 'T' && raw?.d) {
+            const d = raw.d;
+            this.onMessageCallback({
+                type: 'TICK',
+                data: {
+                    symbol: d.s,
+                    price: d.p,
+                    timestamp: new Date(Number(d.ts)).toISOString(),
+                    volume: d.v || 0,
+                },
+            });
+            return;
+        }
+
+        if (raw?.t === 'TB' && Array.isArray(raw?.ticks)) {
+            const symbol = raw.s;
+            raw.ticks.forEach((tick: any[]) => {
+                this.onMessageCallback?.({
+                    type: 'TICK',
+                    data: {
+                        symbol,
+                        price: tick[1],
+                        timestamp: new Date(Number(tick[0])).toISOString(),
+                        volume: tick[2] || 0,
+                    },
+                });
+            });
+            return;
+        }
+
+        this.onMessageCallback(raw);
+    }
+
 
     constructor(url?: string) {
         if (url) this.url = url;
@@ -50,6 +86,7 @@ export class MarketDataService {
                 ...(symbol ? { symbol } : {}),
                 ...(date ? { date } : {}),
                 ...(startTime ? { startTime } : {}),
+                protocol: 'compact-v1',
             });
 
         };
@@ -57,7 +94,7 @@ export class MarketDataService {
         this.ws.onmessage = (event) => {
             if (this.onMessageCallback) {
                 try {
-                    this.onMessageCallback(JSON.parse(event.data));
+                    this.emitNormalizedMessage(JSON.parse(event.data));
                 } catch (e) {
                     console.error('❌ Failed to parse WS message:', e);
                 }

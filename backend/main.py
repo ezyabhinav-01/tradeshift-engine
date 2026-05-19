@@ -135,6 +135,9 @@ try:
 except ImportError:
     logger.warning("⚠️ Warning: simulation.py not found. Using Mock Fallback.")
     class TickSynthesizer:
+        def __init__(self, seed=None):
+            self.seed = seed
+
         def generate_ticks(self, o, h, l, c, num_ticks=60):
             return [o] * num_ticks
 
@@ -162,6 +165,7 @@ from app.dependencies import admin_or_internal
 from app.runtime_guards import ProcessFileLock, TTLCache, RollingSuccessTracker, parse_cors_origins, should_record_activity
 from app.auth_side_effects import start_auth_side_effect_worker, stop_auth_side_effect_worker
 from app.session_store import get_cached_session_identity, cache_session_identity
+from app.replay.cache import ReplayRedisCache, REPLAY_CACHE_VERSION, epoch_ms, stable_seed
 
 # Background workload controls.
 RUN_BACKGROUND_JOBS = os.getenv("RUN_BACKGROUND_JOBS", "true").lower() in ("1", "true", "yes", "on")
@@ -227,6 +231,8 @@ REPLAY_START_ATTEMPTS = Counter("tradeshift_replay_start_attempts_total", "Repla
 REPLAY_START_SUCCESSES = Counter("tradeshift_replay_start_successes_total", "Replay websocket starts acknowledged with SPEED_ACK")
 REPLAY_START_FAILURES = Counter("tradeshift_replay_start_failures_total", "Replay websocket start failures before SPEED_ACK")
 REPLAY_START_SUCCESS_RATIO = Gauge("tradeshift_replay_start_success_ratio", "Rolling replay websocket SPEED_ACK success ratio")
+REPLAY_CACHE_HITS = Counter("tradeshift_replay_cache_hits_total", "Replay Redis cache hits", ["layer"])
+REPLAY_CACHE_MISSES = Counter("tradeshift_replay_cache_misses_total", "Replay Redis cache misses", ["layer"])
 
 
 async def _run_blocking(fn, *args, **kwargs):
@@ -237,6 +243,25 @@ async def _run_blocking(fn, *args, **kwargs):
 
 async def _safe_ws_send(websocket: WebSocket, payload: dict):
     await asyncio.wait_for(websocket.send_json(payload), timeout=WS_SEND_TIMEOUT_SECONDS)
+
+
+async def _send_market_tick(websocket: WebSocket, tick: dict, protocol: str = "legacy"):
+    if protocol == "compact-v1":
+        ts_ms = epoch_ms(tick["timestamp"])
+        await _safe_ws_send(
+            websocket,
+            {
+                "t": "T",
+                "d": {
+                    "s": tick.get("symbol"),
+                    "p": round(float(tick.get("price", 0)), 2),
+                    "ts": ts_ms,
+                    "v": int(tick.get("volume", 0) or 0),
+                },
+            },
+        )
+        return
+    await _safe_ws_send(websocket, {"type": "TICK", "data": tick})
 
 
 def _schedule_ws_send(websocket: WebSocket, payload: dict):
@@ -260,6 +285,55 @@ def _build_ticks_for_rows(synthesizer: TickSynthesizer, rows: dict, default_tick
             num_ticks=default_ticks,
         )
     return ticks
+
+
+def _minute_key_from_value(value) -> int:
+    return (epoch_ms(value) // 60000) * 60000
+
+
+def _build_replay_tick_map_sync(symbol: str, target_date: str, records: list[dict], default_ticks: int = 60) -> dict[int, list[float]]:
+    """
+    Return deterministic minute ticks keyed by minute epoch-ms.
+    Redis stores a compact flattened representation, while the streamer uses
+    per-candle lists for ordered replay and fast resume.
+    """
+    cache = globals().get("replay_redis_cache")
+    if cache:
+        cached_ticks = cache.get_ticks(symbol, target_date)
+        if cached_ticks:
+            REPLAY_CACHE_HITS.labels(layer="ticks").inc()
+            grouped: dict[int, list[float]] = {}
+            for compact in cached_ticks:
+                minute_key = (int(compact[0]) // 60000) * 60000
+                grouped.setdefault(minute_key, []).append(round(float(compact[1]), 2))
+            return grouped
+        REPLAY_CACHE_MISSES.labels(layer="ticks").inc()
+
+    seed = stable_seed("replay-ticks", REPLAY_CACHE_VERSION, symbol, target_date)
+    synthesizer = TickSynthesizer(seed=seed)
+    tick_map: dict[int, list[float]] = {}
+    compact_ticks = []
+
+    for record in records:
+        ts_value = record.get("datetime") or record.get("date") or record.get("time")
+        if ts_value is None:
+            continue
+        minute_key = _minute_key_from_value(ts_value)
+        ticks = synthesizer.generate_ticks(
+            float(record.get("open", 0)),
+            float(record.get("high", 0)),
+            float(record.get("low", 0)),
+            float(record.get("close", 0)),
+            num_ticks=default_ticks,
+        )
+        tick_map[minute_key] = ticks
+        volume = int(record.get("volume", 0) or 0)
+        for offset, price in enumerate(ticks):
+            compact_ticks.append([minute_key + (offset * 1000), round(float(price), 2), volume])
+
+    if cache:
+        cache.set_ticks(symbol, target_date, compact_ticks, candle_rows=len(records), seed=seed)
+    return tick_map
 
 
 @dataclass
@@ -329,7 +403,14 @@ def _build_replay_bootstrap_sync(symbol: str, target_date: str) -> ReplayBootstr
         return cached
 
     base_symbol = symbol.split("-")[0] if "-" in symbol else symbol
-    df_sym, _, _ = load_market_data_tiered(base_symbol, target_date, True)
+    cached_candles = replay_redis_cache.get_candles(base_symbol, target_date) if replay_redis_cache else None
+    if cached_candles:
+        REPLAY_CACHE_HITS.labels(layer="candles").inc()
+        df_sym = pd.DataFrame(cached_candles)
+        source_info = f"redis:{base_symbol}:{target_date}"
+    else:
+        REPLAY_CACHE_MISSES.labels(layer="candles").inc()
+        df_sym, source_info, _ = load_market_data_tiered(base_symbol, target_date, True)
     date_col = next((c for c in ["datetime", "date", "time"] if c in df_sym.columns), None)
     if not date_col:
         raise FileNotFoundError(f"No timestamp column found for {base_symbol} on {target_date}")
@@ -344,6 +425,8 @@ def _build_replay_bootstrap_sync(symbol: str, target_date: str) -> ReplayBootstr
     session_df = normalized_main[same_day_mask]
     if session_df.empty:
         raise FileNotFoundError(f"No replay rows found for {base_symbol} on {target_date}")
+    if replay_redis_cache and not cached_candles:
+        replay_redis_cache.set_candles(base_symbol, target_date, _records_from_frame(session_df), source_info)
 
     session_open = float(session_df.iloc[0].get("open", 0) or 0)
 
@@ -973,6 +1056,8 @@ else:
         logger.error(f"❌ Redis connection failed: {e}")
         redis_client = None
 
+replay_redis_cache = ReplayRedisCache(redis_client)
+
 # --- 4. HELPER FUNCTION: Load Parquet by Symbol ---
 def load_market_data_tiered(symbol: str, target_date: str = None, allow_fallback: bool = True):
     """
@@ -1099,8 +1184,14 @@ def _search_instruments_sync(query: str) -> list[dict]:
 
 def _available_symbols_sync() -> list[dict]:
     query = text("SELECT DISTINCT instrument FROM index_metadata ORDER BY instrument")
-    with ensure_sync_engine().connect() as conn:
-        rows = conn.execute(query).fetchall()
+    try:
+        with ensure_sync_engine().connect() as conn:
+            rows = conn.execute(query).fetchall()
+    except Exception as e:
+        logger.warning(f"⚠️ index_metadata symbols lookup failed, falling back to market_candles: {e}")
+        fallback_query = text("SELECT DISTINCT symbol FROM market_candles ORDER BY symbol")
+        with ensure_sync_engine().connect() as conn:
+            rows = conn.execute(fallback_query).fetchall()
     available_symbols = []
     for row in rows:
         symbol_part = row[0]
@@ -1145,7 +1236,7 @@ def _available_dates_sync(base_symbol: str) -> list[str]:
                 except Exception: # nosec
                     pass
     if local_dates:
-        return sorted(local_dates, reverse=True)
+        return sorted(set(local_dates), reverse=True)
 
     # Fallback to DB metadata only if no local files found
     try:
@@ -1166,9 +1257,33 @@ def _available_dates_sync(base_symbol: str) -> list[str]:
             """)
         with engine.connect() as conn:
             rows = conn.execute(query, {"symbol": base_symbol}).fetchall()
-        return [row[0] for row in rows]
+        dates = list(dict.fromkeys(row[0] for row in rows if row[0]))
+        if dates:
+            return dates
+        logger.info("📅 No index_metadata dates for %s, falling back to market_candles.", base_symbol)
     except Exception as e:
         logger.warning(f"⚠️ DB dates lookup failed for {base_symbol}: {e}")
+    try:
+        engine = ensure_sync_engine()
+        if engine.dialect.name == "sqlite":
+            query = text("""
+                SELECT DISTINCT strftime('%Y-%m-%d', timestamp) as date_str
+                FROM market_candles
+                WHERE symbol = :symbol
+                ORDER BY date_str DESC
+            """)
+        else:
+            query = text("""
+                SELECT DISTINCT TO_CHAR(timestamp, 'YYYY-MM-DD') as date_str
+                FROM market_candles
+                WHERE symbol = :symbol
+                ORDER BY date_str DESC
+            """)
+        with engine.connect() as conn:
+            rows = conn.execute(query, {"symbol": base_symbol}).fetchall()
+        return list(dict.fromkeys(row[0] for row in rows if row[0]))
+    except Exception as e:
+        logger.warning(f"⚠️ market_candles dates lookup failed for {base_symbol}: {e}")
         return []
 
 
@@ -1815,6 +1930,7 @@ async def websocket_endpoint(websocket: WebSocket):
     # NEW: Multiple symbols support
     main_iterators   = {}    # { "RELIANCE": iterator, "HDFCBANK": iterator }
     main_current_rows = {}   # { "RELIANCE": last_loaded_row }
+    main_tick_maps    = {}   # { "RELIANCE": {minute_epoch_ms: [tick prices]} }
     main_symbols     = []    # List of active symbols being streamed
     primary_symbol   = None  # The main symbol for OMS price updates
     
@@ -1826,6 +1942,7 @@ async def websocket_endpoint(websocket: WebSocket):
     news_delay_seconds = DEFAULT_DELAY_SECONDS
     news_replay_policy = DEFAULT_POLICY
     news_loader_task = None
+    ws_protocol = "legacy"
     replay_session_nonce = 0
     tick_time        = datetime.datetime.now()
     last_tick_price  = 0.0
@@ -1862,6 +1979,8 @@ async def websocket_endpoint(websocket: WebSocket):
                     news_delay_minutes = int(message.get("news_delay_minutes", 45))
                     news_delay_seconds = max(0, news_delay_minutes * 60)
                     news_replay_policy = str(message.get("news_replay_policy", DEFAULT_POLICY))
+                    requested_protocol = str(message.get("protocol", "legacy"))
+                    ws_protocol = "compact-v1" if requested_protocol == "compact-v1" else "legacy"
                     REPLAY_START_ATTEMPTS.inc()
                     
                     main_symbols = symbols_req
@@ -1877,6 +1996,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         continue
                     main_iterators = {}
                     main_current_rows = {}
+                    main_tick_maps = {}
                     main_symbol_opens = {}
 
                     # Determine exact start limit for simulation and backfill
@@ -1910,12 +2030,19 @@ async def websocket_endpoint(websocket: WebSocket):
                             ]
                             if filtered_records:
                                 main_iterators[symbol] = iter(filtered_records)
+                                main_tick_maps[symbol] = await _run_blocking(
+                                    _build_replay_tick_map_sync,
+                                    payload.symbol,
+                                    target_date,
+                                    records,
+                                )
                                 main_symbol_opens[symbol] = payload.session_open
                                 success_count += 1
                                 logger.info(
-                                    "✅ Replay bootstrap ready for %s with %s candles from cache-aware loader",
+                                    "✅ Replay bootstrap ready for %s with %s candles and %s cached minute paths",
                                     symbol,
                                     len(filtered_records),
+                                    len(main_tick_maps.get(symbol, {})),
                                 )
                         except Exception as e:
                             logger.error(f"⚠️ Failed to load {symbol}: {e}")
@@ -2132,7 +2259,15 @@ async def websocket_endpoint(websocket: WebSocket):
             # Generate ticks for ALL main symbols
             all_symbol_ticks = {}
             try:
-                all_symbol_ticks = await _run_blocking(_build_ticks_for_rows, synthesizer, main_current_rows, 60)
+                for sym, row in main_current_rows.items():
+                    ts_value = row.get("datetime") or row.get("date") or row.get("time")
+                    minute_key = _minute_key_from_value(ts_value)
+                    cached_path = (main_tick_maps.get(sym) or {}).get(minute_key)
+                    if cached_path:
+                        all_symbol_ticks[sym] = cached_path
+                    else:
+                        generated = await _run_blocking(_build_ticks_for_rows, synthesizer, {sym: row}, 60)
+                        all_symbol_ticks[sym] = generated.get(sym, [float(row.get("close", 0))] * 60)
             except Exception as e:
                 logger.error(f"⚠️ Main ticks generation failed, using candle close fallback: {e}")
                 for sym, row in main_current_rows.items():
@@ -2184,16 +2319,12 @@ async def websocket_endpoint(websocket: WebSocket):
                             if sym == primary_symbol and i + 1 < len(all_symbol_ticks.get(primary_symbol, [])):
                                 continue
                             try:
-                                await _safe_ws_send(websocket, {
-                                    "type": "TICK",
-                                    "data": {
-                                        "symbol": sym,
-                                        "price": round(float(ticks[i]), 2),
-                                        "timestamp": tick_time.isoformat() + "Z", # Force UTC suffix
-                                        "volume": int(main_current_rows[sym].get('volume', 0)),
-
-                                    }
-                                })
+                                await _send_market_tick(websocket, {
+                                    "symbol": sym,
+                                    "price": round(float(ticks[i]), 2),
+                                    "timestamp": tick_time.isoformat() + "Z",
+                                    "volume": int(main_current_rows[sym].get('volume', 0)),
+                                }, ws_protocol)
                             except Exception: break
 
                     # 3. Push INDICES_TICK (sync)
@@ -2274,8 +2405,12 @@ async def websocket_endpoint(websocket: WebSocket):
                     base_price_for_noise = max(abs(last_tick_price), 1.0)
                     vol_scale = base_price_for_noise * (0.00003 if speed <= 5 else 0.00005)
                     
-                    # Generate raw Brownian components
-                    raw_walk = [random.gauss(0, vol_scale) for _ in range(sub_steps)]
+                    # Generate deterministic Brownian components so replay version
+                    # + symbol + date + candle timestamp produce the same path.
+                    deterministic_rng = random.Random(
+                        stable_seed("subtick", REPLAY_CACHE_VERSION, primary_symbol, target_date, base_time.isoformat(), i)
+                    )
+                    raw_walk = [deterministic_rng.gauss(0, vol_scale) for _ in range(sub_steps)]
                     # Cumulative sum to get Brownian Motion
                     bm = []
                     curr_sum = 0
@@ -2347,17 +2482,12 @@ async def websocket_endpoint(websocket: WebSocket):
 
                             
                             try:
-                                # Send TICK
-                                await _safe_ws_send(websocket, {
-                                    "type": "TICK",
-                                    "data": {
-                                        "symbol": primary_symbol,
-                                        "price": round(interp_price, 2),
-                                        "timestamp": sub_tick_time.isoformat() + "Z", # Force UTC suffix
-                                        "volume": int(main_current_rows[primary_symbol].get('volume', 0)),
-
-                                    }
-                                })
+                                await _send_market_tick(websocket, {
+                                    "symbol": primary_symbol,
+                                    "price": round(interp_price, 2),
+                                    "timestamp": sub_tick_time.isoformat() + "Z",
+                                    "volume": int(main_current_rows[primary_symbol].get('volume', 0)),
+                                }, ws_protocol)
                                 
                                 # --- SYNC WITH PORTFOLIO/OMS ENGINE ---
                                 # This ensures /api/portfolio/positions sees the simulated price as the LTP

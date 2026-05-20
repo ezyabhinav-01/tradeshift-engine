@@ -34,7 +34,7 @@ if TEST_DB_PATH.exists():
     TEST_DB_PATH.unlink()
 
 from app.database import Base, get_session  # noqa: E402
-from app.models import PortfolioSnapshot, TradeLog, User, UserSession  # noqa: E402
+from app.models import CommunityChannel, CommunityMessage, PortfolioSnapshot, TradeLog, User, UserSession  # noqa: E402
 from app.session_store import clear_session_identity_cache  # noqa: E402
 from app.services.order_management import oms_service  # noqa: E402
 import main  # noqa: E402
@@ -75,7 +75,7 @@ def client(app):
 
 async def _reset_database_state():
     async with await get_session() as db:
-        for model in (PortfolioSnapshot, UserSession, TradeLog, User):
+        for model in (CommunityMessage, CommunityChannel, PortfolioSnapshot, UserSession, TradeLog, User):
             await db.execute(delete(model))
         await db.commit()
 

@@ -4,7 +4,7 @@
  * backend URL is automatically prepended in production.
  */
 
-export const API_BASE = 'https://20.40.42.232.nip.io';
+export const API_BASE = import.meta.env.VITE_API_URL || 'https://20.40.42.232.nip.io';
 
 /**
  * Drop-in replacement for fetch() that automatically prepends the API base URL.
@@ -28,6 +28,13 @@ export function apiUrl(path: string): string {
  */
 export function wsUrl(path: string): string {
   if (path.startsWith('ws')) return path;
+  if (import.meta.env.VITE_WS_URL) {
+    const base = new URL(import.meta.env.VITE_WS_URL);
+    base.pathname = path.startsWith('/') ? path : `/${path}`;
+    base.search = '';
+    base.hash = '';
+    return base.toString();
+  }
   const base = new URL(API_BASE);
   base.protocol = base.protocol === 'https:' ? 'wss:' : 'ws:';
   base.pathname = path.startsWith('/') ? path : `/${path}`;

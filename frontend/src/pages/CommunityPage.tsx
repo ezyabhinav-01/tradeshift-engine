@@ -20,6 +20,7 @@ import {
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
+import { wsUrl } from '../utils/api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -384,8 +385,7 @@ const CommunityPage = () => {
     let isAlive = true;
 
     const connect = () => {
-      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const socket = new WebSocket(`${proto}//${window.location.host}/ws/orders`);
+      const socket = new WebSocket(wsUrl('/ws/orders'));
 
       socket.onopen = () => {
         if (isAlive) socket.send(JSON.stringify({ user_id: user.id }));
@@ -485,10 +485,11 @@ const CommunityPage = () => {
       }
     }
 
-    // ── 3. Fallback/Persistence via HTTP ──
-    // We always call the API even if sent via WS to ensure persistence and get the final DB ID,
-    // unless we want to strictly use WS for sending. For now, calling both is safe as the 
-    // backend deduplicates or handles both gracefully.
+    // ── 3. HTTP fallback when the live socket is unavailable ──
+    // The WebSocket path broadcasts immediately and persists in the background.
+    // HTTP is only a fallback so one user action cannot create duplicate messages.
+    if (sentViaWS) return;
+
     try {
       const res = await axios.post('/api/community/messages', payload);
       // Swap stub with real confirmed message (has the real DB id)

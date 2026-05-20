@@ -21,6 +21,7 @@ import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
 import { wsUrl } from '../utils/api';
+import { Link } from 'react-router-dom';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -119,18 +120,18 @@ const LoginPromptModal = () => {
 
         {/* Actions */}
         <div className="px-8 pb-8 flex flex-col gap-3">
-          <a
-            href="/login"
+          <Link
+            to="/login"
             className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white transition-all hover:opacity-90 bg-gradient-to-tr from-indigo-500 to-indigo-600 shadow-xl shadow-indigo-500/20"
           >
             Log In to Continue
-          </a>
-          <a
-            href="/register"
+          </Link>
+          <Link
+            to="/signup"
             className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-white/10 hover:border-indigo-500/40 hover:text-indigo-500 transition-all"
           >
             Create an Account
-          </a>
+          </Link>
         </div>
       </div>
     </div>

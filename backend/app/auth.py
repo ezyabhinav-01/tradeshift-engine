@@ -170,6 +170,20 @@ async def clear_otp(db: AsyncSession, user: User):
     user.otp_expiry = None
     await db.commit()
 
+
+def queue_auth_side_effect(
+    background_tasks: BackgroundTasks,
+    name: str,
+    fn,
+    *args,
+    ai_related: bool = False,
+    **kwargs,
+) -> None:
+    queued = enqueue_auth_side_effect(name, fn, *args, ai_related=ai_related, **kwargs)
+    if not queued and not ai_related:
+        logger.warning("Auth side effect queue rejected '%s'; using FastAPI background task fallback.", name)
+        background_tasks.add_task(fn, *args, **kwargs)
+
 # --- ROUTES ---
 
 @router.post("/register/request")
@@ -220,7 +234,7 @@ async def register_request(
         db.add(db_user)
     
     otp = await generate_and_set_otp(db, db_user)
-    enqueue_auth_side_effect("signup_otp", send_signup_otp_email, db_user.email, otp)
+    queue_auth_side_effect(background_tasks, "signup_otp", send_signup_otp_email, db_user.email, otp)
     return {"message": "Verification code sent to your email."}
 
 @router.post("/register/verify")
@@ -271,7 +285,8 @@ async def register_set_pin(
         "risk_tolerance": user.risk_tolerance,
         "preferred_instruments": user.preferred_instruments
     }
-    enqueue_auth_side_effect(
+    queue_auth_side_effect(
+        background_tasks,
         "personalized_welcome_email",
         send_personalized_welcome_email,
         user.email,
@@ -308,7 +323,7 @@ async def login(
     
     if not db_user.is_verified:
         otp = await generate_and_set_otp(db, db_user)
-        enqueue_auth_side_effect("signup_otp", send_signup_otp_email, db_user.email, otp)
+        queue_auth_side_effect(background_tasks, "signup_otp", send_signup_otp_email, db_user.email, otp)
         return {
             "status": "REQUIRES_VERIFICATION",
             "message": "Email not verified. A new code has been sent.",
@@ -350,7 +365,7 @@ async def forgot_password(
         raise HTTPException(status_code=404, detail="No matching account found with these details.")
     
     otp = await generate_and_set_otp(db, user)
-    enqueue_auth_side_effect("password_reset_otp", send_otp_email, email=user.email, name=user.full_name, otp_code=otp)
+    queue_auth_side_effect(background_tasks, "password_reset_otp", send_otp_email, email=user.email, name=user.full_name, otp_code=otp)
     return {"message": "Verification code sent to your email."}
 
 @router.post("/verify-otp")
@@ -368,7 +383,7 @@ async def reset_password(
     user.hashed_password = await get_password_hash_async(request.new_password)
     await clear_otp(db, user)
     
-    enqueue_auth_side_effect("password_reset_success", send_password_reset_success_email, email=user.email, name=user.full_name)
+    queue_auth_side_effect(background_tasks, "password_reset_success", send_password_reset_success_email, email=user.email, name=user.full_name)
     return {"message": "Password updated successfully."}
 
 @router.post("/logout")
@@ -500,7 +515,7 @@ async def request_pin_reset_otp(
         raise HTTPException(status_code=404, detail="User not found.")
     
     otp = await generate_and_set_otp(db, user)
-    enqueue_auth_side_effect("pin_reset_otp", send_pin_reset_otp_email, email=user.email, name=user.full_name, otp_code=otp)
+    queue_auth_side_effect(background_tasks, "pin_reset_otp", send_pin_reset_otp_email, email=user.email, name=user.full_name, otp_code=otp)
     return {"message": "Verification code sent to your email."}
 
 @router.post("/pin-reset/verify")
@@ -519,7 +534,7 @@ async def confirm_pin_reset(
     await clear_otp(db, user)
     
     reset_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
-    enqueue_auth_side_effect("pin_reset_success", send_pin_reset_email, email=user.email, name=user.full_name, reset_at=reset_at)
+    queue_auth_side_effect(background_tasks, "pin_reset_success", send_pin_reset_email, email=user.email, name=user.full_name, reset_at=reset_at)
     return {"message": "Security PIN updated successfully."}
 
 @router.patch("/update-profile", response_model=UserSchema)

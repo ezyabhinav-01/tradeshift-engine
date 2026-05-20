@@ -89,6 +89,7 @@ function AppContent() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
+          <Route path="/register" element={<Signup />} />
           <Route path="/pin-verify" element={<PinVerification />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
 

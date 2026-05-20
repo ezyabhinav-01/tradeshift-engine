@@ -158,7 +158,8 @@ async def send_message(
         content=msg.content,
         channel_id=msg.channel_id,
         recipient_id=msg.recipient_id,
-        client_temp_id=msg.client_temp_id
+        client_temp_id=msg.client_temp_id,
+        wait_for_persist=True,
     )
 
     return Message(**ws_payload)

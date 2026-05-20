@@ -1841,7 +1841,8 @@ async def orders_websocket(websocket: WebSocket):
                         content=msg_data.get("content"),
                         channel_id=msg_data.get("channel_id"),
                         recipient_id=msg_data.get("recipient_id"),
-                        client_temp_id=msg_data.get("client_temp_id")
+                        client_temp_id=msg_data.get("client_temp_id"),
+                        wait_for_persist=False,
                     )
             except Exception as e:
                 logger.error(f"Error processing WS message: {e}")

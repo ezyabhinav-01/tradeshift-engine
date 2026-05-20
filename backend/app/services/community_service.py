@@ -15,12 +15,13 @@ async def process_and_broadcast_message(
     channel_id: int | None = None,
     recipient_id: int | None = None,
     client_temp_id: int | None = None,
+    wait_for_persist: bool = False,
 ):
     """
     Core logic for handling a new community or direct message:
     1. Resolve sender info
     2. Broadcast immediately with a temporary ID
-    3. Persist asynchronously and reconcile the saved DB ID
+    3. Persist after broadcast and reconcile the saved DB ID
     """
     if not content or not content.strip():
         raise ValueError("Message content cannot be empty")
@@ -60,16 +61,18 @@ async def process_and_broadcast_message(
         if recipient_id != sender_id:
             await order_manager.emit_to_user(sender_id, "direct_message", ws_payload)
 
-    asyncio.create_task(
-        _persist_message(
-            sender_id=sender_id,
-            content=content.strip(),
-            channel_id=channel_id,
-            recipient_id=recipient_id,
-            timestamp=now,
-            client_temp_id=temp_id,
-        )
+    persist_coro = _persist_message(
+        sender_id=sender_id,
+        content=content.strip(),
+        channel_id=channel_id,
+        recipient_id=recipient_id,
+        timestamp=now,
+        client_temp_id=temp_id,
     )
+    if wait_for_persist:
+        await persist_coro
+    else:
+        asyncio.create_task(persist_coro)
 
     return ws_payload
 

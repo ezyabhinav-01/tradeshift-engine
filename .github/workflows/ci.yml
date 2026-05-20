@@ -10,6 +10,7 @@ jobs:
   backend-tests:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
     steps:
@@ -35,6 +36,7 @@ jobs:
   frontend-tests:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         node-version: ["20.x", "22.x"]
     steps:

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTutorial } from '../../context/TutorialContext';
-import { X, ChevronRight, ChevronLeft } from 'lucide-react';
+import { X, ChevronRight, ChevronLeft, Sparkles } from 'lucide-react';
 
 export const TutorialOverlay: React.FC = () => {
   const { isActive, currentStep, currentStepIndex, totalSteps, nextStep, prevStep, skipTour } = useTutorial();
@@ -15,7 +15,7 @@ export const TutorialOverlay: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Compute position of target element
+  // Compute position of target element and keep it visible as the tour moves between pages.
   useEffect(() => {
     if (!isActive || !currentStep) return;
 
@@ -27,6 +27,7 @@ export const TutorialOverlay: React.FC = () => {
     const updateRect = () => {
       const el = document.querySelector(`[data-tutorial="${currentStep.targetId}"]`);
       if (el) {
+        el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
         setTargetRect(el.getBoundingClientRect());
       } else {
         setTargetRect(null);
@@ -34,9 +35,9 @@ export const TutorialOverlay: React.FC = () => {
     };
 
     updateRect();
-    const timer = setTimeout(updateRect, 500); // Wait for potential layout shifts
-    return () => clearTimeout(timer);
-  }, [isActive, currentStep, windowSize]);
+    const timers = [200, 550, 900].map((delay) => window.setTimeout(updateRect, delay));
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [isActive, currentStep, windowSize, currentStep?.route]);
 
   if (!isActive || !currentStep) return null;
 
@@ -51,18 +52,22 @@ export const TutorialOverlay: React.FC = () => {
 
   // Tooltip positioning logic
   const getTooltipPosition = () => {
+    const cardWidth = Math.min(420, windowSize.width - 32);
+
     if (!targetRect || !currentStep.targetId) {
       return { top: '50%', left: '50%', x: '-50%', y: '-50%' };
     }
 
     const placement = currentStep.placement || 'bottom';
     if (placement === 'bottom') {
-      return { top: y + height + 20, left: x + width / 2, x: '-50%', y: '0%' };
+      return { top: Math.min(y + height + 20, windowSize.height - 24), left: x + width / 2, x: '-50%', y: '0%' };
     } else if (placement === 'top') {
-      return { top: y - 20, left: x + width / 2, x: '-50%', y: '-100%' };
+      return { top: Math.max(y - 20, 24), left: x + width / 2, x: '-50%', y: '-100%' };
     } else if (placement === 'left') {
+      if (x < cardWidth + 48) return { top: y + height + 20, left: x + width / 2, x: '-50%', y: '0%' };
       return { top: y + height / 2, left: x - 20, x: '-100%', y: '-50%' };
     } else if (placement === 'right') {
+      if (x + width + cardWidth + 48 > windowSize.width) return { top: y + height + 20, left: x + width / 2, x: '-50%', y: '0%' };
       return { top: y + height / 2, left: x + width + 20, x: '0%', y: '-50%' };
     } else {
       return { top: '50%', left: '50%', x: '-50%', y: '-50%' }; // center fallback
@@ -73,9 +78,11 @@ export const TutorialOverlay: React.FC = () => {
 
   // If tooltip goes out of bounds horizontally, adjust it
   let clampedLeft = tooltipPos.left;
+  const cardWidth = Math.min(420, windowSize.width - 32);
   if (typeof clampedLeft === 'number') {
-      if (clampedLeft < 170) clampedLeft = 170; 
-      if (clampedLeft > windowSize.width - 170) clampedLeft = windowSize.width - 170;
+      const halfWidth = cardWidth / 2 + 16;
+      if (clampedLeft < halfWidth) clampedLeft = halfWidth; 
+      if (clampedLeft > windowSize.width - halfWidth) clampedLeft = windowSize.width - halfWidth;
   }
 
   return (
@@ -108,9 +115,8 @@ export const TutorialOverlay: React.FC = () => {
               <rect
                 width="100%"
                 height="100%"
-                fill="rgba(2, 6, 23, 0.85)"
+                fill="rgba(2, 6, 23, 0.88)"
                 mask="url(#tutorial-mask)"
-                onClick={skipTour}
               />
             </svg>
 
@@ -140,25 +146,28 @@ export const TutorialOverlay: React.FC = () => {
               }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
               transition={{ type: 'spring', bounce: 0.3, duration: 0.6 }}
-              className="absolute w-[360px] bg-slate-900/90 dark:bg-black/80 backdrop-blur-2xl border border-white/20 shadow-[0_20px_50px_rgba(0,0,0,0.5)] rounded-3xl p-7 text-white overflow-hidden"
-              style={{ pointerEvents: 'auto' }}
+              className="absolute max-h-[calc(100vh-2rem)] overflow-y-auto bg-slate-950/95 dark:bg-black/90 backdrop-blur-2xl border border-white/20 shadow-[0_24px_70px_rgba(0,0,0,0.55)] rounded-3xl p-6 sm:p-7 text-white"
+              style={{ pointerEvents: 'auto', width: cardWidth }}
             >
-              {/* Decorative Gradient Background */}
-              <div className="absolute top-0 right-0 w-32 h-32 bg-tv-primary/10 blur-3xl -mr-16 -mt-16 pointer-events-none" />
+              <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-tv-primary via-cyan-400 to-emerald-400" />
+              <div className="absolute top-0 right-0 w-40 h-40 bg-tv-primary/10 blur-3xl -mr-20 -mt-20 pointer-events-none" />
               
               <button 
                 onClick={skipTour}
-                className="absolute top-4 right-4 text-white/30 hover:text-white transition-colors p-1"
+                className="absolute top-4 right-4 text-white/40 hover:text-white transition-colors p-1 rounded-full hover:bg-white/10"
+                aria-label="Skip tutorial"
               >
                 <X size={18} />
               </button>
 
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-2xl bg-tv-primary/20 flex items-center justify-center text-tv-primary border border-tv-primary/30">
-                  <span className="text-sm font-black italic">!</span>
+                <div className="w-10 h-10 rounded-2xl bg-tv-primary/20 flex items-center justify-center text-tv-primary border border-tv-primary/30 shadow-[0_0_24px_rgba(41,98,255,0.22)]">
+                  <Sparkles size={18} />
                 </div>
                 <div>
-                  <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-tv-primary/80">Guide Insights</h4>
+                  <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-tv-primary/80">
+                    {currentStep.focusLabel || 'Guide Insight'}
+                  </h4>
                   <div className="flex gap-1 mt-1">
                     {Array.from({ length: totalSteps }).map((_, i) => (
                       <div 
@@ -171,22 +180,23 @@ export const TutorialOverlay: React.FC = () => {
               </div>
               
               <h3 className="text-xl font-black mb-3 text-white tracking-tight">{currentStep.title}</h3>
-              <p className="text-[14px] text-slate-300 mb-8 leading-relaxed font-medium">
+              <p className="text-[14px] text-slate-300 mb-7 leading-relaxed font-medium">
                 {currentStep.content}
               </p>
 
-              <div className="flex items-center justify-between mt-auto">
+              <div className="flex flex-col sm:flex-row gap-4 sm:items-center sm:justify-between mt-auto">
                 <button
                   onClick={skipTour}
-                  className="text-xs font-bold text-slate-500 hover:text-white transition-colors uppercase tracking-widest px-2"
+                  className="text-xs font-bold text-slate-500 hover:text-white transition-colors uppercase tracking-widest px-2 text-left"
                 >
-                  Skip Guide
+                  Skip
                 </button>
-                <div className="flex gap-3">
+                <div className="flex gap-3 justify-end">
                   {currentStepIndex > 0 && (
                     <button
                       onClick={prevStep}
                       className="w-10 h-10 flex items-center justify-center rounded-2xl bg-white/5 hover:bg-white/10 text-white transition-all active:scale-90 border border-white/10"
+                      aria-label="Previous tutorial step"
                     >
                       <ChevronLeft size={20} />
                     </button>

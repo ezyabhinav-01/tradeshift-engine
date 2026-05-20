@@ -179,7 +179,7 @@ const NewsPage: React.FC = () => {
         </div>
 
         {/* Categories Tab Bar */}
-        <div className="mb-8 p-1 bg-white/5 backdrop-blur-md border border-white/5 rounded-2xl inline-flex items-center gap-1 animate-in fade-in duration-1000 delay-300">
+        <div data-tutorial="news-categories" className="mb-8 p-1 bg-white/5 backdrop-blur-md border border-white/5 rounded-2xl inline-flex items-center gap-1 animate-in fade-in duration-1000 delay-300">
           {CATEGORIES.map((cat) => (
             <button
               key={cat}
@@ -210,7 +210,7 @@ const NewsPage: React.FC = () => {
 
             {/* Hero / Featured News */}
             {activeCategory === 'all' && featuredNews && (
-              <div className="group relative w-full min-h-[450px] lg:min-h-[550px] flex flex-col justify-end rounded-3xl overflow-hidden border border-white/10 hover:border-emerald-500/50 transition-all duration-700 animate-in fade-in slide-in-from-bottom duration-1000 shadow-2xl hover:shadow-emerald-500/10">
+              <div data-tutorial="news-featured" className="group relative w-full min-h-[450px] lg:min-h-[550px] flex flex-col justify-end rounded-3xl overflow-hidden border border-white/10 hover:border-emerald-500/50 transition-all duration-700 animate-in fade-in slide-in-from-bottom duration-1000 shadow-2xl hover:shadow-emerald-500/10">
 
                 <img
                   src={heroImg}

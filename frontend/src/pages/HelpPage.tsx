@@ -9,10 +9,18 @@ import {
   Send,
   AlertCircle,
   Mail,
-  Star
+  Star,
+  PlayCircle,
+  Map,
+  BookOpen,
+  Briefcase,
+  Newspaper,
+  Users,
+  Filter,
+  LineChart
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { useTutorial } from '../context/TutorialContext';
+import { useTutorial, type TourId } from '../context/TutorialContext';
 
 const categories = [
   {
@@ -48,6 +56,62 @@ const faqs = [
     question: "Can I use Tradeshift for real trading?",
     answer: "Tradeshift is currently a simulation platform for educational and research purposes. We do not support live trading yet."
   }
+];
+
+const tutorialLaunchers: Array<{
+  id: TourId;
+  title: string;
+  description: string;
+  icon: React.ElementType;
+}> = [
+  {
+    id: 'global',
+    title: 'Complete Welcome Tour',
+    description: 'Best for new users. Walk through the full learning-to-trading flow across the app.',
+    icon: Map,
+  },
+  {
+    id: 'markets',
+    title: 'Markets',
+    description: 'Understand indices, heatmaps, sectors, F&O, gainers, and losers before choosing trades.',
+    icon: TrendingUp,
+  },
+  {
+    id: 'screener',
+    title: 'Screener',
+    description: 'Learn how to shortlist stocks with filters, conviction, fundamentals, and research cards.',
+    icon: Filter,
+  },
+  {
+    id: 'learn',
+    title: 'Academy',
+    description: 'Use modules, streaks, badges, XP, and lessons to build confidence from zero.',
+    icon: BookOpen,
+  },
+  {
+    id: 'trade',
+    title: 'Trading Terminal',
+    description: 'Practice chart reading, indicators, replay, and paper orders without risking real money.',
+    icon: LineChart,
+  },
+  {
+    id: 'portfolio',
+    title: 'Portfolio',
+    description: 'Review cash, positions, orders, diversification, P&L, and trade history.',
+    icon: Briefcase,
+  },
+  {
+    id: 'news',
+    title: 'News & AI',
+    description: 'Use headlines and AI perspective to understand what may be moving sentiment.',
+    icon: Newspaper,
+  },
+  {
+    id: 'community',
+    title: 'Community',
+    description: 'Ask better questions, discuss setups, and learn how to use channels and DMs.',
+    icon: Users,
+  },
 ];
 
 const HelpPage = () => {
@@ -192,6 +256,48 @@ const HelpPage = () => {
               </ul>
             </div>
           ))}
+        </div>
+
+        {/* Tutorial Library */}
+        <div data-tutorial="help-tutorials" className="mt-12 max-w-5xl mx-auto bg-white dark:bg-[#131722] border border-slate-200 dark:border-white/5 rounded-3xl p-6 sm:p-8 shadow-sm">
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-5 mb-7">
+            <div>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-tv-primary/10 text-tv-primary text-[10px] font-black uppercase tracking-[0.2em] mb-3">
+                <PlayCircle size={14} />
+                Tutorial Library
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 dark:text-white">Replay guided walkthroughs</h2>
+              <p className="mt-2 max-w-2xl text-sm sm:text-base text-slate-500 dark:text-slate-400 leading-relaxed">
+                New users get the welcome tour automatically after signup. Existing users can restart it here anytime, or choose a focused page guide.
+              </p>
+            </div>
+            <button
+              onClick={() => startTour('global')}
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-tv-primary text-white text-sm font-black hover:bg-tv-primary/90 transition-all active:scale-95 shadow-lg shadow-tv-primary/20"
+            >
+              Start Full Tour
+              <ChevronRight size={18} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            {tutorialLaunchers.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => startTour(item.id)}
+                className="group text-left rounded-2xl border border-slate-200 dark:border-white/8 bg-slate-50 dark:bg-white/[0.03] p-4 hover:border-tv-primary/40 hover:bg-tv-primary/5 transition-all"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-tv-primary/10 text-tv-primary flex items-center justify-center group-hover:scale-105 transition-transform">
+                    <item.icon size={18} />
+                  </div>
+                  <ChevronRight size={16} className="text-slate-300 dark:text-slate-600 group-hover:text-tv-primary group-hover:translate-x-1 transition-all" />
+                </div>
+                <h3 className="mt-4 text-sm font-black text-slate-900 dark:text-white">{item.title}</h3>
+                <p className="mt-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">{item.description}</p>
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Contact Us 24x7 */}

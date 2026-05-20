@@ -553,6 +553,7 @@ const CommunityPage = () => {
 
       {/* ── Sidebar ─────────────────────────────────────────────────────────── */}
       <aside
+        data-tutorial="community-sidebar"
         className={`fixed inset-y-0 left-0 z-40 w-[260px] flex flex-col shrink-0 border-r border-slate-200 dark:border-white/5 bg-slate-50 dark:bg-[#0a0a0a] transition-transform duration-300 lg:relative lg:translate-x-0 ${
           isSidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
         }`}
@@ -911,7 +912,7 @@ const CommunityPage = () => {
 
         {/* Input area */}
         {(activeChannel || activeDMUser) && (
-          <div className="px-4 pb-4 pt-2 shrink-0">
+          <div data-tutorial="community-compose" className="px-4 pb-4 pt-2 shrink-0">
             <div
               className="rounded-2xl border border-slate-200 dark:border-white/8 transition-all shadow-2xl bg-slate-50 dark:bg-[#1a1d24]"
             >

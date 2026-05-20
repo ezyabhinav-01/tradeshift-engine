@@ -294,7 +294,7 @@ const MarketPage: React.FC = () => {
       />
 
       {/* Main Tabs */}
-      <Tabs defaultValue="overview" onValueChange={(val: string) => setActiveTab(val as any)} className="w-full">
+      <Tabs defaultValue="overview" onValueChange={(val: string) => setActiveTab(val as any)} className="w-full" data-tutorial="market-overview">
         <TabsList className="bg-slate-100 dark:bg-black/40 border border-slate-200 dark:border-white/10 p-1 mb-1 shadow-sm dark:shadow-none">
           {[
             { id: 'overview', label: 'Overview', icon: <Activity className="w-4 h-4" /> },
@@ -330,7 +330,7 @@ const MarketPage: React.FC = () => {
           />
 
           {/* Movers Section */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6" data-tutorial="market-movers">
 
             {/* Top Gainers */}
             <MoversTable 

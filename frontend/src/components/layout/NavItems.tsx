@@ -73,6 +73,7 @@ export const NavItems = ({ isMobile, onItemClick }: { isMobile?: boolean, onItem
                     <div className={`${isMobile ? 'static flex flex-col gap-2 mt-3 pl-2 border-l-2 border-slate-200 dark:border-white/10 w-full' : 'absolute right-0 top-full mt-2 z-[100] min-w-[200px] bg-white dark:bg-[#1e222d] rounded-xl p-1.5 shadow-2xl border border-slate-200 dark:border-[#2a2e39] animate-in fade-in zoom-in-95 duration-200'}`}>
                         <Link
                             to="/news"
+                            data-tutorial="nav-news"
                             onClick={() => { setIsMoreOpen(false); handleItemClick(); }}
                             className={`flex items-center gap-2 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg transition-colors outline-none cursor-pointer ${isMobile ? 'w-full' : ''}`}
                         >
@@ -95,6 +96,7 @@ export const NavItems = ({ isMobile, onItemClick }: { isMobile?: boolean, onItem
 
                         <Link
                             to="/help"
+                            data-tutorial="nav-help"
                             onClick={() => {
                                 setIsMoreOpen(false);
                                 handleItemClick();

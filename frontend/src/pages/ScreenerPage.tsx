@@ -264,7 +264,7 @@ const ScreenerPage: React.FC = () => {
 
         <TabsContent value="multibagger" className="space-y-8 mt-0">
           {/* Filters, Search & Sorting */}
-          <div className="flex flex-col lg:flex-row gap-6 items-center justify-between bg-white/30 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 p-4 rounded-md backdrop-blur-sm">
+          <div data-tutorial="screener-controls" className="flex flex-col lg:flex-row gap-6 items-center justify-between bg-white/30 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 p-4 rounded-md backdrop-blur-sm">
             <div className="flex flex-wrap gap-2 w-full lg:w-auto">
               {['All', 'Banking', 'Energy', 'IT', 'Consumer', 'FMCG'].map(cat => (
                 <Button
@@ -318,7 +318,7 @@ const ScreenerPage: React.FC = () => {
               </p>
             </div>
           ) : (
-            <div ref={containerRef} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:m-3 screener-grid-group">
+            <div ref={containerRef} data-tutorial="screener-results" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:m-3 screener-grid-group">
               {filteredCandidates.map((stock) => (
                 <div
                   key={stock.symbol}

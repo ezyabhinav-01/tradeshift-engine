@@ -610,7 +610,7 @@ export default function LearnPage() {
             </div>
 
             {/* Right: Stats cards */}
-            <div className="flex items-center gap-6 flex-wrap justify-center">
+            <div data-tutorial="learn-progress" className="flex items-center gap-6 flex-wrap justify-center">
               {/* XP Ring */}
               <div className="flex flex-col items-center gap-2">
                 <XPRing xp={isGuest ? 0 : totalXP} level={isGuest ? 1 : level} />

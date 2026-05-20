@@ -19,10 +19,16 @@ async def process_and_broadcast_message(
     """
     Core logic for handling a new community or direct message:
     1. Resolve sender info
-    2. Persist the message
-    3. Broadcast via WebSocket
+    2. Broadcast immediately with a temporary ID
+    3. Persist asynchronously and reconcile the saved DB ID
     """
+    if not content or not content.strip():
+        raise ValueError("Message content cannot be empty")
+    if bool(channel_id) == bool(recipient_id):
+        raise ValueError("Message must target exactly one channel or recipient")
+
     now = datetime.utcnow()
+    temp_id = client_temp_id or -int(now.timestamp() * 1000)
     
     # 1. Resolve sender name
     db = await get_session()
@@ -35,47 +41,54 @@ async def process_and_broadcast_message(
     finally:
         await db.close()
 
-    # 2. Persist before broadcasting so realtime consumers never see a
-    # message that is not yet queryable from history/contacts endpoints.
-    db_msg = await _persist_message(
-        sender_id=sender_id,
-        content=content,
-        channel_id=channel_id,
-        recipient_id=recipient_id,
-        timestamp=now,
-        client_temp_id=client_temp_id,
-    )
-
-    # 3. Prepare broadcast payload
-    # Use client_temp_id if provided (and ensure it's negative to denote 'not yet saved')
-    msg_id = db_msg.id
-    
     ws_payload = {
-        "id": msg_id,
-        "content": content,
+        "id": temp_id,
+        "client_temp_id": temp_id,
+        "content": content.strip(),
         "sender_id": sender_id,
         "sender_name": sender_name,
         "channel_id": channel_id,
         "recipient_id": recipient_id,
-        "timestamp": db_msg.timestamp.isoformat(),
+        "timestamp": now.isoformat(),
     }
 
-    # 4. Broadcast after persistence
+    # Broadcast first so active clients see the message without waiting for DB I/O.
     if channel_id:
-        asyncio.create_task(
-            order_manager.emit_to_channel(channel_id, "community_message", ws_payload)
-        )
+        await order_manager.emit_to_channel(channel_id, "community_message", ws_payload)
     elif recipient_id:
-        # Broadcast to both recipient and sender (for sync across multiple tabs)
-        asyncio.create_task(
-            order_manager.emit_to_user(recipient_id, "direct_message", ws_payload)
-        )
+        await order_manager.emit_to_user(recipient_id, "direct_message", ws_payload)
         if recipient_id != sender_id:
-            asyncio.create_task(
-                order_manager.emit_to_user(sender_id, "direct_message", ws_payload)
-            )
-    
+            await order_manager.emit_to_user(sender_id, "direct_message", ws_payload)
+
+    asyncio.create_task(
+        _persist_message(
+            sender_id=sender_id,
+            content=content.strip(),
+            channel_id=channel_id,
+            recipient_id=recipient_id,
+            timestamp=now,
+            client_temp_id=temp_id,
+        )
+    )
+
     return ws_payload
+
+
+async def _emit_persistence_status(
+    sender_id: int,
+    channel_id: int | None,
+    recipient_id: int | None,
+    payload: dict,
+) -> None:
+    if channel_id:
+        await order_manager.emit_to_channel(channel_id, "community_message_status", payload)
+    elif recipient_id:
+        await order_manager.emit_to_user(recipient_id, "community_message_status", payload)
+        if recipient_id != sender_id:
+            await order_manager.emit_to_user(sender_id, "community_message_status", payload)
+    else:
+        await order_manager.emit_to_user(sender_id, "community_message_status", payload)
+
 
 async def _persist_message(
     sender_id: int,
@@ -98,11 +111,12 @@ async def _persist_message(
         await db.commit()
         await db.refresh(db_msg)
 
-        # Notify the sender that it was saved and give them the real ID
+        # Notify all viewers of this realtime message so temporary IDs become DB IDs.
         if client_temp_id is not None:
-            await order_manager.emit_to_user(
+            await _emit_persistence_status(
                 sender_id,
-                "community_message_status",
+                channel_id,
+                recipient_id,
                 {
                     "client_temp_id": client_temp_id,
                     "saved": True,
@@ -114,9 +128,10 @@ async def _persist_message(
     except Exception as exc:
         logger.exception("❌ Failed to persist community message: %s", exc)
         if client_temp_id is not None:
-            await order_manager.emit_to_user(
+            await _emit_persistence_status(
                 sender_id,
-                "community_message_status",
+                channel_id,
+                recipient_id,
                 {
                     "client_temp_id": client_temp_id,
                     "saved": False,

@@ -365,6 +365,7 @@ const CommunityPage = () => {
       if (msg.id > 0) {
         // Find stub by client_temp_id if it exists, otherwise fallback to content match
         const stubIdx = prev.findIndex((m) => 
+          (msg.client_temp_id !== undefined && m.client_temp_id === msg.client_temp_id) ||
           (m.id < 0 && m.content === msg.content && m.sender_id === msg.sender_id)
         );
         
@@ -396,12 +397,17 @@ const CommunityPage = () => {
         if (!isAlive) return;
         const payload = JSON.parse(event.data);
         if (payload.type === 'community_message_status') {
-          const status = payload.data as { client_temp_id: number; saved: boolean; server_id?: number };
+          const status = payload.data as { client_temp_id: number; saved: boolean; server_id?: number; timestamp?: string };
           setMessages((prev) =>
             prev.map((m) => {
-              if (m.id !== status.client_temp_id) return m;
+              if (m.id !== status.client_temp_id && m.client_temp_id !== status.client_temp_id) return m;
               if (status.saved && status.server_id) {
-                return { ...m, id: status.server_id, delivery_status: 'sent' };
+                return {
+                  ...m,
+                  id: status.server_id,
+                  timestamp: status.timestamp || m.timestamp,
+                  delivery_status: 'sent',
+                };
               }
               return { ...m, delivery_status: 'failed' };
             })
@@ -471,6 +477,7 @@ const CommunityPage = () => {
         timestamp: new Date().toISOString(),
         channel_id: activeChannel?.id,
         recipient_id: activeDMUser?.id,
+        client_temp_id: tempId,
         delivery_status: 'sending' as const,
       },
     ]);

@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Bell, Check, Info, AlertTriangle, AlertCircle, CheckCheck, RefreshCw } from 'lucide-react';
-import { getNotifications, markAsRead, markAllAsRead, type Notification } from '../../services/NotificationService';
-import { useAuth } from '../../context/AuthContext';
+import { useNotifications } from '../../context/NotificationContext';
 
 interface NotificationDropdownProps {
   isOpen: boolean;
@@ -9,47 +8,15 @@ interface NotificationDropdownProps {
 }
 
 export function NotificationDropdown({ isOpen, onClose }: NotificationDropdownProps) {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const { user } = useAuth();
+  const { notifications, loading, markAsRead, markAllAsRead } = useNotifications();
   const [activeTab, setActiveTab] = useState<'official' | 'personal'>('official');
 
-  useEffect(() => {
-    if (isOpen && user) {
-      loadNotifications();
-    }
-  }, [isOpen, user]);
-
-  const loadNotifications = async () => {
-    try {
-      setIsLoading(true);
-      const data = await getNotifications();
-      setNotifications(data);
-    } catch (error) {
-      console.error("Failed to fetch notifications", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const handleMarkAsRead = async (id: number) => {
-    try {
-      await markAsRead(id);
-      setNotifications(notifications.map(n => 
-        n.id === id ? { ...n, is_read: true } : n
-      ));
-    } catch (error) {
-      console.error("Failed to mark as read", error);
-    }
+    await markAsRead(id);
   };
 
   const handleMarkAllAsRead = async () => {
-    try {
-      await markAllAsRead();
-      setNotifications(notifications.map(n => ({ ...n, is_read: true })));
-    } catch (error) {
-      console.error("Failed to mark all as read", error);
-    }
+    await markAllAsRead();
   };
 
   if (!isOpen) return null;
@@ -132,7 +99,7 @@ export function NotificationDropdown({ isOpen, onClose }: NotificationDropdownPr
 
         {/* List */}
         <div className="max-h-[420px] overflow-y-auto custom-scrollbar">
-          {isLoading ? (
+          {loading ? (
             <div className="p-12 flex justify-center">
               <RefreshCw className="w-6 h-6 text-indigo-500 animate-spin" />
             </div>

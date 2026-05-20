@@ -1308,7 +1308,7 @@ export const ProChart: React.FC<ProChartProps> = ({
       className={`relative w-full h-full bg-transparent overflow-hidden ${isPrimary ? 'pl-12' : 'pl-0'} flex flex-col`}
       data-chart-id={chartId}
     >
-      <div className="absolute top-4 left-16 z-40 flex flex-col gap-0.5 pointer-events-none select-none min-w-[300px]">
+      <div data-tutorial="trade-ohlc-readout" className="absolute top-4 left-16 z-40 flex flex-col gap-0.5 pointer-events-none select-none min-w-[300px]">
         {/* Symbol and OHLC Row */}
         <div className="flex items-center gap-2 px-1 py-0.5 rounded-sm">
           <div className="flex items-center gap-1.5">
@@ -1347,7 +1347,7 @@ export const ProChart: React.FC<ProChartProps> = ({
 
         {/* Trade Buttons Row - Primary only */}
         {isPrimary && (
-        <div className="flex items-center gap-1 pointer-events-auto ml-1">
+        <div data-tutorial="trade-buy-sell" className="flex items-center gap-1 pointer-events-auto ml-1">
           <div 
             className="flex flex-col items-center justify-center border border-[#f23645] bg-[#f23645]/5 rounded-[3px] px-2.5 py-0.5 cursor-pointer hover:bg-[#f23645]/15 group transition-colors min-w-[65px]" 
             onClick={(e) => {
@@ -1391,6 +1391,7 @@ export const ProChart: React.FC<ProChartProps> = ({
       />
 
       {isPrimary && (
+      <div data-tutorial="trade-drawing-tools">
       <ErrorBoundary name="DrawingToolbar">
         <DrawingToolbar 
           activeTool={activeTool}
@@ -1406,6 +1407,7 @@ export const ProChart: React.FC<ProChartProps> = ({
           onZoomOut={zoomOut}
         />
       </ErrorBoundary>
+      </div>
       )}
 
       {isPrimary && (
@@ -1486,6 +1488,7 @@ export const ProChart: React.FC<ProChartProps> = ({
       {isPrimary && quickActionPrice !== null && quickActionY !== null && (
         <>
           <button
+            data-tutorial="trade-quick-actions"
             type="button"
             onMouseEnter={() => setIsQuickMenuInteracting(true)}
             onMouseLeave={() => setIsQuickMenuInteracting(false)}
@@ -1579,7 +1582,7 @@ export const ProChart: React.FC<ProChartProps> = ({
         </>
       )}
 
-      <div ref={chartContainerRef} className="w-full h-full" />
+      <div ref={chartContainerRef} data-tutorial="trade-candle-canvas" className="w-full h-full" />
     </div>
   );
 };

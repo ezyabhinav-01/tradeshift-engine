@@ -9,6 +9,13 @@ import {
   TrendingDown,
   MousePointer2,
   Activity,
+  Newspaper,
+  Users,
+  HelpCircle,
+  Search,
+  LayoutGrid,
+  CalendarDays,
+  Sparkles as SparklesIcon,
 } from 'lucide-react';
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
@@ -29,13 +36,22 @@ export const TutorialOverlay: React.FC = () => {
   useEffect(() => {
     if (!isActive || !currentStep) return;
 
+    if (['nav-more', 'nav-news', 'nav-community', 'nav-help'].includes(currentStep.targetId || '')) {
+      window.dispatchEvent(new Event('tutorial:open-more-menu'));
+    }
+
     if (!currentStep.targetId) {
       setTargetRect(null);
       return;
     }
 
     const updateRect = () => {
-      const el = document.querySelector(`[data-tutorial="${currentStep.targetId}"]`);
+      const candidates = Array.from(document.querySelectorAll(`[data-tutorial="${currentStep.targetId}"]`));
+      const el = candidates.find((node) => {
+        const rect = node.getBoundingClientRect();
+        const style = window.getComputedStyle(node);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+      });
       if (el) {
         el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
         setTargetRect(el.getBoundingClientRect());
@@ -125,6 +141,31 @@ export const TutorialOverlay: React.FC = () => {
   const tooltipPos = getTooltipPosition();
   const sentimentTone = currentStepIndex % 3 === 1 ? 'bearish' : currentStepIndex % 3 === 2 ? 'neutral' : 'bullish';
   const coachMetric = sentimentTone === 'bearish' ? '-0.84%' : sentimentTone === 'neutral' ? 'Risk Check' : '+1.26%';
+  const targetKey = currentStep.targetId || currentStep.title.toLowerCase();
+  const coachVariant = targetKey.includes('news') ? 'news'
+    : targetKey.includes('community') ? 'community'
+      : targetKey.includes('help') ? 'help'
+        : targetKey.includes('search') || targetKey.includes('symbol') ? 'search'
+          : targetKey.includes('replay') || targetKey.includes('date') ? 'replay'
+            : targetKey.includes('split') || targetKey.includes('layout') ? 'layout'
+              : targetKey.includes('portfolio') ? 'portfolio'
+                : targetKey.includes('learn') || targetKey.includes('track') ? 'learn'
+                  : targetKey.includes('market') || targetKey.includes('ticker') ? 'market'
+                    : 'trade';
+
+  const coachMeta = {
+    trade: { icon: Activity, ring: 'from-blue-500/35 to-cyan-400/20', body: 'bg-blue-500/75', line: 'bg-emerald-400/50' },
+    market: { icon: TrendingUp, ring: 'from-emerald-500/35 to-cyan-400/20', body: 'bg-emerald-500/75', line: 'bg-emerald-300/55' },
+    news: { icon: Newspaper, ring: 'from-amber-400/35 to-orange-500/20', body: 'bg-amber-500/80', line: 'bg-amber-200/70' },
+    community: { icon: Users, ring: 'from-violet-500/35 to-fuchsia-500/20', body: 'bg-violet-500/80', line: 'bg-fuchsia-200/60' },
+    help: { icon: HelpCircle, ring: 'from-sky-400/35 to-blue-500/20', body: 'bg-sky-500/80', line: 'bg-sky-200/60' },
+    search: { icon: Search, ring: 'from-cyan-400/35 to-blue-500/20', body: 'bg-cyan-500/80', line: 'bg-cyan-200/70' },
+    replay: { icon: CalendarDays, ring: 'from-indigo-400/35 to-blue-500/20', body: 'bg-indigo-500/80', line: 'bg-indigo-200/70' },
+    layout: { icon: LayoutGrid, ring: 'from-slate-300/30 to-blue-400/20', body: 'bg-slate-500/80', line: 'bg-white/60' },
+    portfolio: { icon: TrendingDown, ring: 'from-rose-400/30 to-emerald-400/20', body: 'bg-rose-500/80', line: 'bg-emerald-200/65' },
+    learn: { icon: SparklesIcon, ring: 'from-purple-400/35 to-indigo-500/20', body: 'bg-purple-500/80', line: 'bg-purple-200/70' },
+  }[coachVariant];
+  const CoachIcon = coachMeta.icon;
 
   return (
     <div className="fixed inset-0 z-[9999] pointer-events-none font-sans">
@@ -224,12 +265,19 @@ export const TutorialOverlay: React.FC = () => {
                   <motion.div
                     animate={{ scale: [1, 1.08, 1], opacity: [0.45, 0.8, 0.45] }}
                     transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-                    className="absolute inset-0 rounded-full bg-tv-primary/25"
+                    className={`absolute inset-0 rounded-full bg-gradient-to-br ${coachMeta.ring}`}
                   />
                   <div className="absolute inset-2 overflow-hidden rounded-full border border-tv-primary/30 bg-gradient-to-br from-slate-800 to-black shadow-[0_0_30px_rgba(41,98,255,0.22)]">
-                    <div className="absolute inset-x-3 top-3 h-2 rounded-full bg-emerald-400/40" />
-                    <div className="absolute bottom-0 left-1/2 h-7 w-9 -translate-x-1/2 rounded-t-full bg-tv-primary/70" />
+                    <motion.div
+                      animate={{ x: [-6, 7, -6] }}
+                      transition={{ duration: 2.3, repeat: Infinity, ease: 'easeInOut' }}
+                      className={`absolute inset-x-3 top-3 h-2 rounded-full ${coachMeta.line}`}
+                    />
+                    <div className={`absolute bottom-0 left-1/2 h-7 w-9 -translate-x-1/2 rounded-t-full ${coachMeta.body}`} />
                     <div className="absolute left-1/2 top-5 h-4 w-4 -translate-x-1/2 rounded-full bg-slate-200" />
+                    <div className="absolute right-2 bottom-2 flex h-6 w-6 items-center justify-center rounded-full border border-white/20 bg-black/50">
+                      <CoachIcon size={13} className="text-white" />
+                    </div>
                   </div>
                 </div>
 

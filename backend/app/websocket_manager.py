@@ -122,6 +122,33 @@ class ConnectionManager:
                     conn for conn in self.active_connections.get(room, []) if conn not in disconnected
                 ]
 
+    async def emit_to_all(self, event_type: str, payload: dict):
+        """Send an event to every active user room without blocking the caller for long."""
+        message = {"type": event_type, "data": payload}
+        semaphore = asyncio.Semaphore(WS_EMIT_CONCURRENCY)
+
+        for room, connections in list(self.active_connections.items()):
+            disconnected = []
+
+            async def send_one(ws: WebSocket):
+                async with semaphore:
+                    try:
+                        await asyncio.wait_for(ws.send_json(message), timeout=WS_EMIT_TIMEOUT_SECONDS)
+                    except Exception as e:
+                        logger.warning(f"Failed to send {event_type} to {room}: {e}")
+                        disconnected.append(ws)
+
+            tasks = [asyncio.create_task(send_one(ws)) for ws in list(connections)]
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+
+            if disconnected:
+                self.active_connections[room] = [
+                    conn for conn in self.active_connections.get(room, []) if conn not in disconnected
+                ]
+                if not self.active_connections[room]:
+                    del self.active_connections[room]
+
 
 # Singleton instance used across the application
 order_manager = ConnectionManager()

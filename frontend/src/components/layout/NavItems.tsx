@@ -29,6 +29,12 @@ export const NavItems = ({ isMobile, onItemClick }: { isMobile?: boolean, onItem
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    useEffect(() => {
+        const openMoreForTutorial = () => setIsMoreOpen(true);
+        window.addEventListener('tutorial:open-more-menu', openMoreForTutorial);
+        return () => window.removeEventListener('tutorial:open-more-menu', openMoreForTutorial);
+    }, []);
+
     const handleItemClick = () => {
         if (onItemClick) {
             onItemClick();
@@ -63,6 +69,7 @@ export const NavItems = ({ isMobile, onItemClick }: { isMobile?: boolean, onItem
             {/* More Dropdown */}
             <div className={`relative ${isMobile ? 'w-full' : ''}`} ref={dropdownRef}>
                 <button
+                    data-tutorial="nav-more"
                     onClick={() => setIsMoreOpen(!isMoreOpen)}
                     className={`flex items-center gap-1 text-sm font-semibold text-tv-text-secondary hover:text-tv-text-primary transition-colors outline-none ${isMobile ? 'justify-between w-full' : ''}`}
                 >

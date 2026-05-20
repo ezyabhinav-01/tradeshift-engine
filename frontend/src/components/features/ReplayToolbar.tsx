@@ -17,6 +17,7 @@ const ReplayToolbar = () => {
 
     return (
         <motion.div 
+            data-tutorial="trade-replay-toolbar"
             drag
             dragMomentum={false}
             dragElastic={0.1}
@@ -56,6 +57,7 @@ const ReplayToolbar = () => {
                     {/* Playback Controls */}
                     <div className="flex items-center gap-1 border-l border-[#2a2e39] pl-2 pr-2">
                         <Button 
+                            data-tutorial="trade-replay-play"
                             variant="ghost" 
                             size="icon" 
                             className="h-8 w-8 text-[#d1d4dc] hover:bg-white/5"
@@ -64,6 +66,7 @@ const ReplayToolbar = () => {
                             {isPlaying ? <Pause size={16} className="text-blue-500 fill-blue-500" /> : <Play size={16} />}
                         </Button>
                         <Button 
+                            data-tutorial="trade-replay-step"
                             variant="ghost" 
                             size="icon" 
                             className="h-8 w-8 text-[#d1d4dc] hover:bg-white/5"
@@ -80,6 +83,7 @@ const ReplayToolbar = () => {
                     <div className="flex items-center gap-3 border-l border-[#2a2e39] pl-3 pr-3 ml-1">
                         <div className="flex flex-col">
                              <input 
+                                data-tutorial="trade-replay-speed"
                                 type="range" min="1" max="20" step="1" 
                                 value={speed} 
                                 onChange={(e) => setSpeed(parseFloat(e.target.value))} 
@@ -93,6 +97,7 @@ const ReplayToolbar = () => {
                     <div className="flex items-center gap-2 border-l border-[#2a2e39] pl-3 pr-1">
                         <Calendar size={14} className="text-[#d1d4dc]/40" />
                         <select 
+                            data-tutorial="trade-replay-date"
                             className="bg-transparent border-none text-xs font-bold text-[#d1d4dc] outline-none cursor-pointer hover:text-blue-500 transition-colors"
                             value={selectedDate}
                             onChange={(e) => setDate(e.target.value)}

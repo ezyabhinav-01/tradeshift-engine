@@ -22,3 +22,16 @@ export function apiUrl(path: string): string {
   if (path.startsWith('http')) return path;
   return `${API_BASE}${path}`;
 }
+
+/**
+ * Build a websocket URL against the same backend host as the REST API.
+ */
+export function wsUrl(path: string): string {
+  if (path.startsWith('ws')) return path;
+  const base = new URL(API_BASE);
+  base.protocol = base.protocol === 'https:' ? 'wss:' : 'ws:';
+  base.pathname = path.startsWith('/') ? path : `/${path}`;
+  base.search = '';
+  base.hash = '';
+  return base.toString();
+}

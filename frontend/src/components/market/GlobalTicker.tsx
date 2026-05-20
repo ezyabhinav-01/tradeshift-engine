@@ -88,7 +88,7 @@ export const GlobalTicker = () => {
   });
 
   return (
-    <div className="flex items-center gap-4 px-4 overflow-x-auto whitespace-nowrap hide-scrollbar text-[13px] font-sans">
+    <div data-tutorial="global-ticker" className="flex items-center gap-4 px-4 overflow-x-auto whitespace-nowrap hide-scrollbar text-[13px] font-sans">
 
       {isReplayActive && (
         <>

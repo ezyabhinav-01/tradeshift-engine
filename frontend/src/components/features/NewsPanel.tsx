@@ -219,7 +219,7 @@ const NewsPanel = () => {
     }, [newsItems, loadingQAs]);
 
     return (
-        <div className="flex flex-col h-full bg-[#0a0a0a] border-l border-white/5">
+        <div data-tutorial="trade-news-pulse" className="flex flex-col h-full bg-[#0a0a0a] border-l border-white/5">
             {/* Header */}
             <div className="h-14 border-b border-white/10 flex items-center justify-between px-4 bg-black/40 backdrop-blur-md sticky top-0 z-20">
                 <div className="flex items-center gap-2.5">

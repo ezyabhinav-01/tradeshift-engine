@@ -83,6 +83,7 @@ const TopToolbar = ({
             <div className="flex items-center space-x-2 h-full">
                 {/* Symbol */}
                 <Button
+                    data-tutorial="trade-symbol-picker"
                     variant="ghost"
                     className="h-8 gap-2 px-2 text-tv-text-primary hover:bg-tv-bg-pane/50 font-bold text-lg"
                     onClick={() => setIsSearchOpen(true)}
@@ -102,6 +103,7 @@ const TopToolbar = ({
                 {/* Timeframe Dropdown */}
                 <div className="relative" ref={timeframeRef}>
                     <Button
+                        data-tutorial="trade-timeframe"
                         variant="ghost"
                         className={`h-8 px-2 gap-1 font-bold transition-all duration-150 ${
                             isTimeframeOpen
@@ -154,14 +156,14 @@ const TopToolbar = ({
                 />
 
                 {/* Multi-Chart Layout Switcher */}
-                <div className={isGuest ? "opacity-30 pointer-events-none filter grayscale" : ""}>
+                <div data-tutorial="trade-split-layout" className={isGuest ? "opacity-30 pointer-events-none filter grayscale" : ""}>
                     <LayoutSwitcher />
                 </div>
 
                 <Separator orientation="vertical" className="h-6 bg-tv-border" />
 
                 {/* Alert */}
-                <Button variant="ghost" className="h-8 gap-2 px-2 hover:bg-tv-bg-pane/50 hover:text-blue-500" onClick={onOpenAlerts}>
+                <Button variant="ghost" data-tutorial="trade-alert-button" className="h-8 gap-2 px-2 hover:bg-tv-bg-pane/50 hover:text-blue-500" onClick={onOpenAlerts}>
                     <Bell size={18} />
                     <span className="text-sm">Alert</span>
                 </Button>
@@ -171,6 +173,7 @@ const TopToolbar = ({
                 {/* Replay Control (Moved to left controls) */}
                 <Button
                     variant="ghost"
+                    data-tutorial="trade-replay-button"
                     onClick={() => {
                         if (checkAccess()) toggleReplay();
                     }}
@@ -194,6 +197,7 @@ const TopToolbar = ({
 
                 {/* News Panel Toggle */}
                 <Button
+                    data-tutorial="trade-news-panel"
                     variant="ghost"
                     size="icon"
                     className={`h-8 w-8 hover:bg-tv-bg-pane/50 hover:text-blue-500 ${isNewsOpen ? 'text-blue-500 bg-tv-bg-pane/50' : ''}`}
@@ -205,6 +209,7 @@ const TopToolbar = ({
 
                 {/* Research Hub Link */}
                 <Button
+                    data-tutorial="trade-research-button"
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8 hover:bg-tv-bg-pane/50 hover:text-primary"

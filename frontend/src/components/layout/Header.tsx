@@ -55,6 +55,7 @@ const Topbar = () => {
       <div className="flex-1 flex items-center justify-center gap-8">
         {/* Search Bar - Modal Trigger */}
         <div
+          data-tutorial="global-symbol-search"
           onClick={() => setIsSearchOpen(true)}
           className="hidden md:flex items-center bg-slate-100 dark:bg-[#2a2e39] hover:bg-slate-200 dark:hover:bg-[#2a2e39]/80 border border-slate-200 dark:border-[#2a2e39] hover:border-tv-primary/40 dark:hover:border-tv-primary/40 rounded-full px-4 py-1.5 transition-all cursor-pointer group shrink-0"
         >
@@ -66,6 +67,7 @@ const Topbar = () => {
 
         {/* Mobile Search Icon */}
         <button
+          data-tutorial="global-symbol-search"
           onClick={() => setIsSearchOpen(true)}
           className="md:hidden p-2 rounded-full text-tv-text-secondary hover:text-tv-text-primary transition-colors duration-300"
           title="Search"

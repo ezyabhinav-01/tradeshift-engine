@@ -16,6 +16,7 @@ from app.dependencies import admin_required, admin_or_internal
 from app.fundamental_service import FundamentalService
 from app.services.fundamental_fetcher import FundamentalFetcherService
 from app.services.email_service import send_feedback_reply_email
+from app.websocket_manager import order_manager
 from app.routers.user import _ensure_user_feedback_table
 from sqlalchemy import text
 from typing import List
@@ -230,8 +231,9 @@ async def reply_to_feedback(
     else:
         feedback.status = "REPLIED"
 
+    user_notification = None
     if payload.send_notification:
-        db.add(Notification(
+        user_notification = Notification(
             user_id=target_user.id,
             title=title,
             content=message,
@@ -239,7 +241,8 @@ async def reply_to_feedback(
             category="personal",
             is_read=False,
             created_at=now,
-        ))
+        )
+        db.add(user_notification)
 
     if payload.send_dm and admin_sender_id and admin_sender_id != target_user.id:
         db.add(CommunityMessage(
@@ -252,6 +255,22 @@ async def reply_to_feedback(
 
     await db.commit()
     await db.refresh(feedback)
+    if user_notification:
+        await db.refresh(user_notification)
+        await order_manager.emit_to_user(
+            target_user.id,
+            "notification:new",
+            {
+                "id": user_notification.id,
+                "user_id": user_notification.user_id,
+                "title": user_notification.title,
+                "content": user_notification.content,
+                "type": user_notification.type,
+                "category": user_notification.category,
+                "is_read": user_notification.is_read,
+                "created_at": user_notification.created_at.isoformat() if user_notification.created_at else None,
+            },
+        )
 
     if payload.send_email and target_user.email:
         background_tasks.add_task(

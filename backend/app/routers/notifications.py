@@ -2,12 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import or_
-from typing import List, Literal
+from typing import List, Literal, Optional
 from pydantic import BaseModel, Field
 from app.database import get_db
 from app.models import Notification, User, BroadcastRead
 from app.schemas import NotificationResponse
 from app.dependencies import get_current_user, admin_or_internal
+from app.websocket_manager import order_manager
 
 router = APIRouter(
     prefix="/api/notifications",
@@ -20,6 +21,19 @@ class BroadcastRequest(BaseModel):
     title: str = Field(..., min_length=3, max_length=140)
     content: str = Field(..., min_length=1, max_length=2000)
     type: Literal["info", "warning", "success", "error"] = "info"
+
+
+def _notification_payload(notification: Notification, is_read: Optional[bool] = None) -> dict:
+    return {
+        "id": notification.id,
+        "user_id": notification.user_id,
+        "title": notification.title,
+        "content": notification.content,
+        "type": notification.type,
+        "is_read": notification.is_read if is_read is None else is_read,
+        "category": notification.category,
+        "created_at": notification.created_at.isoformat() if notification.created_at else None,
+    }
 
 
 @router.get("/", response_model=List[NotificationResponse])
@@ -65,16 +79,10 @@ async def get_user_notifications(
         # Build response: for broadcasts, override is_read based on BroadcastRead
         response = []
         for n in notifications:
-            data = {
-                "id": n.id,
-                "user_id": n.user_id,
-                "title": n.title,
-                "content": n.content,
-                "type": n.type,
-                "is_read": n.is_read if n.user_id is not None else (n.id in read_broadcast_ids),
-                "category": n.category,
-                "created_at": n.created_at,
-            }
+            data = _notification_payload(
+                n,
+                is_read=n.is_read if n.user_id is not None else (n.id in read_broadcast_ids),
+            )
             response.append(data)
 
         return response
@@ -119,16 +127,7 @@ async def mark_notification_read(
                 await db.commit()
             
             # Return the notification with is_read = True
-            return {
-                "id": notification.id,
-                "user_id": notification.user_id,
-                "title": notification.title,
-                "content": notification.content,
-                "type": notification.type,
-                "category": notification.category,
-                "is_read": True,
-                "created_at": notification.created_at,
-            }
+            return _notification_payload(notification, is_read=True)
         else:
             # User-specific notification
             if notification.user_id != current_user.id:
@@ -222,6 +221,8 @@ async def send_broadcast(
         db.add(notification)
         await db.commit()
         await db.refresh(notification)
+        payload = _notification_payload(notification, is_read=False)
+        await order_manager.emit_to_all("notification:new", payload)
 
         return {
             "status": "sent",

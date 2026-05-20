@@ -229,7 +229,7 @@ export const MultiChartGrid: React.FC<MultiChartGridProps> = ({
   }, [updateChart, setActiveChart]);
 
   return (
-    <div className="multi-chart-grid" data-layout={layoutType}>
+    <div className="multi-chart-grid" data-layout={layoutType} data-tutorial="trade-chart-grid">
       {visibleCharts.map((chart, i) => {
         // isPrimary = active chart gets replay controls, drawing tools, etc.
         const isPrimary = activeChartId === chart.id;

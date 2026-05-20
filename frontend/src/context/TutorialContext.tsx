@@ -50,6 +50,15 @@ const TOUR_CONFIG: Record<TourId, TutorialStep[]> = {
       focusLabel: 'Your guided start',
     },
     {
+      targetId: 'global-symbol-search',
+      title: 'Search Any Index Or Stock',
+      content:
+        'Use this search bar whenever you already know what you want to study. Type NIFTY, BANKNIFTY, SENSEX, HDFCBANK, RELIANCE, or another symbol, select it, and TradeShift takes you straight into the Trading Terminal with that instrument loaded.',
+      placement: 'bottom',
+      route: '/markets',
+      focusLabel: 'Fast symbol access',
+    },
+    {
       targetId: 'nav-markets',
       title: 'Start With The Market Map',
       content:
@@ -66,6 +75,15 @@ const TOUR_CONFIG: Record<TourId, TutorialStep[]> = {
       placement: 'bottom',
       route: '/markets',
       focusLabel: 'Overview, sectors and F&O',
+    },
+    {
+      targetId: 'global-ticker',
+      title: 'The Global Ticker Is Your Market Pulse',
+      content:
+        'This strip stays across the app. In live mode it shows current index movement; in replay mode it syncs to the selected replay date and simulation time, so the numbers match the historical session you are practicing.',
+      placement: 'bottom',
+      route: '/markets',
+      focusLabel: 'Live and replay sync',
     },
     {
       targetId: 'nav-screener',
@@ -122,6 +140,24 @@ const TOUR_CONFIG: Record<TourId, TutorialStep[]> = {
       focusLabel: 'Safe paper trading',
     },
     {
+      targetId: 'trade-symbol-picker',
+      title: 'Confirm Or Change The Trading Symbol',
+      content:
+        'The symbol button controls the active chart. If you searched RELIANCE from the top bar, RELIANCE appears here. You can change it any time without leaving the terminal.',
+      placement: 'bottom',
+      route: '/trade',
+      focusLabel: 'Active instrument',
+    },
+    {
+      targetId: 'trade-timeframe',
+      title: 'Choose The Timeframe For Your Question',
+      content:
+        'Use 1m and 3m for replay practice and intraday timing, 5m or 15m for cleaner structure, and 1H for the bigger picture. Do not switch randomly: choose the timeframe that matches your trade idea.',
+      placement: 'bottom',
+      route: '/trade',
+      focusLabel: 'Timeframe discipline',
+    },
+    {
       targetId: 'chart',
       title: 'Charts Show The Story Of Price',
       content:
@@ -131,6 +167,24 @@ const TOUR_CONFIG: Record<TourId, TutorialStep[]> = {
       focusLabel: 'Chart workspace',
     },
     {
+      targetId: 'trade-ohlc-readout',
+      title: 'Read The Candle Before Acting',
+      content:
+        'The OHLC row shows open, high, low, close, and candle change. Use it to understand whether the current candle is expanding, rejecting, or reversing before you press Buy or Sell.',
+      placement: 'right',
+      route: '/trade',
+      focusLabel: 'Candle reading',
+    },
+    {
+      targetId: 'trade-buy-sell',
+      title: 'Paper Buy And Sell Buttons',
+      content:
+        'These buttons open the order panel at the current price. Treat every paper trade like a real trade: define entry, quantity, stop loss, take profit, and whether the setup came from market context, chart structure, or news.',
+      placement: 'right',
+      route: '/trade',
+      focusLabel: 'Order practice',
+    },
+    {
       targetId: 'indicators',
       title: 'Indicators Are Confirmation Tools',
       content:
@@ -138,6 +192,60 @@ const TOUR_CONFIG: Record<TourId, TutorialStep[]> = {
       placement: 'bottom',
       route: '/trade',
       focusLabel: 'Indicators and tools',
+    },
+    {
+      targetId: 'trade-drawing-tools',
+      title: 'Draw The Plan On The Chart',
+      content:
+        'Use drawing tools for trendlines, support, resistance, channels, measurements, and annotations. Draw first, trade second: the chart should show where your idea becomes invalid.',
+      placement: 'right',
+      route: '/trade',
+      focusLabel: 'Drawing and planning',
+    },
+    {
+      targetId: 'trade-split-layout',
+      title: 'Split Screens For Comparison',
+      content:
+        'Split layouts let you compare multiple charts at once: one symbol across timeframes, or several symbols side by side. This helps you see whether your stock is moving with or against the broader market.',
+      placement: 'bottom',
+      route: '/trade',
+      focusLabel: 'Multi-chart workspace',
+    },
+    {
+      targetId: 'trade-replay-button',
+      title: 'Replay Mode Is Your Practice Engine',
+      content:
+        'Replay lets you train on historical sessions without knowing what happens next. Pick a date, press play, pause at decision points, step forward candle by candle, and review if your logic matched the market.',
+      placement: 'bottom',
+      route: '/trade',
+      focusLabel: 'Historical practice',
+    },
+    {
+      targetId: 'trade-alert-button',
+      title: 'Use Alerts To Avoid Staring At Charts',
+      content:
+        'Create alerts for price levels and conditions. A good alert comes from a plan: if price crosses support, breaks resistance, or reaches your entry zone, the platform can bring your attention back.',
+      placement: 'bottom',
+      route: '/trade',
+      focusLabel: 'Price alerts',
+    },
+    {
+      targetId: 'trade-news-panel',
+      title: 'Open News Pulse Inside The Terminal',
+      content:
+        'The news button opens Market Pulse beside your chart. During replay, the news feed is designed to appear in the same historical timeframe, so you can learn how headlines and sentiment affected that session.',
+      placement: 'left',
+      route: '/trade',
+      focusLabel: 'News and chart together',
+    },
+    {
+      targetId: 'trade-research-button',
+      title: 'Jump From Chart To Stock Research',
+      content:
+        'Use the research button to open the deep stock page for the active symbol. This connects chart behavior with fundamentals and screener-style reasoning, so you are not judging a stock from candles alone.',
+      placement: 'left',
+      route: '/trade',
+      focusLabel: 'Chart to research',
     },
     {
       targetId: 'nav-portfolio',
@@ -158,6 +266,24 @@ const TOUR_CONFIG: Record<TourId, TutorialStep[]> = {
       focusLabel: 'Risk and cash',
     },
     {
+      targetId: 'nav-more',
+      title: 'More Holds The Extra Workspaces',
+      content:
+        'News, Community, and Help live inside More so the main navigation stays clean. Open More when you need market context, trader discussions, or tutorials and support.',
+      placement: 'bottom',
+      route: '/trade',
+      focusLabel: 'More navigation',
+    },
+    {
+      targetId: 'nav-news',
+      title: 'Go To News And AI Insights',
+      content:
+        'Use News when you want a broader feed beyond the terminal panel. It helps you understand market-moving stories before they become visible on the chart.',
+      placement: 'bottom',
+      route: '/trade',
+      focusLabel: 'News path',
+    },
+    {
       targetId: 'news-categories',
       title: 'Use News For Context',
       content:
@@ -176,6 +302,24 @@ const TOUR_CONFIG: Record<TourId, TutorialStep[]> = {
       focusLabel: 'AI news explanations',
     },
     {
+      targetId: 'nav-more',
+      title: 'Open More Again For Community',
+      content:
+        'Community is also in More. This teaches you the real navigation path so you are not guessing where discussions and support areas live later.',
+      placement: 'bottom',
+      route: '/news',
+      focusLabel: 'More navigation',
+    },
+    {
+      targetId: 'nav-community',
+      title: 'Go To Community',
+      content:
+        'Community is where you ask questions, compare setups, and learn how other traders reason. Use it after forming your own view, not before.',
+      placement: 'bottom',
+      route: '/news',
+      focusLabel: 'Community path',
+    },
+    {
       targetId: 'community-sidebar',
       title: 'Learn With Other Traders',
       content:
@@ -192,6 +336,24 @@ const TOUR_CONFIG: Record<TourId, TutorialStep[]> = {
       placement: 'top',
       route: '/community',
       focusLabel: 'Channels and messages',
+    },
+    {
+      targetId: 'nav-more',
+      title: 'Open More For Help',
+      content:
+        'Help is in More too. When you want to replay a tutorial, contact support, or give feedback, open More and choose Help & Support.',
+      placement: 'bottom',
+      route: '/community',
+      focusLabel: 'Help path',
+    },
+    {
+      targetId: 'nav-help',
+      title: 'Go To Help And Support',
+      content:
+        'Help is your reset button. You can restart this guide, replay a page tour, send feedback, or contact support whenever something feels unclear.',
+      placement: 'bottom',
+      route: '/community',
+      focusLabel: 'Help path',
     },
     {
       targetId: 'help-tutorials',
@@ -250,11 +412,61 @@ const TOUR_CONFIG: Record<TourId, TutorialStep[]> = {
   ],
   trade: [
     {
+      targetId: 'global-symbol-search',
+      title: 'Start By Searching The Instrument',
+      content:
+        'Search the index or stock you want to train on. Selecting it loads the Trading Terminal for that symbol, so your workflow starts with intent instead of browsing randomly.',
+      placement: 'bottom',
+      route: '/trade',
+      focusLabel: 'Search to trade',
+    },
+    {
+      targetId: 'global-ticker',
+      title: 'Use The Ticker As The Market Weather',
+      content:
+        'The ticker tells you if the broader market is supportive or hostile. In replay mode these values sync with the selected historical date and time, so practice stays realistic.',
+      placement: 'bottom',
+      route: '/trade',
+      focusLabel: 'Market sync',
+    },
+    {
+      targetId: 'trade-symbol-picker',
+      title: 'Active Symbol Control',
+      content:
+        'This button confirms the active chart symbol. Change it here when you want a different stock without leaving the terminal.',
+      placement: 'bottom',
+      route: '/trade',
+    },
+    {
+      targetId: 'trade-timeframe',
+      title: 'Timeframe Is Your Lens',
+      content:
+        '1m shows detail, 5m filters noise, 15m gives structure, and 1H gives context. Pick one primary timeframe for the trade and one higher timeframe for confirmation.',
+      placement: 'bottom',
+      route: '/trade',
+    },
+    {
       targetId: 'chart',
       title: 'Chart Workspace',
       content:
         'Use this area to observe price action, replay sessions, draw levels, and test orders without risking real money.',
       placement: 'left',
+      route: '/trade',
+    },
+    {
+      targetId: 'trade-ohlc-readout',
+      title: 'Read The Current Candle',
+      content:
+        'OHLC tells you what the active candle is doing. A strong candle, rejection wick, or failed breakout should change your confidence before you trade.',
+      placement: 'right',
+      route: '/trade',
+    },
+    {
+      targetId: 'trade-buy-sell',
+      title: 'Open The Order Panel From Price',
+      content:
+        'Use Buy or Sell to practice orders. Set quantity, order type, stop loss, take profit, and optional price alert. This is where theory becomes controlled execution.',
+      placement: 'right',
       route: '/trade',
     },
     {
@@ -264,6 +476,62 @@ const TOUR_CONFIG: Record<TourId, TutorialStep[]> = {
         'Open indicators when you need confirmation. The cleanest trades usually have price structure, risk level, and indicator evidence pointing together.',
       placement: 'bottom',
       route: '/trade',
+    },
+    {
+      targetId: 'trade-drawing-tools',
+      title: 'Drawing Tools Build Your Plan',
+      content:
+        'Mark support, resistance, trendlines, channels, and measured moves. Your drawing should answer: where is entry, where is invalidation, and where is target?',
+      placement: 'right',
+      route: '/trade',
+    },
+    {
+      targetId: 'trade-split-layout',
+      title: 'Split Screen Training',
+      content:
+        'Use split screens to compare NIFTY with a stock, or the same stock on 1m and 15m. This teaches alignment: strong trades usually agree across market, stock, and timeframe.',
+      placement: 'bottom',
+      route: '/trade',
+    },
+    {
+      targetId: 'trade-replay-button',
+      title: 'Replay Mode For Deliberate Practice',
+      content:
+        'Replay lets you choose a historical date and experience the session as if it were live. Pause before entries, write your reason mentally, then play forward and compare your decision with the result.',
+      placement: 'bottom',
+      route: '/trade',
+    },
+    {
+      targetId: 'trade-alert-button',
+      title: 'Alerts For Planned Levels',
+      content:
+        'Use alerts for breakout levels, stop zones, retests, and invalidation points. Alerts keep you disciplined because the platform waits for your level instead of you chasing candles.',
+      placement: 'bottom',
+      route: '/trade',
+    },
+    {
+      targetId: 'trade-news-panel',
+      title: 'News Pulse Inside Replay',
+      content:
+        'Open the news panel while replaying. TradeShift can show news from the same historical timeframe, letting you study how sentiment, headlines, and price action interacted on that date.',
+      placement: 'left',
+      route: '/trade',
+    },
+    {
+      targetId: 'trade-research-button',
+      title: 'Go From Chart To Screener-Style Research',
+      content:
+        'Use research when you want the active stock explained beyond price. This is the bridge from terminal practice to stock quality, fundamentals, and the deeper screener card logic.',
+      placement: 'left',
+      route: '/trade',
+    },
+    {
+      targetId: 'portfolio-metrics',
+      title: 'Finish By Reviewing Portfolio',
+      content:
+        'After practice, review portfolio metrics. The full loop is: search symbol, check ticker, study chart, use indicators and drawings, replay/news check, place paper trade, then review results.',
+      placement: 'bottom',
+      route: '/portfolio',
     },
   ],
   portfolio: [

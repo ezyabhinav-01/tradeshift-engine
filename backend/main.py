@@ -150,6 +150,11 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.datetime.utcnow()}
 
+
+@app.get("/api/health")
+async def api_health_check():
+    return {"status": "ok", "timestamp": datetime.datetime.utcnow()}
+
 # Instrumentator (Monitoring)
 Instrumentator().instrument(app).expose(app)
 

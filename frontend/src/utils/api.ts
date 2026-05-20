@@ -4,7 +4,20 @@
  * backend URL is automatically prepended in production.
  */
 
-export const API_BASE = import.meta.env.VITE_API_URL || 'https://20.40.42.232.nip.io';
+const VM_API_BASE = 'https://20.40.42.232.nip.io';
+
+function resolveApiBase(value?: string): string {
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed.includes('tradeshift-api.onrender.com')) {
+    return VM_API_BASE;
+  }
+  if (trimmed.startsWith('ttps://')) {
+    return `h${trimmed}`;
+  }
+  return trimmed;
+}
+
+export const API_BASE = resolveApiBase(import.meta.env.VITE_API_URL);
 
 /**
  * Drop-in replacement for fetch() that automatically prepends the API base URL.

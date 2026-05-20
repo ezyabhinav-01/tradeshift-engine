@@ -1,4 +1,4 @@
-/api/* https://tradeshift-api.onrender.com/api/:splat 200
-/auth/* https://tradeshift-api.onrender.com/auth/:splat 200
-/ws/* https://tradeshift-api.onrender.com/ws/:splat 200
+/api/* https://20.40.42.232.nip.io/api/:splat 200
+/auth/* https://20.40.42.232.nip.io/auth/:splat 200
+/ws/* https://20.40.42.232.nip.io/ws/:splat 200
 /* /index.html 200

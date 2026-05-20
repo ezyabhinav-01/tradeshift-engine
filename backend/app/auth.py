@@ -170,6 +170,16 @@ async def clear_otp(db: AsyncSession, user: User):
     user.otp_expiry = None
     await db.commit()
 
+async def deliver_signup_otp_or_503(email: str, otp: str) -> None:
+    try:
+        await send_signup_otp_email(email, otp, require_delivery=True)
+    except Exception as exc:
+        logger.exception("Signup OTP delivery failed for %s", email)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="We could not send the verification code right now. Please try again in a minute.",
+        ) from exc
+
 
 def queue_auth_side_effect(
     background_tasks: BackgroundTasks,
@@ -234,7 +244,7 @@ async def register_request(
         db.add(db_user)
     
     otp = await generate_and_set_otp(db, db_user)
-    queue_auth_side_effect(background_tasks, "signup_otp", send_signup_otp_email, db_user.email, otp)
+    await deliver_signup_otp_or_503(db_user.email, otp)
     return {"message": "Verification code sent to your email."}
 
 @router.post("/register/verify")
@@ -323,7 +333,7 @@ async def login(
     
     if not db_user.is_verified:
         otp = await generate_and_set_otp(db, db_user)
-        queue_auth_side_effect(background_tasks, "signup_otp", send_signup_otp_email, db_user.email, otp)
+        await deliver_signup_otp_or_503(db_user.email, otp)
         return {
             "status": "REQUIRES_VERIFICATION",
             "message": "Email not verified. A new code has been sent.",

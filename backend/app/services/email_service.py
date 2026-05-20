@@ -6,7 +6,7 @@ All functions are designed to be called via BackgroundTasks (non-blocking).
 import logging
 import os
 from fastapi_mail import FastMail, MessageSchema, MessageType
-from app.config import get_mail_conf
+from app.config import MAIL_PORT, get_mail_conf
 
 logger = logging.getLogger(__name__)
 
@@ -89,40 +89,49 @@ def _cta_button(text: str, href: str = "http://localhost:5173") -> str:
     </div>"""
 
 # ── Async email sender ──────────────────────────────────────────────────────
-async def _send(to_email: str, subject: str, html: str):
+def _smtp_ports_to_try() -> list[int]:
+    ports: list[int] = []
+    raw_fallbacks = os.getenv("MAIL_FALLBACK_PORTS", "587,2525")
+    for value in [str(MAIL_PORT), *raw_fallbacks.split(",")]:
+        try:
+            port = int(value.strip())
+        except ValueError:
+            continue
+        if port not in ports:
+            ports.append(port)
+    return ports
+
+
+async def _send(to_email: str, subject: str, html: str, *, require_delivery: bool = False) -> bool:
     if os.getenv("DISABLE_EMAIL_DELIVERY", "false").strip().lower() in {"1", "true", "yes", "on"}:
         logger.info(f"📭 Email delivery disabled, skipped {subject} -> {to_email}")
-        return
+        if require_delivery:
+            raise RuntimeError("Email delivery is disabled by DISABLE_EMAIL_DELIVERY.")
+        return False
     
-    try:
-        message = MessageSchema(
-            subject=subject,
-            recipients=[to_email],
-            body=html,
-            subtype=MessageType.html,
-        )
-        
-        # We try port 587 first (Standard for most clouds), then fallback to 2525
-        ports_to_try = [587, 2525]
-        last_exception = None
-        
-        for port in ports_to_try:
-            try:
-                fm = FastMail(get_mail_conf(port))
-                await fm.send_message(message)
-                logger.info(f"✅ Email sent to {to_email} via port {port}: {subject}")
-                return # Success!
-            except Exception as e:
-                last_exception = e
-                logger.warning(f"⚠️ SMTP Send failed on port {port} for {to_email}: {str(e)}")
-                continue # Try next port
-        
-        # If we get here, all ports failed. Raise the last exception to be caught by the outer try-except.
-        if last_exception:
-            raise last_exception
-            
-    except Exception as e:
-        logger.warning(f"❌ Final failure to send email to {to_email}: {e}")
+    message = MessageSchema(
+        subject=subject,
+        recipients=[to_email],
+        body=html,
+        subtype=MessageType.html,
+    )
+
+    last_exception = None
+    for port in _smtp_ports_to_try():
+        try:
+            fm = FastMail(get_mail_conf(port))
+            await fm.send_message(message)
+            logger.info(f"✅ Email sent to {to_email} via port {port}: {subject}")
+            return True
+        except Exception as e:
+            last_exception = e
+            logger.warning(f"⚠️ SMTP Send failed on port {port} for {to_email}: {str(e)}")
+
+    error_message = f"Final failure to send email to {to_email}"
+    logger.warning("❌ %s: %s", error_message, last_exception)
+    if require_delivery:
+        raise RuntimeError(error_message) from last_exception
+    return False
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -160,7 +169,7 @@ async def send_welcome_email(email: str, name: str, demat_id: str):
 # ═══════════════════════════════════════════════════════════════════════════
 # 2.  SIGNUP OTP  (on signup request)
 # ═══════════════════════════════════════════════════════════════════════════
-async def send_signup_otp_email(email: str, otp: str):
+async def send_signup_otp_email(email: str, otp: str, *, require_delivery: bool = False):
     content = f"""
     {_heading("Verify Your Email")}
     {_text("Welcome to TradeShift! Please enter the following 6-digit code to verify your email address and continue with your registration.")}
@@ -171,7 +180,12 @@ async def send_signup_otp_email(email: str, otp: str):
     
     {_text("This code will expire in 10 minutes. If you did not request this, please ignore this email.")}
     """
-    await _send(email, f"{otp} is your TradeShift Verification Code", _html_wrapper("Verify Email", content))
+    return await _send(
+        email,
+        f"{otp} is your TradeShift Verification Code",
+        _html_wrapper("Verify Email", content),
+        require_delivery=require_delivery,
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════

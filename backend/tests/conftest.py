@@ -40,7 +40,7 @@ from app.services.order_management import oms_service  # noqa: E402
 import main  # noqa: E402
 
 
-def _noop(*_args, **_kwargs):
+async def _noop(*_args, **_kwargs):
     return None
 
 

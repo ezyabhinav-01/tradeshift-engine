@@ -2,15 +2,18 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Calculate absolute path to .env file (backend/.env)
+# Load repo-level and backend-level env files for local/VM runs.
+# Real process environment variables still win.
 base_dir = Path(__file__).resolve().parent.parent
-dotenv_path = base_dir / ".env"
+repo_dir = base_dir.parent
+dotenv_paths = [repo_dir / ".env", base_dir / ".env"]
 
-if dotenv_path.exists():
-    load_dotenv(dotenv_path=dotenv_path)
-    print(f"✅ Config: Loaded .env from {dotenv_path}")
-else:
-    print(f"⚠️ Config: .env file not found at {dotenv_path}")
+for dotenv_path in dotenv_paths:
+    if dotenv_path.exists():
+        load_dotenv(dotenv_path=dotenv_path, override=False)
+        print(f"✅ Config: Loaded .env from {dotenv_path}")
+    else:
+        print(f"⚠️ Config: .env file not found at {dotenv_path}")
 
 # Diagnostic: Check if critical variables are loaded
 if not os.getenv("MAIL_USERNAME"):

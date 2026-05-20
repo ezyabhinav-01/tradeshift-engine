@@ -1,7 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTutorial } from '../../context/TutorialContext';
-import { X, ChevronRight, ChevronLeft, Sparkles } from 'lucide-react';
+import {
+  X,
+  ChevronRight,
+  ChevronLeft,
+  TrendingUp,
+  TrendingDown,
+  MousePointer2,
+  Activity,
+} from 'lucide-react';
+
+const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
 export const TutorialOverlay: React.FC = () => {
   const { isActive, currentStep, currentStepIndex, totalSteps, nextStep, prevStep, skipTour } = useTutorial();
@@ -50,40 +60,71 @@ export const TutorialOverlay: React.FC = () => {
   const width = targetRect ? targetRect.width + PADDING * 2 : 0;
   const height = targetRect ? targetRect.height + PADDING * 2 : 0;
 
-  // Tooltip positioning logic
+  const cardWidth = Math.min(440, windowSize.width - 32);
+  const cardHeight = Math.min(430, windowSize.height - 32);
+
+  // Tooltip positioning logic. The card must always remain fully reachable.
   const getTooltipPosition = () => {
-    const cardWidth = Math.min(420, windowSize.width - 32);
-
+    const margin = 16;
+    const gap = 18;
     if (!targetRect || !currentStep.targetId) {
-      return { top: '50%', left: '50%', x: '-50%', y: '-50%' };
+      return {
+        top: Math.max(margin, (windowSize.height - cardHeight) / 2),
+        left: Math.max(margin, (windowSize.width - cardWidth) / 2),
+      };
     }
 
-    const placement = currentStep.placement || 'bottom';
-    if (placement === 'bottom') {
-      return { top: Math.min(y + height + 20, windowSize.height - 24), left: x + width / 2, x: '-50%', y: '0%' };
-    } else if (placement === 'top') {
-      return { top: Math.max(y - 20, 24), left: x + width / 2, x: '-50%', y: '-100%' };
-    } else if (placement === 'left') {
-      if (x < cardWidth + 48) return { top: y + height + 20, left: x + width / 2, x: '-50%', y: '0%' };
-      return { top: y + height / 2, left: x - 20, x: '-100%', y: '-50%' };
-    } else if (placement === 'right') {
-      if (x + width + cardWidth + 48 > windowSize.width) return { top: y + height + 20, left: x + width / 2, x: '-50%', y: '0%' };
-      return { top: y + height / 2, left: x + width + 20, x: '0%', y: '-50%' };
-    } else {
-      return { top: '50%', left: '50%', x: '-50%', y: '-50%' }; // center fallback
+    const available = {
+      top: y - margin - gap,
+      bottom: windowSize.height - (y + height) - margin - gap,
+      left: x - margin - gap,
+      right: windowSize.width - (x + width) - margin - gap,
+    };
+
+    let placement = currentStep.placement || 'bottom';
+    const hasVerticalRoom =
+      (placement === 'top' && available.top >= cardHeight) ||
+      (placement === 'bottom' && available.bottom >= cardHeight);
+    const hasHorizontalRoom =
+      (placement === 'left' && available.left >= cardWidth) ||
+      (placement === 'right' && available.right >= cardWidth);
+
+    if ((placement === 'top' || placement === 'bottom') && !hasVerticalRoom) {
+      placement = available.top > available.bottom ? 'top' : 'bottom';
     }
+
+    if ((placement === 'left' || placement === 'right') && !hasHorizontalRoom) {
+      if (available.right >= cardWidth) placement = 'right';
+      else if (available.left >= cardWidth) placement = 'left';
+      else placement = available.top > available.bottom ? 'top' : 'bottom';
+    }
+
+    let top = margin;
+    let left = margin;
+
+    if (placement === 'bottom') {
+      top = y + height + gap;
+      left = x + width / 2 - cardWidth / 2;
+    } else if (placement === 'top') {
+      top = y - cardHeight - gap;
+      left = x + width / 2 - cardWidth / 2;
+    } else if (placement === 'left') {
+      top = y + height / 2 - cardHeight / 2;
+      left = x - cardWidth - gap;
+    } else if (placement === 'right') {
+      top = y + height / 2 - cardHeight / 2;
+      left = x + width + gap;
+    }
+
+    return {
+      top: clamp(top, margin, windowSize.height - cardHeight - margin),
+      left: clamp(left, margin, windowSize.width - cardWidth - margin),
+    };
   };
 
   const tooltipPos = getTooltipPosition();
-
-  // If tooltip goes out of bounds horizontally, adjust it
-  let clampedLeft = tooltipPos.left;
-  const cardWidth = Math.min(420, windowSize.width - 32);
-  if (typeof clampedLeft === 'number') {
-      const halfWidth = cardWidth / 2 + 16;
-      if (clampedLeft < halfWidth) clampedLeft = halfWidth; 
-      if (clampedLeft > windowSize.width - halfWidth) clampedLeft = windowSize.width - halfWidth;
-  }
+  const sentimentTone = currentStepIndex % 3 === 1 ? 'bearish' : currentStepIndex % 3 === 2 ? 'neutral' : 'bullish';
+  const coachMetric = sentimentTone === 'bearish' ? '-0.84%' : sentimentTone === 'neutral' ? 'Risk Check' : '+1.26%';
 
   return (
     <div className="fixed inset-0 z-[9999] pointer-events-none font-sans">
@@ -133,6 +174,25 @@ export const TutorialOverlay: React.FC = () => {
               />
             )}
 
+            {targetRect && (
+              <motion.div
+                initial={false}
+                animate={{
+                  x: clamp(x + width - 28, 16, windowSize.width - 56),
+                  y: clamp(y + height - 18, 16, windowSize.height - 56),
+                }}
+                transition={{ type: 'spring', bounce: 0.35, duration: 0.7 }}
+                className="absolute flex h-12 w-12 items-center justify-center rounded-full border border-white/20 bg-white text-slate-950 shadow-[0_12px_35px_rgba(0,0,0,0.35)]"
+              >
+                <motion.div
+                  animate={{ y: [0, -5, 0], rotate: [-10, -2, -10] }}
+                  transition={{ duration: 1.1, repeat: Infinity, ease: 'easeInOut' }}
+                >
+                  <MousePointer2 size={22} />
+                </motion.div>
+              </motion.div>
+            )}
+
             {/* Tooltip Card - Premium Glassmorphism */}
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
@@ -140,14 +200,12 @@ export const TutorialOverlay: React.FC = () => {
                 opacity: 1, 
                 scale: 1, 
                 top: tooltipPos.top, 
-                left: clampedLeft,
-                x: tooltipPos.x,
-                y: tooltipPos.y
+                left: tooltipPos.left,
               }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
               transition={{ type: 'spring', bounce: 0.3, duration: 0.6 }}
-              className="absolute max-h-[calc(100vh-2rem)] overflow-y-auto bg-slate-950/95 dark:bg-black/90 backdrop-blur-2xl border border-white/20 shadow-[0_24px_70px_rgba(0,0,0,0.55)] rounded-3xl p-6 sm:p-7 text-white"
-              style={{ pointerEvents: 'auto', width: cardWidth }}
+              className="absolute overflow-hidden bg-slate-950/95 dark:bg-black/90 backdrop-blur-2xl border border-white/20 shadow-[0_24px_70px_rgba(0,0,0,0.55)] rounded-3xl text-white"
+              style={{ pointerEvents: 'auto', width: cardWidth, maxHeight: cardHeight }}
             >
               <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-tv-primary via-cyan-400 to-emerald-400" />
               <div className="absolute top-0 right-0 w-40 h-40 bg-tv-primary/10 blur-3xl -mr-20 -mt-20 pointer-events-none" />
@@ -160,11 +218,22 @@ export const TutorialOverlay: React.FC = () => {
                 <X size={18} />
               </button>
 
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-2xl bg-tv-primary/20 flex items-center justify-center text-tv-primary border border-tv-primary/30 shadow-[0_0_24px_rgba(41,98,255,0.22)]">
-                  <Sparkles size={18} />
+              <div className="max-h-[inherit] overflow-y-auto p-6 sm:p-7">
+              <div className="mb-5 flex items-center gap-4">
+                <div className="relative h-16 w-16 shrink-0">
+                  <motion.div
+                    animate={{ scale: [1, 1.08, 1], opacity: [0.45, 0.8, 0.45] }}
+                    transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                    className="absolute inset-0 rounded-full bg-tv-primary/25"
+                  />
+                  <div className="absolute inset-2 overflow-hidden rounded-full border border-tv-primary/30 bg-gradient-to-br from-slate-800 to-black shadow-[0_0_30px_rgba(41,98,255,0.22)]">
+                    <div className="absolute inset-x-3 top-3 h-2 rounded-full bg-emerald-400/40" />
+                    <div className="absolute bottom-0 left-1/2 h-7 w-9 -translate-x-1/2 rounded-t-full bg-tv-primary/70" />
+                    <div className="absolute left-1/2 top-5 h-4 w-4 -translate-x-1/2 rounded-full bg-slate-200" />
+                  </div>
                 </div>
-                <div>
+
+                <div className="min-w-0 flex-1">
                   <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-tv-primary/80">
                     {currentStep.focusLabel || 'Guide Insight'}
                   </h4>
@@ -177,6 +246,36 @@ export const TutorialOverlay: React.FC = () => {
                     ))}
                   </div>
                 </div>
+              </div>
+
+              <div className="mb-5 grid grid-cols-3 gap-2">
+                <motion.div
+                  animate={{ y: [0, -3, 0] }}
+                  transition={{ duration: 1.7, repeat: Infinity, ease: 'easeInOut' }}
+                  className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-3"
+                >
+                  <TrendingUp size={16} className="mb-2 text-emerald-300" />
+                  <div className="text-[10px] font-black uppercase text-emerald-200">Profit</div>
+                  <div className="mt-1 text-xs font-black text-white">+2.4k</div>
+                </motion.div>
+                <motion.div
+                  animate={{ y: [0, 3, 0] }}
+                  transition={{ duration: 1.9, repeat: Infinity, ease: 'easeInOut' }}
+                  className="rounded-2xl border border-red-400/20 bg-red-400/10 p-3"
+                >
+                  <TrendingDown size={16} className="mb-2 text-red-300" />
+                  <div className="text-[10px] font-black uppercase text-red-200">Loss</div>
+                  <div className="mt-1 text-xs font-black text-white">-0.8k</div>
+                </motion.div>
+                <motion.div
+                  animate={{ opacity: [0.72, 1, 0.72] }}
+                  transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
+                  className="rounded-2xl border border-cyan-400/20 bg-cyan-400/10 p-3"
+                >
+                  <Activity size={16} className="mb-2 text-cyan-300" />
+                  <div className="text-[10px] font-black uppercase text-cyan-200">Sentiment</div>
+                  <div className="mt-1 text-xs font-black text-white">{coachMetric}</div>
+                </motion.div>
               </div>
               
               <h3 className="text-xl font-black mb-3 text-white tracking-tight">{currentStep.title}</h3>
@@ -209,6 +308,7 @@ export const TutorialOverlay: React.FC = () => {
                     <ChevronRight size={18} className={currentStepIndex === totalSteps - 1 ? 'hidden' : ''} />
                   </button>
                 </div>
+              </div>
               </div>
             </motion.div>
           </motion.div>

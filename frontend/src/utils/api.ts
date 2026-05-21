@@ -18,7 +18,7 @@ function resolveApiBase(value?: string): string {
   if (resolved && resolved.includes('backend:8000')) {
     resolved = resolved.replace('backend', window.location.hostname);
   }
-  return resolved;
+  return resolved || VM_API_BASE;
 }
 
 export const API_BASE = resolveApiBase(import.meta.env.VITE_API_URL);

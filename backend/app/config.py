@@ -37,17 +37,45 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 from fastapi_mail import ConnectionConfig
 
+def _bool_env(name: str, default: bool) -> bool:
+    val = os.getenv(name)
+    if val is None:
+        return default
+    return val.strip().lower() in ("1", "true", "yes", "on")
+
+def get_env_val(name: str, default: str) -> str:
+    val = os.getenv(name)
+    if val is None:
+        return default
+    return val.strip()
+
 # Email Configuration
-MAIL_USERNAME = (os.getenv("MAIL_USERNAME") or "your-email@gmail.com").strip()
-MAIL_PASSWORD = (os.getenv("MAIL_PASSWORD") or "your-app-password").strip()
-MAIL_FROM = (os.getenv("MAIL_FROM") or "your-email@gmail.com").strip()
-MAIL_PORT = int(os.getenv("MAIL_PORT") or 587)
-MAIL_SERVER = (os.getenv("MAIL_SERVER") or "smtp.gmail.com").strip()
-MAIL_FROM_NAME = (os.getenv("MAIL_FROM_NAME") or "TradeShift").strip()
-MAIL_STARTTLS = True
-MAIL_SSL_TLS = False
-USE_CREDENTIALS = True
-VALIDATE_CERTS = True
+MAIL_USERNAME = get_env_val("MAIL_USERNAME", "your-email@gmail.com")
+MAIL_PASSWORD = get_env_val("MAIL_PASSWORD", "your-app-password")
+MAIL_FROM = get_env_val("MAIL_FROM", "your-email@gmail.com")
+MAIL_PORT = int(get_env_val("MAIL_PORT", "587") or 587)
+MAIL_SERVER = get_env_val("MAIL_SERVER", "smtp.gmail.com")
+MAIL_FROM_NAME = get_env_val("MAIL_FROM_NAME", "TradeShift")
+
+# Placeholders that shouldn't be counted as credentials
+PLACEHOLDER_USERNAMES = {"your-email@gmail.com", "phase5-load@example.com", "phase5-test@example.com", ""}
+PLACEHOLDER_PASSWORDS = {"your-app-password", "phase5-load-password", "phase5-test-password", ""}
+
+has_real_username = MAIL_USERNAME and MAIL_USERNAME not in PLACEHOLDER_USERNAMES
+has_real_password = MAIL_PASSWORD and MAIL_PASSWORD not in PLACEHOLDER_PASSWORDS
+
+# Default to false for TLS and Credentials if connecting to localhost/127.0.0.1
+is_local_server = MAIL_SERVER.lower() in ("localhost", "127.0.0.1")
+
+MAIL_SSL_TLS = _bool_env("MAIL_SSL_TLS", False)
+# If it's a local server, default starttls to False. Otherwise True.
+default_starttls = False if is_local_server else True
+MAIL_STARTTLS = _bool_env("MAIL_STARTTLS", default_starttls)
+
+# Default to False if no real username/password is present or if it's a local server
+default_use_credentials = False if is_local_server or not (has_real_username and has_real_password) else True
+USE_CREDENTIALS = _bool_env("USE_CREDENTIALS", default_use_credentials)
+VALIDATE_CERTS = _bool_env("VALIDATE_CERTS", not is_local_server)
 
 def get_mail_conf(port: int = None) -> ConnectionConfig:
     """Returns a ConnectionConfig for the given port or default from env."""

@@ -10,7 +10,7 @@ from app.models import UserSettings as UserSettingsModel, UserChartSettings as C
 from app.schemas import UserSettings, UserSettingsUpdate, ChartSettings, ChartSettingsUpdate, DrawingTemplateCreate, DrawingTemplateResponse, HelpRequestCreate, HelpRequestResponse, UserFeedbackCreate, UserFeedbackResponse
 from app.routers.trading import _get_user_id
 from app.services.risk_engine import risk_engine
-from app.config import conf, MAIL_USERNAME, MAIL_PASSWORD, MAIL_SERVER, MAIL_PORT, MAIL_FROM, MAIL_FROM_NAME
+from app.config import conf, MAIL_USERNAME, MAIL_PASSWORD, MAIL_SERVER, MAIL_PORT, MAIL_FROM, MAIL_FROM_NAME, USE_CREDENTIALS, MAIL_STARTTLS
 
 logger = logging.getLogger(__name__)
 
@@ -248,9 +248,10 @@ async def send_help_email(user_id: str, message: str):
     smtp_server = MAIL_SERVER
     port = MAIL_PORT
     
-    if not sender or not password or "your-email" in sender:
-        logger.error(f"Email credentials not configured correctly in .env. Current sender: {sender}")
-        return
+    if USE_CREDENTIALS:
+        if not sender or not password or "your-email" in sender or "phase5-test" in sender:
+            logger.error(f"Email credentials not configured correctly in .env. Current sender: {sender}")
+            return
         
     html = f"""
     <p><strong>New Support Request</strong></p>
@@ -269,8 +270,10 @@ async def send_help_email(user_id: str, message: str):
             server = smtplib.SMTP_SSL(smtp_server, port, timeout=8)
         else:
             server = smtplib.SMTP(smtp_server, port, timeout=8)
-            server.starttls()
-        server.login(sender, password)
+            if MAIL_STARTTLS:
+                server.starttls()
+        if USE_CREDENTIALS and sender and password:
+            server.login(sender, password)
         server.send_message(msg)
         server.quit()
 

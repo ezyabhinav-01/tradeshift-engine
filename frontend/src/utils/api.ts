@@ -8,13 +8,17 @@ const VM_API_BASE = 'https://20.40.42.232.nip.io';
 
 function resolveApiBase(value?: string): string {
   const trimmed = value?.trim();
+  let resolved = trimmed;
   if (!trimmed || trimmed.includes('tradeshift-api.onrender.com')) {
-    return VM_API_BASE;
+    resolved = VM_API_BASE;
+  } else if (trimmed.startsWith('ttps://')) {
+    resolved = `h${trimmed}`;
   }
-  if (trimmed.startsWith('ttps://')) {
-    return `h${trimmed}`;
+
+  if (resolved && resolved.includes('backend:8000')) {
+    resolved = resolved.replace('backend', window.location.hostname);
   }
-  return trimmed;
+  return resolved;
 }
 
 export const API_BASE = resolveApiBase(import.meta.env.VITE_API_URL);

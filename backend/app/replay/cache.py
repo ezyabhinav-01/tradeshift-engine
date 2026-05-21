@@ -82,7 +82,7 @@ def compact_tick(ts_ms: int, price: float, volume: float | int = 0) -> list[floa
 
 def expand_compact_tick(symbol: str, tick: list[float | int]) -> dict[str, Any]:
     ts_ms, price, volume = tick
-    timestamp = dt.datetime.fromtimestamp(int(ts_ms) / 1000, dt.UTC).replace(tzinfo=None).isoformat() + "Z"
+    timestamp = dt.datetime.fromtimestamp(int(ts_ms) / 1000, dt.timezone.utc).replace(tzinfo=None).isoformat() + "Z"
     return {
         "symbol": symbol,
         "price": round(float(price), 2),

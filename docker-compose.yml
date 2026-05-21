@@ -34,7 +34,7 @@ services:
   redis-commander:
     image: rediscommander/redis-commander:latest
     container_name: tradeshift_redis_commander
-    profiles: ["dev-tools"]
+    profiles: [ "dev-tools" ]
     environment:
       - REDIS_HOSTS=local:redis:6379
     ports:
@@ -60,6 +60,8 @@ services:
   backend:
     build: ./backend
     container_name: tradeshift_backend
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file:
       - ./backend/.env
       - ./.env
@@ -78,7 +80,7 @@ services:
       minio:
         condition: service_started
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3).read()"]
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3).read()" ]
       interval: 20s
       timeout: 5s
       retries: 5
@@ -121,7 +123,7 @@ services:
   rabbitmq:
     image: rabbitmq:3-management
     container_name: tradeshift_rabbitmq
-    profiles: ["async-news"]
+    profiles: [ "async-news" ]
     ports:
       - "5672:5672"
       - "15672:15672"
@@ -149,7 +151,7 @@ services:
   worker:
     build: ./backend
     container_name: tradeshift_worker
-    profiles: ["async-news"]
+    profiles: [ "async-news" ]
     command: python workers/news_worker.py
     depends_on:
       db:
@@ -186,6 +188,15 @@ services:
     environment:
       - CHATBOT_API_KEY=tradeshift-local-key
       - CHATBOT_ENABLE_RAG=false
+    restart: unless-stopped
+
+  # 9. Local Mail Server (MailHog)
+  mailhog:
+    image: mailhog/mailhog
+    container_name: tradeshift_mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
     restart: unless-stopped
 
 volumes:

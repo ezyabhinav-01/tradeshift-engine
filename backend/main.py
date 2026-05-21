@@ -873,9 +873,14 @@ async def _resolve_ws_user_id(websocket: WebSocket) -> int | None:
     return None
 
 # --- 2. SECURITY (CORS) ---
+# Robust regex for local development, local network, and VM dynamic deployments:
+# Matches localhost, 127.0.0.1, 0.0.0.0, any IPv4 address (e.g. VM IP), or *.nip.io, on any port.
+CORS_ORIGIN_REGEX = r"https?://(localhost|127\.0\.0\.1|0\.0\.0\.0|.*\.nip\.io|\d+\.\d+\.\d+\.\d+)(:\d+)?"
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_CORS_ORIGINS,
+    allow_origin_regex=CORS_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

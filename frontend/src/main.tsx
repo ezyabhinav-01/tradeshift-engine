@@ -15,12 +15,16 @@ initAnalytics();
 // in the app automatically talks to the right server without changes.
 const VM_API_BASE = 'https://20.40.42.232.nip.io';
 const configuredApiBase = import.meta.env.VITE_API_URL?.trim();
-const API_BASE =
+let API_BASE =
   !configuredApiBase || configuredApiBase.includes('tradeshift-api.onrender.com')
     ? VM_API_BASE
     : configuredApiBase.startsWith('ttps://')
       ? `h${configuredApiBase}`
       : configuredApiBase;
+
+if (API_BASE && API_BASE.includes('backend:8000')) {
+  API_BASE = API_BASE.replace('backend', window.location.hostname);
+}
 
 if (API_BASE) {
   // 1. Axios: set global base URL

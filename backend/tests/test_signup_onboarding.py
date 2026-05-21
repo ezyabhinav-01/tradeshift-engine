@@ -23,7 +23,7 @@ def _signup_payload(email: str) -> dict:
 def test_signup_request_generates_otp_and_queues_email(client, helpers, monkeypatch):
     sent = []
 
-    async def fake_send_signup_otp_email(email: str, otp: str):
+    async def fake_send_signup_otp_email(email: str, otp: str, **kwargs):
         sent.append((email, otp))
 
     monkeypatch.setattr("app.auth.send_signup_otp_email", fake_send_signup_otp_email)

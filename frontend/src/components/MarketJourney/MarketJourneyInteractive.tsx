@@ -71,17 +71,17 @@ export const MarketJourneyInteractive: React.FC<{ canStart: boolean }> = ({ canS
 
     // SCENE 0: Initial Mount Setup
     gsap.set(meteorShipRef.current, { y: '50vh', scale: 0, opacity: 0 });
-    gsap.set(introLayerRef.current, { opacity: 0 });
+    gsap.set(introLayerRef.current, { display: 'none', opacity: 0 });
 
     // Hide all cards initially in the "depth" of the screen
     const cards = [card1Ref, card2Ref, card3Ref, card4Ref, card5Ref];
     cards.forEach(card => {
-      gsap.set(card.current, { opacity: 0, y: '30vh', scale: 0.8 });
+      gsap.set(card.current, { display: 'none', opacity: 0, y: '30vh', scale: 0.8 });
     });
 
-    gsap.set(decisionLayerRef.current, { opacity: 0, y: '20vh', scale: 0.9 });
-    gsap.set(psychologyLayerRef.current, { opacity: 0, y: '20vh' });
-    gsap.set(exitLayerRef.current, { opacity: 0 });
+    gsap.set(decisionLayerRef.current, { display: 'none', opacity: 0, y: '20vh', scale: 0.9 });
+    gsap.set(psychologyLayerRef.current, { display: 'none', opacity: 0, y: '20vh' });
+    gsap.set(exitLayerRef.current, { display: 'none', opacity: 0 });
 
     // Let the component settle, then animate ship entering "camera"
     const entryTl = gsap.timeline({
@@ -95,7 +95,7 @@ export const MarketJourneyInteractive: React.FC<{ canStart: boolean }> = ({ canS
 
     entryTl
       .to(meteorShipRef.current, { scale: 1, opacity: 1, duration: 2, ease: "power3.out" })
-      .to(introLayerRef.current, { opacity: 1, duration: 1 }, "-=1");
+      .to(introLayerRef.current, { display: 'block', opacity: 1, duration: 1 }, "-=1");
 
     // ============================================
     // THE MASTER SCROLLTIMELINE (Scrollytelling)
@@ -112,7 +112,7 @@ export const MarketJourneyInteractive: React.FC<{ canStart: boolean }> = ({ canS
 
     // --- PHASE 1: Leaving Ignition ---
     masterTl
-      .to(introLayerRef.current, { opacity: 0, scale: 1.1, duration: 1 })
+      .to(introLayerRef.current, { opacity: 0, scale: 1.1, duration: 1, display: 'none' })
       .to(meteorShipRef.current, { scale: 0.6, y: '-15vh', duration: 2 }, "<");
 
     // --- PHASE 2: The Data Stream (Cards flying past) ---
@@ -137,7 +137,7 @@ export const MarketJourneyInteractive: React.FC<{ canStart: boolean }> = ({ canS
       // Create the combination assembly timeline
       masterTl
         // First, fade in the card wrapper from its initial hidden state
-        .to(cardRef.current, { opacity: 1, y: '0vh', scale: 1, duration: 0.5 })
+        .to(cardRef.current, { display: 'block', opacity: 1, y: '0vh', scale: 1, duration: 0.5 })
         // Pieces fly in from deep space corners and snap together!
         .to(pieces, { x: '0vw', y: '0vh', opacity: 1, rotation: 0, scale: 1, duration: 1.5, ease: 'back.out(1.2)', stagger: 0.2 }, "-=0.3")
         // Header stamps in
@@ -145,7 +145,7 @@ export const MarketJourneyInteractive: React.FC<{ canStart: boolean }> = ({ canS
         // Ship glow shifts colors
         .to(meteorShipRef.current, { filter: `drop-shadow(0 0 40px ${shipGlow})`, duration: 1 }, "<")
         // Hold format for a reading beat then blast them away together up and out
-        .to(cardRef.current, { opacity: 0, y: '-30vh', scale: 1.2, duration: 1.5, ease: 'power2.in' }, "+=1.5");
+        .to(cardRef.current, { opacity: 0, y: '-30vh', scale: 1.2, duration: 1.5, ease: 'power2.in', display: 'none' }, "+=1.5");
     };
 
     streamCard(card1Ref, '#00ccff'); // Giants
@@ -157,24 +157,24 @@ export const MarketJourneyInteractive: React.FC<{ canStart: boolean }> = ({ canS
     // --- PHASE 3: Entering The Decision Zone ---
     masterTl
       .to(meteorShipRef.current, { scale: 0.8, y: '25vh', filter: 'drop-shadow(0 0 15px rgba(255,255,255,0.5))', duration: 1.5 })
-      .to(decisionLayerRef.current, { opacity: 1, y: '0vh', scale: 1, duration: 1.5 }, "<")
+      .to(decisionLayerRef.current, { display: 'flex', opacity: 1, y: '0vh', scale: 1, duration: 1.5 }, "<")
       // Wait for user interaction or scroll to pass through
-      .to(decisionLayerRef.current, { opacity: 0, scale: 0.8, duration: 1.5 }, "+=3");
+      .to(decisionLayerRef.current, { opacity: 0, scale: 0.8, duration: 1.5, display: 'none' }, "+=3");
 
     // --- PHASE 4: Psychology Zone ---
     masterTl
-      .to(psychologyLayerRef.current, { opacity: 1, y: '0vh', duration: 1.5 }, "-=0.5")
+      .to(psychologyLayerRef.current, { display: 'block', opacity: 1, y: '0vh', duration: 1.5 }, "-=0.5")
       // Heartbeat pulse effect on the meteor
       .to(meteorShipRef.current, { filter: 'drop-shadow(0 0 50px rgba(157, 0, 255, 0.8))', scale: 1.1, duration: 0.5, yoyo: true, repeat: 3 }, "<")
       // Fade out Psychology
-      .to(psychologyLayerRef.current, { opacity: 0, y: '-20vh', duration: 1.5 }, "+=2");
+      .to(psychologyLayerRef.current, { opacity: 0, y: '-20vh', duration: 1.5, display: 'none' }, "+=2");
 
     // --- PHASE 5: The Exit ---
     masterTl
       // Meteor blasts off into warp
       .to(meteorShipRef.current, { scale: 1.5, y: '-150vh', filter: 'drop-shadow(0 0 100px #fff)', duration: 2, ease: "power3.in" })
       // Show final success layer
-      .to(exitLayerRef.current, { opacity: 1, duration: 1 }, "-=1");
+      .to(exitLayerRef.current, { display: 'block', opacity: 1, duration: 1 }, "-=1");
 
   }, { scope: containerRef, dependencies: [canStart] });
 
@@ -225,7 +225,7 @@ export const MarketJourneyInteractive: React.FC<{ canStart: boolean }> = ({ canS
         {/* =========================================
             SCENE 1: IGNITION ZONE 
             ========================================= */}
-        <div ref={introLayerRef} style={{ position: 'absolute', textAlign: 'center', top: '25%', width: '100%', opacity: 0, pointerEvents: 'none' }}>
+        <div ref={introLayerRef} style={{ position: 'absolute', textAlign: 'center', top: '25%', width: '100%', opacity: 0, pointerEvents: 'none', display: 'none' }}>
           <h2 style={{ fontSize: '3rem', fontWeight: 800, letterSpacing: '2px', color: 'var(--accent-secondary)', textShadow: '0 0 20px rgba(0,204,255,0.4)', marginBottom: '1rem' }}>
             {introStarted && <GSAPTypewriter text="Welcome to the Market Universe..." />}
           </h2>
@@ -243,7 +243,7 @@ export const MarketJourneyInteractive: React.FC<{ canStart: boolean }> = ({ canS
             SCENE 2: THE DATA STREAM (HOLO-CARDS)
             ========================================= */}
         {/* Card 1: Giants */}
-        <div ref={card1Ref} style={{ position: 'absolute', width: '90%', maxWidth: '1200px', textAlign: 'center', opacity: 0, pointerEvents: 'none' }}>
+        <div ref={card1Ref} style={{ position: 'absolute', width: '90%', maxWidth: '1200px', textAlign: 'center', opacity: 0, pointerEvents: 'none', display: 'none' }}>
           <h2 className="card-header" style={{ fontSize: '2.5rem', color: '#fff', marginBottom: '2rem' }}>Indian Market Giants</h2>
           <div style={{ display: 'flex', gap: '2rem' }}>
             <div className="card-piece" style={{ flex: 1, background: 'rgba(0,0,0,0.5)', padding: '1.5rem', borderRadius: '12px', border: '1px solid rgba(0,204,255,0.3)', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}>
@@ -258,7 +258,7 @@ export const MarketJourneyInteractive: React.FC<{ canStart: boolean }> = ({ canS
         </div>
 
         {/* Card 2: Lifecycle & Segments */}
-        <div ref={card2Ref} style={{ position: 'absolute', width: '90%', maxWidth: '1200px', textAlign: 'center', opacity: 0, pointerEvents: 'none' }}>
+        <div ref={card2Ref} style={{ position: 'absolute', width: '90%', maxWidth: '1200px', textAlign: 'center', opacity: 0, pointerEvents: 'none', display: 'none' }}>
           <h2 className="card-header" style={{ fontSize: '2.5rem', color: '#fff', marginBottom: '2rem' }}>The Trading Arsenal</h2>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', textAlign: 'left' }}>
             <div className="card-piece" style={{ padding: '1.5rem', background: 'rgba(0,0,0,0.4)', borderRadius: '12px', borderLeft: '4px solid var(--accent-secondary)' }}>
@@ -281,7 +281,7 @@ export const MarketJourneyInteractive: React.FC<{ canStart: boolean }> = ({ canS
         </div>
 
         {/* Card 3: Price Action */}
-        <div ref={card3Ref} style={{ position: 'absolute', width: '90%', maxWidth: '1200px', textAlign: 'center', opacity: 0, pointerEvents: 'none' }}>
+        <div ref={card3Ref} style={{ position: 'absolute', width: '90%', maxWidth: '1200px', textAlign: 'center', opacity: 0, pointerEvents: 'none', display: 'none' }}>
           <div className="card-header">
             <h2 style={{ fontSize: '2.5rem', color: '#fff', marginBottom: '1.5rem' }}>Price Action & Volatility</h2>
             <p style={{ fontSize: '1.2rem', color: '#ccc', marginBottom: '2rem' }}>Traders don't read words, they read Candlesticks. Each candle tells a story of the battle between buyers and sellers.</p>
@@ -299,7 +299,7 @@ export const MarketJourneyInteractive: React.FC<{ canStart: boolean }> = ({ canS
         </div>
 
         {/* Card 4: Indicators */}
-        <div ref={card4Ref} style={{ position: 'absolute', width: '90%', maxWidth: '1200px', textAlign: 'left', opacity: 0, pointerEvents: 'none' }}>
+        <div ref={card4Ref} style={{ position: 'absolute', width: '90%', maxWidth: '1200px', textAlign: 'left', opacity: 0, pointerEvents: 'none', display: 'none' }}>
           <div className="card-header">
             <h2 style={{ fontSize: '2.5rem', color: '#fff', marginBottom: '1rem', textAlign: 'center' }}>The Tech Indicators</h2>
             <p style={{ fontSize: '1.1rem', color: '#ccc', fontStyle: 'italic', textAlign: 'center', marginBottom: '2rem' }}>Indicators do not predict the future; they map the present.</p>
@@ -312,7 +312,7 @@ export const MarketJourneyInteractive: React.FC<{ canStart: boolean }> = ({ canS
         </div>
 
         {/* Card 5: Ecosystem */}
-        <div ref={card5Ref} style={{ position: 'absolute', width: '90%', maxWidth: '1200px', textAlign: 'center', opacity: 0, pointerEvents: 'none' }}>
+        <div ref={card5Ref} style={{ position: 'absolute', width: '90%', maxWidth: '1200px', textAlign: 'center', opacity: 0, pointerEvents: 'none', display: 'none' }}>
           <h2 className="card-header" style={{ fontSize: '2.5rem', color: '#fff', marginBottom: '2rem' }}>The Market Ecosystem</h2>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', textAlign: 'left' }}>
             <div className="card-piece" style={{ background: 'rgba(0,0,0,0.5)', padding: '1.5rem', borderRadius: '12px' }}>
@@ -334,7 +334,7 @@ export const MarketJourneyInteractive: React.FC<{ canStart: boolean }> = ({ canS
         {/* =========================================
             SCENE 3: DECISION ZONE (INTERACTIVE)
             ========================================= */}
-        <div ref={decisionLayerRef} style={{ position: 'absolute', width: '100%', maxWidth: '1200px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', opacity: 0, pointerEvents: 'none' }}>
+        <div ref={decisionLayerRef} style={{ position: 'absolute', width: '100%', maxWidth: '1200px', display: 'none', flexDirection: 'column', alignItems: 'center', textAlign: 'center', opacity: 0, pointerEvents: 'none' }}>
           <h2 style={{ fontSize: '3rem', color: 'var(--danger)', textShadow: '0 0 40px rgba(239,68,68,0.5)', textTransform: 'uppercase', marginBottom: '1rem' }}>Survival &gt; Profit</h2>
           <p style={{ fontSize: '1.2rem', color: '#ccc', marginBottom: '2rem' }}>
             Amateurs obsess over profits. Professionals obsess over losses.<br />
@@ -377,7 +377,7 @@ export const MarketJourneyInteractive: React.FC<{ canStart: boolean }> = ({ canS
         {/* =========================================
             SCENE 4: PSYCHOLOGY ZONE
             ========================================= */}
-        <div ref={psychologyLayerRef} style={{ position: 'absolute', width: '100%', maxWidth: '1200px', textAlign: 'center', opacity: 0, pointerEvents: 'none' }}>
+        <div ref={psychologyLayerRef} style={{ position: 'absolute', width: '100%', maxWidth: '1200px', textAlign: 'center', opacity: 0, pointerEvents: 'none', display: 'none' }}>
           <h2 style={{ fontSize: '3.5rem', color: '#9d00ff', textShadow: '0 0 30px rgba(157,0,255,0.6)', marginBottom: '1rem' }}>Discipline equals Freedom</h2>
           <p style={{ fontSize: '1.5rem', color: '#ccc', maxWidth: '800px', margin: '0 auto' }}>
             Fear makes you sell early. Greed makes you hold too long.<br /> Every trade requires an Entry, a Stop-Loss, and a Target.<br />
@@ -389,7 +389,7 @@ export const MarketJourneyInteractive: React.FC<{ canStart: boolean }> = ({ canS
         {/* =========================================
             SCENE 5: FINAL CTA (EXIT)
             ========================================= */}
-        <div ref={exitLayerRef} style={{ position: 'absolute', textAlign: 'center', maxWidth: '1200px', opacity: 0, pointerEvents: 'none' }}>
+        <div ref={exitLayerRef} style={{ position: 'absolute', textAlign: 'center', maxWidth: '1200px', opacity: 0, pointerEvents: 'none', display: 'none' }}>
           <h2 style={{ fontSize: '4rem', fontWeight: 800, marginBottom: '1rem', background: 'linear-gradient(45deg, #0055ff, #00ccff)', backgroundClip: 'text', WebkitTextFillColor: 'transparent', WebkitBackgroundClip: 'text' }}>
             Your Journey Begins
           </h2>

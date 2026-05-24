@@ -1151,8 +1151,8 @@ const MobileShowcaseSection = () => {
                             display: 'inline-flex',
                             alignItems: 'center',
                             width: 'fit-content',
-                            padding: '0.5rem 1.25rem',
-                            fontSize: '0.85rem',
+                            padding: '0.55rem 1.35rem',
+                            fontSize: '0.925rem',
                             fontWeight: 600,
                             borderRadius: '50px',
                             background: 'var(--accent-primary)',
@@ -1163,7 +1163,7 @@ const MobileShowcaseSection = () => {
                             border: '1px solid rgba(255, 255, 255, 0.2)'
                           }}
                         >
-                          <span className={`typewriter-text ${activeTab === i ? 'animate' : ''}`}>Explore More</span>
+                          <span className={`typewriter-text ${activeTab === i ? 'animate' : ''}`} style={{ fontSize: '0.925rem', lineHeight: '1.2' }}>Explore More</span>
                           <span className="typewriter-cursor">|</span>
                         </Link>
                       </div>
@@ -1183,7 +1183,7 @@ const MobileShowcaseSection = () => {
                         className="btn btn-primary"
                         onClick={(e) => e.stopPropagation()} // DON'T re-flip when clicking the link
                         onPointerDown={(e) => e.stopPropagation()}
-                        style={{ fontSize: '1.1rem', padding: '1rem 2rem', textAlign: 'center', width: '100%' }}
+                        style={{ fontSize: '0.925rem', padding: '0.55rem 1.35rem', textAlign: 'center', width: 'fit-content', borderRadius: '50px', margin: '0 auto' }}
                       >
                         Explore {item.tab}
                       </Link>
@@ -1572,38 +1572,35 @@ export default function LandingPage() {
                 </button>
 
                 {isUserMenuOpen && (
-                  <div className={`absolute right-0 top-full mt-2 w-56 border rounded-xl shadow-2xl z-50 animate-in fade-in slide-in-from-top-2 duration-200 ${
-                       isLightMode ? 'bg-white border-slate-200' : 'bg-[#1A1E29] border-white/10'
-                     }`}
-                       style={{ padding: '0.5rem 0' }}>
-                      <div className={`border-b mb-1 ${isLightMode ? 'border-slate-100' : 'border-white/5'}`} style={{ padding: '0.75rem 1rem' }}>
-                        <p className={`text-base font-bold mt-0.5 tracking-tight ${isLightMode ? 'text-slate-900' : 'text-white'}`}>{user.demat_id || 'N/A'}</p>
-                        <p className={`text-[11px] font-medium truncate ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>{user.email}</p>
-                      </div>
-
-                      <Link
-                        to="/settings"
-                        className={`flex items-center gap-3 text-sm transition-colors ${
-                          isLightMode ? 'text-slate-700 hover:bg-slate-50' : 'text-gray-300 hover:bg-white/5'
-                        }`}
-                        onClick={() => setIsUserMenuOpen(false)}
-                        style={{ padding: '0.625rem 1rem', textDecoration: 'none' }}
-                      >
-                        <UserCircle size={18} />
-                        Profile Settings
-                      </Link>
-
-                      <button
-                        onClick={handleLogout}
-                        className={`w-full flex items-center gap-3 text-sm transition-colors cursor-pointer ${
-                          isLightMode ? 'text-red-600 hover:bg-red-50' : 'text-red-500 hover:bg-red-500/10'
-                        }`}
-                        style={{ padding: '0.625rem 1rem', background: 'transparent', border: 'none', textAlign: 'left' }}
-                      >
-                        <LogOut size={18} />
-                        Sign Out
-                      </button>
+                  <div className={`absolute right-0 top-full mt-2 w-56 border rounded-xl shadow-2xl z-50 animate-in fade-in slide-in-from-top-2 duration-200 ${isLightMode ? 'bg-white border-slate-200' : 'bg-[#1A1E29] border-white/10'
+                    }`}
+                    style={{ padding: '0.5rem 0' }}>
+                    <div className={`border-b mb-1 ${isLightMode ? 'border-slate-100' : 'border-white/5'}`} style={{ padding: '0.75rem 1rem' }}>
+                      <p className={`text-base font-bold mt-0.5 tracking-tight ${isLightMode ? 'text-slate-900' : 'text-white'}`}>{user.demat_id || 'N/A'}</p>
+                      <p className={`text-[11px] font-medium truncate ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>{user.email}</p>
                     </div>
+
+                    <Link
+                      to="/settings"
+                      className={`flex items-center gap-3 text-sm transition-colors ${isLightMode ? 'text-slate-700 hover:bg-slate-50' : 'text-gray-300 hover:bg-white/5'
+                        }`}
+                      onClick={() => setIsUserMenuOpen(false)}
+                      style={{ padding: '0.625rem 1rem', textDecoration: 'none' }}
+                    >
+                      <UserCircle size={18} />
+                      Profile Settings
+                    </Link>
+
+                    <button
+                      onClick={handleLogout}
+                      className={`w-full flex items-center gap-3 text-sm transition-colors cursor-pointer ${isLightMode ? 'text-red-600 hover:bg-red-50' : 'text-red-500 hover:bg-red-500/10'
+                        }`}
+                      style={{ padding: '0.625rem 1rem', background: 'transparent', border: 'none', textAlign: 'left' }}
+                    >
+                      <LogOut size={18} />
+                      Sign Out
+                    </button>
+                  </div>
                 )}
               </div>
             ) : (

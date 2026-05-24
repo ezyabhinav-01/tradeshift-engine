@@ -124,7 +124,6 @@ export const MarketJourneyInteractive: React.FC<{ canStart: boolean }> = ({ canS
       const pieces = cardRef.current.querySelectorAll('.card-piece');
 
       // Setup initial invisible, scattered state
-      gsap.set(cardRef.current, { opacity: 1, y: '0vh', scale: 1 }); // Main wrapper stays centered natively
       if (header) gsap.set(header, { scale: 0, opacity: 0, y: '-20vh' });
 
       pieces.forEach((piece, index) => {
@@ -137,8 +136,10 @@ export const MarketJourneyInteractive: React.FC<{ canStart: boolean }> = ({ canS
 
       // Create the combination assembly timeline
       masterTl
+        // First, fade in the card wrapper from its initial hidden state
+        .to(cardRef.current, { opacity: 1, y: '0vh', scale: 1, duration: 0.5 })
         // Pieces fly in from deep space corners and snap together!
-        .to(pieces, { x: '0vw', y: '0vh', opacity: 1, rotation: 0, scale: 1, duration: 1.5, ease: 'back.out(1.2)', stagger: 0.2 })
+        .to(pieces, { x: '0vw', y: '0vh', opacity: 1, rotation: 0, scale: 1, duration: 1.5, ease: 'back.out(1.2)', stagger: 0.2 }, "-=0.3")
         // Header stamps in
         .to(header, { scale: 1, opacity: 1, y: '0vh', duration: 0.8, ease: 'bounce.out' }, "-=1")
         // Ship glow shifts colors
